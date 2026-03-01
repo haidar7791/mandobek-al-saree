@@ -98,14 +98,12 @@ function InputField({
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [contact, setContact] = useState("");
-  const [verifyCode, setVerifyCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const ref2 = useRef<TextInput>(null);
   const ref3 = useRef<TextInput>(null);
-  const ref4 = useRef<TextInput>(null);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({
@@ -115,10 +113,6 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     if (!contact.trim()) {
       Alert.alert("خطأ", "يرجى إدخال البريد الإلكتروني أو رقم الهاتف");
-      return;
-    }
-    if (!verifyCode.trim()) {
-      Alert.alert("خطأ", "يرجى إدخال رمز التحقق");
       return;
     }
     if (password.length < 6) {
@@ -213,25 +207,14 @@ export default function RegisterScreen() {
             />
 
             <InputField
-              label="رمز التحقق"
-              placeholder="أدخل رمز التحقق"
-              value={verifyCode}
-              onChangeText={setVerifyCode}
-              icon={<Feather name="shield" size={18} color={C.textSecondary} />}
-              keyboardType="number-pad"
-              innerRef={ref2}
-              onSubmitEditing={() => ref3.current?.focus()}
-            />
-
-            <InputField
               label="كلمة المرور"
               placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
               value={password}
               onChangeText={setPassword}
               icon={<Feather name="lock" size={18} color={C.textSecondary} />}
               secureTextEntry
-              innerRef={ref3}
-              onSubmitEditing={() => ref4.current?.focus()}
+              innerRef={ref2}
+              onSubmitEditing={() => ref3.current?.focus()}
             />
 
             <InputField
@@ -241,7 +224,7 @@ export default function RegisterScreen() {
               onChangeText={setConfirmPassword}
               icon={<Feather name="check-circle" size={18} color={C.textSecondary} />}
               secureTextEntry
-              innerRef={ref4}
+              innerRef={ref3}
               returnKeyType="done"
               onSubmitEditing={handleRegister}
             />
