@@ -102,7 +102,7 @@ function RequestCard({
         <View style={styles.requestInfo}>
           <View style={styles.requestTypeRow}>
             <Text style={[styles.amountText, { color: typeColor }]}>
-              {item.amount.toLocaleString("ar-SA")} ريال
+              {item.amount.toLocaleString("ar-IQ")} د.ع
             </Text>
             <View style={[styles.typeChip, { backgroundColor: typeColor + "18" }]}>
               <Feather name={typeIcon} size={14} color={typeColor} />
