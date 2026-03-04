@@ -24,6 +24,7 @@ import Colors from "@/constants/colors";
 
 const C = Colors.light;
 const DEFAULT_BALANCE = 2000000;
+const INSURANCE_AMOUNT = 10000;
 
 const IRAQ_GOVERNORATES = [
   "بغداد",
@@ -71,10 +72,9 @@ interface Order {
 }
 
 function generateCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += Math.floor(Math.random() * 10).toString();
   }
   return code;
 }
@@ -278,13 +278,17 @@ function AddressGroup({
 function AddOrderModal({
   visible,
   currentUser,
+  merchantBalance,
   onClose,
   onCreated,
+  onMerchantBalanceChanged,
 }: {
   visible: boolean;
   currentUser: string;
+  merchantBalance: number;
   onClose: () => void;
   onCreated: (order: Order) => void;
+  onMerchantBalanceChanged: (newBalance: number) => void;
 }) {
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -324,6 +328,13 @@ function AddOrderModal({
     const dp = parseFloat(deliveryPrice);
     if (!productPrice || isNaN(pp) || pp <= 0) { Alert.alert("خطأ", "يرجى إدخال سعر المنتج"); return; }
     if (!deliveryPrice || isNaN(dp) || dp < 0) { Alert.alert("خطأ", "يرجى إدخال أجر التوصيل"); return; }
+    if (merchantBalance < INSURANCE_AMOUNT) {
+      Alert.alert(
+        "رصيد غير كافٍ",
+        `يلزم توفر ${formatCurrency(INSURANCE_AMOUNT)} في محفظتك كتأمين مؤقت لإنشاء الطلب. رصيدك الحالي: ${formatCurrency(merchantBalance)}`
+      );
+      return;
+    }
 
     setLoading(true);
     try {
@@ -341,6 +352,9 @@ function AddOrderModal({
       const all = await getAllOrders();
       all.push(newOrder);
       await saveAllOrders(all);
+      const newMerchantBal = merchantBalance - INSURANCE_AMOUNT;
+      await setBalance(currentUser, newMerchantBal);
+      onMerchantBalanceChanged(newMerchantBal);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset(); onClose(); onCreated(newOrder);
     } catch {
@@ -420,7 +434,7 @@ function AddOrderModal({
             <View style={formStyles.codeNote}>
               <Feather name="shield" size={14} color={C.accent} />
               <Text style={formStyles.codeNoteText}>
-                سيتم توليد رمز سري تلقائياً عند إنشاء الطلب يُستخدم لتأكيد التوصيل أو الإرجاع
+                سيُخصم {formatCurrency(INSURANCE_AMOUNT)} من محفظتك كتأمين مؤقت فور إنشاء الطلب، ويُعاد إليك عند إتمام التوصيل أو الإرجاع.
               </Text>
             </View>
             <Pressable style={[formStyles.submitBtn, loading && { opacity: 0.6 }]} onPress={handleCreate} disabled={loading}>
@@ -499,12 +513,12 @@ function EnterCodeModal({ visible, mode, onClose, onConfirm }: {
           </Text>
           <TextInput
             style={modalStyles.codeInput}
-            placeholder="أدخل الرمز السري"
+            placeholder="------"
             placeholderTextColor={C.textMuted}
             value={code}
-            onChangeText={(t) => setCode(t.toUpperCase())}
-            autoCapitalize="characters"
-            textAlign="center"
+            onChangeText={(t) => setCode(t.replace(/[^0-9]/g, ""))}
+            keyboardType="number-pad"
+            textAlign="left"
             maxLength={6}
             returnKeyType="done"
             onSubmitEditing={handleConfirm}
@@ -722,7 +736,7 @@ export default function DashboardScreen() {
     if (!order) return;
     if (enteredCode !== order.uniqueCode) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("رمز خاطئ", "الرمز السري الذي أدخلته غير صحيح. حاول مرة أخرى.");
+      Alert.alert("رمز خاطئ", "الرمز الذي أدخلته غير صحيح. حاول مرة أخرى.");
       return;
     }
     try {
@@ -732,16 +746,40 @@ export default function DashboardScreen() {
       setAllOrders(updated);
       setCodeEntry(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
       if (mode === "deliver") {
-        const earned = balance + order.productPrice + order.deliveryPrice;
-        await setBalance(currentUser, earned);
-        setBalanceState(earned);
-        Alert.alert("تم التوصيل", `تم تأكيد التوصيل بنجاح! تمت إضافة ${formatCurrency(order.productPrice + order.deliveryPrice)} إلى رصيدك.`);
+        // المندوب: لا يُردّ له شيء (استلم كاش من الزبون)
+        // التاجر: يستلم سعر المنتج + مبلغ التأمين
+        const merchantCurrentBal = await getBalance(order.merchantId);
+        const merchantNewBal = merchantCurrentBal + order.productPrice + INSURANCE_AMOUNT;
+        await setBalance(order.merchantId, merchantNewBal);
+        // إذا كان المستخدم الحالي هو التاجر نفسه، نحدّث الواجهة
+        if (order.merchantId === currentUser) {
+          setBalanceState(merchantNewBal);
+        }
+        Alert.alert(
+          "✅ تم التوصيل بنجاح",
+          `تم تأكيد توصيل "${order.productName}".\n\n` +
+          `• تم إضافة ${formatCurrency(order.productPrice)} (سعر المنتج) إلى محفظة التاجر.\n` +
+          `• تم إعادة تأمين ${formatCurrency(INSURANCE_AMOUNT)} للتاجر.\n\n` +
+          `ملاحظة: استلمت ${formatCurrency(order.productPrice + order.deliveryPrice)} كاش من الزبون.`
+        );
       } else {
-        const refunded = balance + order.productPrice;
-        await setBalance(currentUser, refunded);
-        setBalanceState(refunded);
-        Alert.alert("تم الإرجاع", `تم تأكيد الإرجاع. تمت إعادة ${formatCurrency(order.productPrice)} إلى رصيدك.`);
+        // الإرجاع: يُردّ سعر المنتج للمندوب + التأمين للتاجر
+        const mandoubNewBal = balance + order.productPrice;
+        await setBalance(currentUser, mandoubNewBal);
+        setBalanceState(mandoubNewBal);
+
+        const merchantCurrentBal = await getBalance(order.merchantId);
+        const merchantNewBal = merchantCurrentBal + INSURANCE_AMOUNT;
+        await setBalance(order.merchantId, merchantNewBal);
+
+        Alert.alert(
+          "↩️ تم الإرجاع",
+          `تم تأكيد إرجاع "${order.productName}".\n\n` +
+          `• تم إعادة ${formatCurrency(order.productPrice)} (ضمان المنتج) إلى محفظتك.\n` +
+          `• تم إعادة تأمين ${formatCurrency(INSURANCE_AMOUNT)} إلى محفظة التاجر.`
+        );
       }
     } catch { Alert.alert("خطأ", "حدث خطأ أثناء تحديث حالة الطلب"); }
   };
@@ -913,7 +951,14 @@ export default function DashboardScreen() {
         }
       />
 
-      <AddOrderModal visible={showAddModal} currentUser={currentUser} onClose={() => setShowAddModal(false)} onCreated={handleOrderCreated} />
+      <AddOrderModal
+        visible={showAddModal}
+        currentUser={currentUser}
+        merchantBalance={balance}
+        onClose={() => setShowAddModal(false)}
+        onCreated={handleOrderCreated}
+        onMerchantBalanceChanged={(newBal) => setBalanceState(newBal)}
+      />
 
       {newOrderCode && (
         <CodeModal visible={!!newOrderCode} code={newOrderCode.code} productName={newOrderCode.name} onClose={() => setNewOrderCode(null)} />
