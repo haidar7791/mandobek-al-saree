@@ -23,6 +23,7 @@ function RootLayoutNav() {
       <Stack.Screen name="admin-dashboard" />
       <Stack.Screen name="dashboard" />
       <Stack.Screen name="profile" />
+      <Stack.Screen name="wallet" />
     </Stack>
   );
 }
