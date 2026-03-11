@@ -826,15 +826,24 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.balanceCard}>
-          <View style={styles.balanceLeft}>
-            <MaterialCommunityIcons name="wallet-outline" size={26} color={C.accent} />
-          </View>
-          <View style={styles.balanceRight}>
-            <Text style={styles.balanceLabel}>الرصيد الحالي</Text>
-            <Text style={styles.balanceValue}>
-              {balance.toLocaleString("ar-IQ")}{" "}
-              <Text style={styles.balanceCurrency}>د.ع</Text>
-            </Text>
+          <View style={styles.balanceTopRow}>
+            <Pressable
+              style={styles.walletBtn}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/wallet"); }}
+            >
+              <MaterialCommunityIcons name="bank-transfer" size={14} color={C.accent} />
+              <Text style={styles.walletBtnText}>إيداع / سحب</Text>
+            </Pressable>
+            <View style={styles.balanceRight}>
+              <Text style={styles.balanceLabel}>الرصيد الحالي</Text>
+              <Text style={styles.balanceValue}>
+                {balance.toLocaleString("ar-IQ")}{" "}
+                <Text style={styles.balanceCurrency}>د.ع</Text>
+              </Text>
+            </View>
+            <View style={styles.balanceLeft}>
+              <MaterialCommunityIcons name="wallet-outline" size={26} color={C.accent} />
+            </View>
           </View>
           <View style={styles.balanceStats}>
             <View style={styles.bStat}>
@@ -997,7 +1006,19 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.07)",
     borderRadius: 18, padding: 16,
     borderWidth: 1, borderColor: "rgba(201,168,76,0.2)",
-    flexDirection: "row", gap: 14, alignItems: "center", flexWrap: "wrap",
+    flexDirection: "column", gap: 10,
+  },
+  balanceTopRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+  },
+  walletBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    borderRadius: 10, paddingVertical: 7, paddingHorizontal: 11,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+  },
+  walletBtnText: {
+    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent,
   },
   balanceLeft: {
     width: 48, height: 48, borderRadius: 13,
