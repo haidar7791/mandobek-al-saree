@@ -15,16 +15,24 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mandobek.alsaree"
+      "bundleIdentifier": "com.mandobek.alsaree",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.mandobek.alsaree",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0D1B3E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -37,11 +45,23 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "التطبيق يحتاج للوصول إلى مكتبة الصور لرفع صورة الإيصال.",
+          "cameraPermission": "التطبيق يحتاج للوصول إلى الكاميرا لالتقاط صورة الإيصال."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "mandobek-al-saree"
+      }
     }
   }
 }
