@@ -23,7 +23,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-const DEFAULT_BALANCE = 2000000;
+const DEFAULT_BALANCE = 0;
 const INSURANCE_AMOUNT = 10000;
 
 const IRAQ_GOVERNORATES = [
