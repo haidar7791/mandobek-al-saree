@@ -18,14 +18,14 @@
       "bundleIdentifier": "com.mandobek.alsaree",
       "buildNumber": "1"
     },
-    "android": {
+        "android": {
       "package": "com.mandobek.alsaree",
+      "googleServicesFile": "./google-services.json", // <-- هذا السطر الناقص
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0D1B3E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "permissions": [
         "android.permission.CAMERA",
