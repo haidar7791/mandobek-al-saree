@@ -30,7 +30,7 @@ function formatCurrency(amount: number): string {
 
 async function getUserBalance(userId: string): Promise<number> {
   const stored = await AsyncStorage.getItem(`@balance_${userId}`);
-  return stored !== null ? parseFloat(stored) : 2000000;
+  return stored !== null ? parseFloat(stored) : 0;
 }
 
 async function setUserBalance(userId: string, amount: number): Promise<void> {
