@@ -52,7 +52,7 @@ async function saveWalletRequests(reqs: WalletRequest[]): Promise<void> {
 
 async function getUserBalance(userId: string): Promise<number> {
   const stored = await AsyncStorage.getItem(`@balance_${userId}`);
-  return stored !== null ? parseFloat(stored) : 2000000;
+  return stored !== null ? parseFloat(stored) : 0;
 }
 
 function formatCurrency(amount: number): string {
