@@ -1,29 +1,28 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore"; // أضفنا هذا لاستخدام قاعدة البيانات
-
-// إعدادات مشروع "مندوبك السريع" المدمجة
-const firebaseConfig = {
-  // القيمة من ملف الويب (39246.jpg)
-  apiKey: "AIzaSyDbZoqW41iZiBYYKt8PjeFVTMvjSxp2Xvg", 
-  authDomain: "mandobek-al-saree.firebaseapp.com",
-  databaseURL: "https://mandobek-al-saree-default-rtdb.firebaseio.com",
-  projectId: "mandobek-al-saree",
-  storageBucket: "mandobek-al-saree.firebasestorage.app",
-  messagingSenderId: "911663879269",
-  
-  // معرف تطبيق الويب
-  appId: "1:911663879269:web:0294058114f2f18f55a28c", 
-  
-  // معرف تطبيق الأندرويد من ملف google-services.json (39247.jpg)
-  androidAppId: "1:911663879269:android:500280b5315d9e4855a28c", 
-  
-  measurementId: "G-1NJKJGPBL8"
-};
-
-// تشغيل Firebase
-const app = initializeApp(firebaseConfig);
-
-// تصدير قاعدة البيانات لاستخدامها في إرسال الطلبات
-export const db = getFirestore(app);
-export default app;
+  "project_info": {
+    "project_number": "911663879269",
+    "project_id": "mandobek-al-saree",
+    "storage_bucket": "mandobek-al-saree.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:911663879269:android:500280b5315d9e4855a28c",
+        "android_client_info": {
+          "package_name": "com.mandobek.alsaree"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMrj6itX85DEwPjPTo6kMFszFQdc4n6CE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
