@@ -20,7 +20,7 @@ export const saveAllOrders = async (orders: any[]) => {
 export const getBalance = async (userId: string) => {
   const docRef = doc(db, "wallets", userId);
   const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? docSnap.data().balance : 50000; // رصيد افتراضي 50 الف
+  return docSnap.exists() ? docSnap.data().balance : 0; // رصيد افتراضي 50 الف
 };
 
 export const setBalance = async (userId: string, amount: number) => {
