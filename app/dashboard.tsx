@@ -72,33 +72,6 @@ interface Order {
   acceptedBy?: string;
   createdAt: string;
 }
-
-function generateCode(): string {
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += Math.floor(Math.random() * 10).toString();
-  }
-  return code;
-}
-
-async function getBalance(userId: string): Promise<number> {
-  const stored = await AsyncStorage.getItem(`@balance_${userId}`);
-  return stored !== null ? parseFloat(stored) : DEFAULT_BALANCE;
-}
-
-async function setBalance(userId: string, amount: number): Promise<void> {
-  await AsyncStorage.setItem(`@balance_${userId}`, String(amount));
-}
-
-async function getAllOrders(): Promise<Order[]> {
-  const stored = await AsyncStorage.getItem("@orders_v2");
-  return stored ? JSON.parse(stored) : [];
-}
-
-async function saveAllOrders(orders: Order[]): Promise<void> {
-  await AsyncStorage.setItem("@orders_v2", JSON.stringify(orders));
-}
-
 const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; bg: string; icon: string }
