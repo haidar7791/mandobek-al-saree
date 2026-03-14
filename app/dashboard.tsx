@@ -25,7 +25,8 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-const DEFAULT_BALANCE = 100000000;
+const C = Colors.light;
+const [balance, setBalanceState] = useState(0);
 const INSURANCE_AMOUNT = 10000;
 
 const IRAQ_GOVERNORATES = [
