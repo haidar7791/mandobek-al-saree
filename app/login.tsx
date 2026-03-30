@@ -21,8 +21,15 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import Colors from "@/constants/colors";
+
+function toFirebaseEmail(contact: string): string {
+  const trimmed = contact.trim().toLowerCase();
+  if (trimmed.includes("@")) return trimmed;
+  return `${trimmed}@mandobek.app`;
+}
 
 const C = Colors.light;
 
@@ -108,27 +115,20 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const stored = await AsyncStorage.getItem("@users");
-      const users: { contact: string; password: string }[] = stored
-        ? JSON.parse(stored)
-        : [];
-
-      const user = users.find(
-        (u) => u.contact === contact.trim() && u.password === password
-      );
-
-      if (!user) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("خطأ في تسجيل الدخول", "البريد الإلكتروني أو كلمة المرور غير صحيحة");
-        setLoading(false);
-        return;
-      }
-
-      await AsyncStorage.setItem("@currentUser", contact.trim());
+      const email = toFirebaseEmail(contact);
+      await signInWithEmailAndPassword(auth, email, password);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء تسجيل الدخول");
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const code = err?.code || "";
+      if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        Alert.alert("خطأ في تسجيل الدخول", "البريد الإلكتروني أو كلمة المرور غير صحيحة");
+      } else if (code === "auth/too-many-requests") {
+        Alert.alert("محاولات كثيرة", "تم حظر الحساب مؤقتاً، يرجى المحاولة لاحقاً");
+      } else {
+        Alert.alert("خطأ", "حدث خطأ أثناء تسجيل الدخول");
+      }
     } finally {
       setLoading(false);
     }

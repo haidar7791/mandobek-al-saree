@@ -18,15 +18,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { getAllOrders, saveAllOrders, getBalance, setBalance } from "../lib/db_logic";
-import { db } from "../lib/firebase";
+import {
+  getAllOrders,
+  saveAllOrders,
+  getBalance,
+  setBalance,
+  createOrder,
+  updateOrderStatus,
+} from "../lib/db_logic";
+import { auth } from "../lib/firebase";
 import * as Haptics from "expo-haptics";
-//import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-const [balance, setBalanceState] = useState(0);
 const INSURANCE_AMOUNT = 10000;
+
+function generateCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 const IRAQ_GOVERNORATES = [
   "بغداد",
@@ -314,8 +323,7 @@ function AddOrderModal({
     setLoading(true);
     try {
       const code = generateCode();
-      const newOrder: Order = {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+      const orderData: Omit<Order, "id"> = {
         merchantId: currentUser,
         productName: productName.trim(),
         merchantAddress, merchantPhone: merchantPhone.trim(),
@@ -324,9 +332,8 @@ function AddOrderModal({
         uniqueCode: code, status: "pending",
         createdAt: new Date().toISOString(),
       };
-      const all = await getAllOrders();
-      all.push(newOrder);
-      await saveAllOrders(all);
+      const newId = await createOrder(orderData);
+      const newOrder: Order = { id: newId, ...orderData };
       const newMerchantBal = merchantBalance - INSURANCE_AMOUNT;
       await setBalance(currentUser, newMerchantBal);
       onMerchantBalanceChanged(newMerchantBal);
@@ -645,7 +652,8 @@ type ActiveTab = "my_orders" | "market" | "my_deliveries";
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [currentUser, setCurrentUser] = useState("");
-  const [balance, setBalanceState] = useState(DEFAULT_BALANCE);
+  const [displayName, setDisplayName] = useState("");
+  const [balance, setBalanceState] = useState(0);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>("my_orders");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -655,10 +663,13 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const user = await AsyncStorage.getItem("@currentUser");
+      const user = auth.currentUser;
       if (!user) { router.replace("/"); return; }
-      setCurrentUser(user);
-      const bal = await getBalance(user);
+      const uid = user.uid;
+      const displayId = user.email?.replace("@mandobek.app", "") || uid;
+      setCurrentUser(uid);
+      setDisplayName(displayId);
+      const bal = await getBalance(uid);
       setBalanceState(bal);
       const orders = await getAllOrders();
       setAllOrders(
@@ -689,10 +700,10 @@ export default function DashboardScreen() {
               const newBal = balance - order.productPrice;
               await setBalance(currentUser, newBal);
               setBalanceState(newBal);
+              await updateOrderStatus(order.id, "in_delivery", currentUser);
               const updated = allOrders.map((o) =>
                 o.id === order.id ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: currentUser } : o
               );
-              await saveAllOrders(updated);
               setAllOrders(updated);
               setActiveTab("my_deliveries");
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -716,41 +727,35 @@ export default function DashboardScreen() {
     }
     try {
       const newStatus: OrderStatus = mode === "deliver" ? "delivered" : "returned";
+      await updateOrderStatus(order.id, newStatus);
       const updated = allOrders.map((o) => o.id === orderId ? { ...o, status: newStatus } : o);
-      await saveAllOrders(updated);
       setAllOrders(updated);
       setCodeEntry(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       if (mode === "deliver") {
-        // المندوب: لا يُردّ له شيء (استلم كاش من الزبون)
-        // التاجر: يستلم سعر المنتج + مبلغ التأمين
         const merchantCurrentBal = await getBalance(order.merchantId);
         const merchantNewBal = merchantCurrentBal + order.productPrice + INSURANCE_AMOUNT;
         await setBalance(order.merchantId, merchantNewBal);
-        // إذا كان المستخدم الحالي هو التاجر نفسه، نحدّث الواجهة
         if (order.merchantId === currentUser) {
           setBalanceState(merchantNewBal);
         }
         Alert.alert(
-          "✅ تم التوصيل بنجاح",
+          "تم التوصيل بنجاح",
           `تم تأكيد توصيل "${order.productName}".\n\n` +
           `• تم إضافة ${formatCurrency(order.productPrice)} (سعر المنتج) إلى محفظة التاجر.\n` +
           `• تم إعادة تأمين ${formatCurrency(INSURANCE_AMOUNT)} للتاجر.\n\n` +
           `ملاحظة: استلمت ${formatCurrency(order.productPrice + order.deliveryPrice)} كاش من الزبون.`
         );
       } else {
-        // الإرجاع: يُردّ سعر المنتج للمندوب + التأمين للتاجر
         const mandoubNewBal = balance + order.productPrice;
         await setBalance(currentUser, mandoubNewBal);
         setBalanceState(mandoubNewBal);
-
         const merchantCurrentBal = await getBalance(order.merchantId);
         const merchantNewBal = merchantCurrentBal + INSURANCE_AMOUNT;
         await setBalance(order.merchantId, merchantNewBal);
-
         Alert.alert(
-          "↩️ تم الإرجاع",
+          "تم الإرجاع",
           `تم تأكيد إرجاع "${order.productName}".\n\n` +
           `• تم إعادة ${formatCurrency(order.productPrice)} (ضمان المنتج) إلى محفظتك.\n` +
           `• تم إعادة تأمين ${formatCurrency(INSURANCE_AMOUNT)} إلى محفظة التاجر.`
@@ -793,7 +798,7 @@ export default function DashboardScreen() {
           </Pressable>
           <View style={styles.headerText}>
             <Text style={styles.greeting}>مرحباً بك</Text>
-            <Text style={styles.userName} numberOfLines={1}>{currentUser}</Text>
+            <Text style={styles.userName} numberOfLines={1}>{displayName}</Text>
           </View>
           <View style={styles.avatarCircle}>
             <MaterialCommunityIcons name="lightning-bolt" size={22} color={C.accent} />

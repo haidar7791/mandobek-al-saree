@@ -20,8 +20,15 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import Colors from "@/constants/colors";
+
+function toFirebaseEmail(contact: string): string {
+  const trimmed = contact.trim().toLowerCase();
+  if (trimmed.includes("@")) return trimmed;
+  return `${trimmed}@mandobek.app`;
+}
 
 const C = Colors.light;
 
@@ -131,30 +138,24 @@ export default function RegisterScreen() {
     setLoading(true);
 
     try {
-      const existing = await AsyncStorage.getItem("@users");
-      const users: { contact: string; password: string; createdAt: string }[] =
-        existing ? JSON.parse(existing) : [];
-
-      const alreadyExists = users.find((u) => u.contact === contact.trim());
-      if (alreadyExists) {
-        Alert.alert("خطأ", "هذا الحساب مسجل مسبقاً");
-        setLoading(false);
-        return;
-      }
-
-      users.push({
-        contact: contact.trim(),
-        password,
-        createdAt: new Date().toISOString(),
-      });
-
-      await AsyncStorage.setItem("@users", JSON.stringify(users));
+      const email = toFirebaseEmail(contact);
+      await createUserWithEmailAndPassword(auth, email, password);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
         { text: "تسجيل الدخول", onPress: () => router.replace("/login") },
       ]);
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء التسجيل");
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const code = err?.code || "";
+      if (code === "auth/email-already-in-use") {
+        Alert.alert("خطأ", "هذا الحساب مسجل مسبقاً");
+      } else if (code === "auth/weak-password") {
+        Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
+      } else if (code === "auth/invalid-email") {
+        Alert.alert("خطأ", "البريد الإلكتروني أو رقم الهاتف غير صحيح");
+      } else {
+        Alert.alert("خطأ", "حدث خطأ أثناء التسجيل");
+      }
     } finally {
       setLoading(false);
     }

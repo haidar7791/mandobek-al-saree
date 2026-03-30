@@ -18,9 +18,9 @@
       "bundleIdentifier": "com.mandobek.alsaree",
       "buildNumber": "1"
     },
-        "android": {
+    "android": {
       "package": "com.mandobek.alsaree",
-      "googleServicesFile": "./google-services.json", // <-- هذا السطر الناقص
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0D1B3E",
@@ -42,7 +42,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://mandobek-al-saree.firebaseapp.com/"
         }
       ],
       "expo-font",
@@ -61,7 +61,7 @@
     },
     "extra": {
       "router": {
-        "origin": "https://replit.com/"
+        "origin": "https://mandobek-al-saree.firebaseapp.com/"
       },
       "eas": {
         "projectId": "42ab6c04-d60a-4baa-8d0d-5e5223deb22f"
