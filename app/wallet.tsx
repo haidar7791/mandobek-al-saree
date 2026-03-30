@@ -19,7 +19,13 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { auth } from "@/lib/firebase";
+import {
+  getBalance,
+  getWalletRequestsByUser,
+  createWalletRequest,
+  type WalletRequest,
+} from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -29,31 +35,6 @@ const ASIA_HAWALA = "07827263200";
 
 export type WalletRequestType = "deposit" | "withdrawal";
 export type WalletRequestStatus = "pending" | "approved" | "rejected";
-
-export interface WalletRequest {
-  id: string;
-  userId: string;
-  type: WalletRequestType;
-  amount: number;
-  accountNumber: string;
-  imageUri?: string;
-  status: WalletRequestStatus;
-  createdAt: string;
-}
-
-async function getWalletRequests(): Promise<WalletRequest[]> {
-  const stored = await AsyncStorage.getItem("@wallet_requests");
-  return stored ? JSON.parse(stored) : [];
-}
-
-async function saveWalletRequests(reqs: WalletRequest[]): Promise<void> {
-  await AsyncStorage.setItem("@wallet_requests", JSON.stringify(reqs));
-}
-
-async function getUserBalance(userId: string): Promise<number> {
-  const stored = await AsyncStorage.getItem(`@balance_${userId}`);
-  return stored !== null ? parseFloat(stored) : 0;
-}
 
 function formatCurrency(amount: number): string {
   return `${amount.toLocaleString("ar-IQ")} د.ع`;
@@ -166,15 +147,13 @@ export default function WalletScreen() {
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
   const loadData = useCallback(async () => {
-    const user = await AsyncStorage.getItem("@currentUser");
+    const user = auth.currentUser;
     if (!user) { router.replace("/"); return; }
-    setCurrentUser(user);
-    const bal = await getUserBalance(user);
+    const uid = user.uid;
+    setCurrentUser(uid);
+    const bal = await getBalance(uid);
     setBalance(bal);
-    const all = await getWalletRequests();
-    const mine = all
-      .filter((r) => r.userId === user)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const mine = await getWalletRequestsByUser(uid);
     setMyRequests(mine);
   }, []);
 
@@ -224,8 +203,15 @@ export default function WalletScreen() {
 
     setLoading(true);
     try {
+      const newId = await createWalletRequest({
+        userId: currentUser,
+        type: activeTab,
+        amount: numAmount,
+        accountNumber: accountNumber.trim(),
+        imageUri: activeTab === "deposit" ? (imageUri ?? undefined) : undefined,
+      });
       const newReq: WalletRequest = {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+        id: newId,
         userId: currentUser,
         type: activeTab,
         amount: numAmount,
@@ -234,9 +220,6 @@ export default function WalletScreen() {
         status: "pending",
         createdAt: new Date().toISOString(),
       };
-      const all = await getWalletRequests();
-      all.push(newReq);
-      await saveWalletRequests(all);
       setMyRequests((prev) => [newReq, ...prev]);
       resetForm();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

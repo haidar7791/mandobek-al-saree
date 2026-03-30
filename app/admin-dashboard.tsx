@@ -18,23 +18,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown } from "react-native-reanimated";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  getWalletRequests,
+  approveWalletRequest,
+  rejectWalletRequest,
+  getBalance,
+  type WalletRequest,
+} from "@/lib/db_logic";
 import Colors from "@/constants/colors";
-import type { WalletRequest } from "./wallet";
 
 const C = Colors.light;
 
 function formatCurrency(amount: number): string {
   return `${amount.toLocaleString("ar-IQ")} د.ع`;
-}
-
-async function getUserBalance(userId: string): Promise<number> {
-  const stored = await AsyncStorage.getItem(`@balance_${userId}`);
-  return stored !== null ? parseFloat(stored) : 0;
-}
-
-async function setUserBalance(userId: string, amount: number): Promise<void> {
-  await AsyncStorage.setItem(`@balance_${userId}`, String(amount));
 }
 
 function StatCard({
@@ -178,22 +174,13 @@ type FilterTab = "pending" | "approved" | "rejected" | "all";
 export default function AdminDashboardScreen() {
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<WalletRequest[]>([]);
-  const [users, setUsers] = useState<{ contact: string }[]>([]);
   const [activeTab, setActiveTab] = useState<FilterTab>("pending");
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [storedRequests, storedUsers] = await Promise.all([
-        AsyncStorage.getItem("@wallet_requests"),
-        AsyncStorage.getItem("@users"),
-      ]);
-      const parsedRequests: WalletRequest[] = storedRequests ? JSON.parse(storedRequests) : [];
-      const parsedUsers = storedUsers ? JSON.parse(storedUsers) : [];
-      setRequests(parsedRequests.sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ));
-      setUsers(parsedUsers);
+      const reqs = await getWalletRequests();
+      setRequests(reqs);
     } catch {}
   }, []);
 
@@ -202,11 +189,8 @@ export default function AdminDashboardScreen() {
 
   const handleApprove = async (item: WalletRequest) => {
     try {
-      const currentBal = await getUserBalance(item.userId);
-      let newBal: number;
-      if (item.type === "deposit") {
-        newBal = currentBal + item.amount;
-      } else {
+      if (item.type === "withdrawal") {
+        const currentBal = await getBalance(item.userId);
         if (currentBal < item.amount) {
           Alert.alert(
             "رصيد غير كافٍ",
@@ -214,17 +198,16 @@ export default function AdminDashboardScreen() {
           );
           return;
         }
-        newBal = currentBal - item.amount;
       }
-      await setUserBalance(item.userId, newBal);
+      await approveWalletRequest(item.id, item.userId, item.amount, item.type);
+      const newBal = await getBalance(item.userId);
       const updated = requests.map((r) =>
         r.id === item.id ? { ...r, status: "approved" as const } : r
       );
-      await AsyncStorage.setItem("@wallet_requests", JSON.stringify(updated));
       setRequests(updated);
       Alert.alert(
         "تمت الموافقة",
-        `${item.type === "deposit" ? "تم إضافة" : "تم خصم"} ${formatCurrency(item.amount)} ${item.type === "deposit" ? "إلى" : "من"} محفظة ${item.userId}.\nالرصيد الجديد: ${formatCurrency(newBal)}`
+        `${item.type === "deposit" ? "تم إضافة" : "تم خصم"} ${formatCurrency(item.amount)} ${item.type === "deposit" ? "إلى" : "من"} محفظة المستخدم.\nالرصيد الجديد: ${formatCurrency(newBal)}`
       );
     } catch {
       Alert.alert("خطأ", "حدث خطأ أثناء الموافقة على الطلب");
@@ -233,10 +216,10 @@ export default function AdminDashboardScreen() {
 
   const handleReject = async (id: string) => {
     try {
+      await rejectWalletRequest(id);
       const updated = requests.map((r) =>
         r.id === id ? { ...r, status: "rejected" as const } : r
       );
-      await AsyncStorage.setItem("@wallet_requests", JSON.stringify(updated));
       setRequests(updated);
     } catch {
       Alert.alert("خطأ", "حدث خطأ أثناء رفض الطلب");
@@ -289,7 +272,7 @@ export default function AdminDashboardScreen() {
             icon={<Feather name="check-circle" size={18} color={C.success} />} color={C.success} />
           <StatCard label="معلق" value={pendingCount}
             icon={<Feather name="clock" size={18} color="#F59E0B" />} color="#F59E0B" />
-          <StatCard label="مستخدمون" value={users.length}
+          <StatCard label="مستخدمون" value={new Set(requests.map(r => r.userId)).size}
             icon={<Feather name="users" size={18} color="#8B5CF6" />} color="#8B5CF6" />
         </View>
       </LinearGradient>

@@ -22,7 +22,9 @@ import Animated, {
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { getBalance, getUserProfile, setUserProfile } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -87,25 +89,26 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       const load = async () => {
-        const user = await AsyncStorage.getItem("@currentUser");
+        const user = auth.currentUser;
         if (!user) {
           router.replace("/");
           return;
         }
-        setCurrentUser(user);
+        const uid = user.uid;
+        const displayId = user.email?.replace("@mandobek.app", "") || uid;
+        setCurrentUser(displayId);
 
-        const storedProfile = await AsyncStorage.getItem(`@profile_${user}`);
-        if (storedProfile) {
-          const p: UserProfile = JSON.parse(storedProfile);
-          setName(p.name || "");
-          setPhone(p.phone || "");
-          setPhotoUri(p.photoUri || null);
+        const profile = await getUserProfile(uid);
+        if (profile) {
+          setName(profile.name || "");
+          setPhone(profile.phone || "");
+          setPhotoUri(profile.photoUri || null);
         } else {
-          setName(user);
+          setName(displayId);
         }
 
-        const storedBal = await AsyncStorage.getItem(`@balance_${user}`);
-        setBalance(storedBal !== null ? parseFloat(storedBal) : 2000000);
+        const bal = await getBalance(uid);
+        setBalance(bal);
       };
       load();
     }, [])
@@ -161,15 +164,13 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      const profile: UserProfile = {
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error("not authenticated");
+      await setUserProfile(uid, {
         name: name.trim(),
         phone: phone.trim(),
         photoUri,
-      };
-      await AsyncStorage.setItem(
-        `@profile_${currentUser}`,
-        JSON.stringify(profile)
-      );
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("تم الحفظ", "تم حفظ بياناتك بنجاح");
     } catch {
@@ -190,7 +191,7 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            await AsyncStorage.removeItem("@currentUser");
+            await signOut(auth);
             router.replace("/");
           },
         },
