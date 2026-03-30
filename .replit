@@ -1,8 +1,8 @@
 entrypoint = "README.md"
-modules = ["nodejs-22"]
+modules = ["nodejs-20", "web"]
 
 [nix]
-channel = "stable-24_05"
+channel = "stable-25_05"
 
 [deployment]
 deploymentTarget = "cloudrun"
@@ -26,6 +26,7 @@ PORT = "5000"
 
 [agent]
 stack = "EXPO"
+expertMode = true
 
 [workflows]
 runButton = "Project"
