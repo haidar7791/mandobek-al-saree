@@ -76,11 +76,14 @@ function InputField({
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [currentUser, setCurrentUser] = useState("");
+  const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad =
@@ -95,6 +98,7 @@ export default function ProfileScreen() {
           return;
         }
         const uid = user.uid;
+        setUid(uid);
         const displayId = user.email?.replace("@mandobek.app", "") || uid;
         setCurrentUser(displayId);
 
@@ -345,6 +349,19 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
+          {uid === ADMIN_UID && (
+            <Pressable
+              style={styles.adminBtn}
+              onPress={() => router.push("/admin")}
+            >
+              <View style={styles.adminIcon}>
+                <Ionicons name="shield-checkmark" size={20} color="#fff" />
+              </View>
+              <Text style={styles.adminText}>لوحة تحكم المشرف</Text>
+              <Feather name="chevron-left" size={16} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          )}
+
           <Pressable style={styles.logoutBtn} onPress={handleLogout}>
             <View style={styles.logoutIcon}>
               <Feather name="log-out" size={20} color={C.danger} />
@@ -591,6 +608,36 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Cairo_600SemiBold",
     color: C.danger,
+    textAlign: "right",
+  },
+  adminBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#162452",
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.35)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  adminIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: C.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Cairo_600SemiBold",
+    color: "#fff",
     textAlign: "right",
   },
   versionNote: {

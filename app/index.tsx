@@ -199,14 +199,6 @@ export default function WelcomeScreen() {
             delay={350}
             variant="gold"
           />
-          <ActionButton
-            icon={<Ionicons name="shield-checkmark" size={22} color={C.accent} />}
-            label="وصول المشرف"
-            subtitle="لأصحاب النظام فقط"
-            onPress={() => router.push("/admin")}
-            delay={500}
-            variant="primary"
-          />
         </View>
 
         <Animated.View
