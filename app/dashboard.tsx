@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   RefreshControl,
+  Linking,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -569,6 +570,37 @@ function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser
         </View>
       )}
       {isMyDelivery && order.status === "in_delivery" && (
+        <View style={cardStyles.phonesSection}>
+          <Text style={cardStyles.phonesSectionTitle}>أرقام الاتصال</Text>
+          <Pressable
+            style={[cardStyles.phoneRow, cardStyles.phoneRowMerchant]}
+            onPress={() => Linking.openURL(`tel:${order.merchantPhone}`)}
+          >
+            <View style={cardStyles.phoneCallBtn}>
+              <Feather name="phone-call" size={14} color="#fff" />
+            </View>
+            <View style={cardStyles.phoneInfo}>
+              <Text style={cardStyles.phoneLabel}>هاتف التاجر</Text>
+              <Text style={cardStyles.phoneNumber}>{order.merchantPhone}</Text>
+            </View>
+            <Feather name="phone" size={16} color="#3B82F6" />
+          </Pressable>
+          <Pressable
+            style={[cardStyles.phoneRow, cardStyles.phoneRowCustomer]}
+            onPress={() => Linking.openURL(`tel:${order.customerPhone}`)}
+          >
+            <View style={[cardStyles.phoneCallBtn, { backgroundColor: "#16A34A" }]}>
+              <Feather name="phone-call" size={14} color="#fff" />
+            </View>
+            <View style={cardStyles.phoneInfo}>
+              <Text style={cardStyles.phoneLabel}>هاتف الزبون</Text>
+              <Text style={cardStyles.phoneNumber}>{order.customerPhone}</Text>
+            </View>
+            <Feather name="phone" size={16} color="#16A34A" />
+          </Pressable>
+        </View>
+      )}
+      {isMyDelivery && order.status === "in_delivery" && (
         <Pressable style={cardStyles.actionArea} onPress={onAction}>
           <Feather name="chevron-left" size={16} color={C.accent} />
           <Text style={cardStyles.actionText}>إدارة التوصيل</Text>
@@ -1115,6 +1147,59 @@ const cardStyles = StyleSheet.create({
     paddingVertical: 12, gap: 6,
   },
   acceptText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary },
+  phonesSection: {
+    gap: 8,
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  phonesSectionTitle: {
+    fontSize: 11,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textMuted,
+    textAlign: "right",
+    marginBottom: 2,
+  },
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  phoneRowMerchant: {
+    backgroundColor: "rgba(59,130,246,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(59,130,246,0.15)",
+  },
+  phoneRowCustomer: {
+    backgroundColor: "rgba(22,163,74,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(22,163,74,0.18)",
+  },
+  phoneCallBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#3B82F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  phoneInfo: { flex: 1, alignItems: "flex-end", gap: 1 },
+  phoneLabel: {
+    fontSize: 10,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+  },
+  phoneNumber: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+    letterSpacing: 0.5,
+  },
 });
 
 const modalStyles = StyleSheet.create({
