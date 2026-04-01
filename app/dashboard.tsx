@@ -21,7 +21,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   getAllOrders,
-  saveAllOrders,
   getBalance,
   setBalance,
   createOrder,
@@ -610,7 +609,7 @@ function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser
   );
 }
 
-function MarketOrderCard({ order, userBalance, onAccept }: { order: Order; userBalance: number; onAccept: () => void }) {
+function MarketOrderCard({ order, userBalance, dataLoading, onAccept }: { order: Order; userBalance: number; dataLoading: boolean; onAccept: () => void }) {
   const canAfford = userBalance >= order.productPrice;
   const date = new Date(order.createdAt);
   const formatted = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
@@ -661,18 +660,24 @@ function MarketOrderCard({ order, userBalance, onAccept }: { order: Order; userB
         </View>
       )}
       <Pressable
-        style={[cardStyles.acceptBtn, !canAfford && cardStyles.acceptBtnDisabled]}
-        onPress={canAfford ? onAccept : undefined}
-        disabled={!canAfford}
+        style={[cardStyles.acceptBtn, (dataLoading || !canAfford) && cardStyles.acceptBtnDisabled]}
+        onPress={dataLoading ? undefined : canAfford ? onAccept : undefined}
+        disabled={dataLoading || !canAfford}
       >
         <LinearGradient
-          colors={canAfford ? [C.accent, C.accentLight] : [C.border, C.border]}
+          colors={(!dataLoading && canAfford) ? [C.accent, C.accentLight] : [C.border, C.border]}
           style={cardStyles.acceptGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         >
-          <Feather name="check" size={16} color={canAfford ? C.primary : C.textMuted} />
-          <Text style={[cardStyles.acceptText, !canAfford && { color: C.textMuted }]}>قبول الطلب</Text>
+          <Feather
+            name={dataLoading ? "loader" : "check"}
+            size={16}
+            color={(!dataLoading && canAfford) ? C.primary : C.textMuted}
+          />
+          <Text style={[cardStyles.acceptText, (dataLoading || !canAfford) && { color: C.textMuted }]}>
+            {dataLoading ? "جاري التحميل..." : "قبول الطلب"}
+          </Text>
         </LinearGradient>
       </Pressable>
     </View>
@@ -692,8 +697,10 @@ export default function DashboardScreen() {
   const [newOrderCode, setNewOrderCode] = useState<{ code: string; name: string } | null>(null);
   const [codeEntry, setCodeEntry] = useState<{ orderId: string; mode: "deliver" | "return" } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const loadData = useCallback(async () => {
+    setDataLoading(true);
     try {
       const user = auth.currentUser;
       if (!user) { router.replace("/"); return; }
@@ -707,7 +714,11 @@ export default function DashboardScreen() {
       setAllOrders(
         orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       );
-    } catch {}
+    } catch (err) {
+      console.error("loadData error:", err);
+    } finally {
+      setDataLoading(false);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
@@ -720,6 +731,11 @@ export default function DashboardScreen() {
   };
 
   const handleAcceptOrder = async (order: Order) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      Alert.alert("خطأ", "يجب تسجيل الدخول أولاً");
+      return;
+    }
     Alert.alert(
       "تأكيد قبول الطلب",
       `سيتم خصم ${formatCurrency(order.productPrice)} من رصيدك كضمان للمنتج. هل تريد المتابعة؟`,
@@ -729,18 +745,29 @@ export default function DashboardScreen() {
           text: "قبول",
           onPress: async () => {
             try {
-              const newBal = balance - order.productPrice;
-              await setBalance(currentUser, newBal);
+              const freshBal = await getBalance(uid);
+              if (freshBal < order.productPrice) {
+                Alert.alert(
+                  "رصيد غير كافٍ",
+                  `رصيدك الحالي ${formatCurrency(freshBal)} لا يكفي لضمان هذا الطلب (${formatCurrency(order.productPrice)}).`
+                );
+                return;
+              }
+              const newBal = freshBal - order.productPrice;
+              await setBalance(uid, newBal);
               setBalanceState(newBal);
-              await updateOrderStatus(order.id, "in_delivery", currentUser);
+              await updateOrderStatus(order.id, "in_delivery", uid);
               const updated = allOrders.map((o) =>
-                o.id === order.id ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: currentUser } : o
+                o.id === order.id ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: uid } : o
               );
               setAllOrders(updated);
               setActiveTab("my_deliveries");
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert("تم قبول الطلب", `تم قبول طلب "${order.productName}" بنجاح. تم خصم ${formatCurrency(order.productPrice)} من رصيدك.`);
-            } catch { Alert.alert("خطأ", "حدث خطأ أثناء قبول الطلب"); }
+            } catch (err) {
+              console.error("handleAcceptOrder error:", err);
+              Alert.alert("خطأ", "حدث خطأ أثناء قبول الطلب");
+            }
           },
         },
       ]
@@ -793,7 +820,10 @@ export default function DashboardScreen() {
           `• تم إعادة تأمين ${formatCurrency(INSURANCE_AMOUNT)} إلى محفظة التاجر.`
         );
       }
-    } catch { Alert.alert("خطأ", "حدث خطأ أثناء تحديث حالة الطلب"); }
+    } catch (err) {
+      console.error("handleConfirmCode error:", err);
+      Alert.alert("خطأ", "حدث خطأ أثناء تحديث حالة الطلب");
+    }
   };
 
   const myOrders = allOrders.filter((o) => o.merchantId === currentUser);
@@ -939,7 +969,7 @@ export default function DashboardScreen() {
         renderItem={({ item, index }) => (
           <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
             {activeTab === "market" ? (
-              <MarketOrderCard order={item} userBalance={balance} onAccept={() => handleAcceptOrder(item)} />
+              <MarketOrderCard order={item} userBalance={balance} dataLoading={dataLoading} onAccept={() => handleAcceptOrder(item)} />
             ) : (
               <OrderCard
                 order={item}
