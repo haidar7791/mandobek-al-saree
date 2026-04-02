@@ -9,6 +9,9 @@ import {
   ScrollView,
   Platform,
   Alert,
+  Modal,
+  ActivityIndicator,
+  TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +24,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Colors from "@/constants/colors";
 
@@ -97,10 +100,50 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [resetContact, setResetContact] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({
     transform: [{ scale: btnScale.value }],
   }));
+
+  const handleForgotPassword = () => {
+    setResetContact(contact.trim());
+    setResetModalVisible(true);
+  };
+
+  const handleSendResetEmail = async () => {
+    const trimmed = resetContact.trim();
+    if (!trimmed) {
+      Alert.alert("خطأ", "يرجى إدخال البريد الإلكتروني أو رقم الهاتف");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const email = toFirebaseEmail(trimmed);
+      await sendPasswordResetEmail(auth, email);
+      setResetModalVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "تم الإرسال ✓",
+        "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني، يرجى التحقق من صندوق الوارد"
+      );
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const code = err?.code || "";
+      if (code === "auth/user-not-found" || code === "auth/invalid-email") {
+        Alert.alert("خطأ", "البريد الإلكتروني أو رقم الهاتف غير مسجل في النظام");
+      } else if (code === "auth/too-many-requests") {
+        Alert.alert("محاولات كثيرة", "يرجى الانتظار قليلاً ثم المحاولة مجدداً");
+      } else {
+        Alert.alert("خطأ", "تعذّر إرسال رابط إعادة التعيين، يرجى المحاولة لاحقاً");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!contact.trim() || !password) {
@@ -204,6 +247,14 @@ export default function LoginScreen() {
               onSubmitEditing={handleLogin}
             />
 
+            <TouchableOpacity
+              onPress={handleForgotPassword}
+              style={styles.forgotBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
+            </TouchableOpacity>
+
             <Animated.View style={btnStyle}>
               <Pressable
                 style={[styles.loginBtn, loading && styles.btnDisabled]}
@@ -242,6 +293,81 @@ export default function LoginScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={resetModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setResetModalVisible(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconCircle}>
+                <Feather name="lock" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.modalTitle}>إعادة تعيين كلمة المرور</Text>
+            </View>
+
+            <Text style={styles.modalDesc}>
+              أدخل بريدك الإلكتروني أو رقم هاتفك المسجّل وسنرسل لك رابط إعادة التعيين
+            </Text>
+
+            <View style={[styles.inputRow, { marginTop: 4 }]}>
+              <View style={styles.inputIcon}>
+                <Feather name="mail" size={18} color={C.textSecondary} />
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="البريد الإلكتروني أو رقم الهاتف"
+                placeholderTextColor={C.textMuted}
+                value={resetContact}
+                onChangeText={setResetContact}
+                keyboardType="email-address"
+                textAlign="right"
+                autoCapitalize="none"
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setResetModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSendBtn, resetLoading && styles.btnDisabled]}
+                onPress={handleSendResetEmail}
+                activeOpacity={0.8}
+                disabled={resetLoading}
+              >
+                <LinearGradient
+                  colors={[C.accent, C.accentLight]}
+                  style={styles.modalSendGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {resetLoading ? (
+                    <ActivityIndicator size="small" color={C.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.modalSendText}>إرسال</Text>
+                      <Feather name="send" size={15} color={C.primary} />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -380,5 +506,98 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.textSecondary,
+  },
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginTop: -8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  forgotText: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: "100%",
+    backgroundColor: C.card,
+    borderRadius: 20,
+    padding: 24,
+    gap: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    justifyContent: "flex-end",
+  },
+  modalIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "rgba(201,168,76,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+    textAlign: "right",
+  },
+  modalDesc: {
+    fontSize: 13,
+    fontFamily: "Cairo_400Regular",
+    color: C.textSecondary,
+    textAlign: "right",
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.border || "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textSecondary,
+  },
+  modalSendBtn: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  modalSendGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 8,
+  },
+  modalSendText: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: C.primary,
   },
 });
