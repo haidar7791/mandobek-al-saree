@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import * as Clipboard from "expo-clipboard";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   getAllOrders,
@@ -34,8 +35,40 @@ const C = Colors.light;
 const INSURANCE_AMOUNT = 10000;
 
 function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(100000 + Math.random() * 900000).toString().split("").reverse().join("");
 }
+
+function CopyToast({ visible }: { visible: boolean }) {
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    opacity.value = visible ? withTiming(1, { duration: 180 }) : withTiming(0, { duration: 280 });
+  }, [visible]);
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View style={[toastStyle, animStyle]} pointerEvents="none">
+      <Feather name="check-circle" size={14} color="#fff" />
+      <Text style={toastTextStyle}>تم النسخ!</Text>
+    </Animated.View>
+  );
+}
+const toastStyle = {
+  position: "absolute" as const,
+  bottom: 12,
+  alignSelf: "center" as const,
+  backgroundColor: "rgba(30,42,80,0.92)",
+  flexDirection: "row" as const,
+  alignItems: "center" as const,
+  gap: 6,
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 20,
+  zIndex: 99,
+};
+const toastTextStyle = {
+  color: "#fff",
+  fontSize: 13,
+  fontFamily: "Cairo_600SemiBold",
+};
 
 const IRAQ_GOVERNORATES = [
   "بغداد",
@@ -439,10 +472,18 @@ function AddOrderModal({
 }
 
 function CodeModal({ visible, code, productName, onClose }: { visible: boolean; code: string; productName: string; onClose: () => void }) {
+  const [toastVisible, setToastVisible] = useState(false);
+
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(code);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2000);
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={modalStyles.overlay} onPress={onClose}>
-        <View style={modalStyles.codeCard}>
+        <View style={[modalStyles.codeCard, { overflow: "visible" }]}>
           <View style={modalStyles.codeIconCircle}>
             <LinearGradient colors={[C.accent, C.accentLight]} style={StyleSheet.absoluteFill} />
             <Feather name="shield" size={32} color={C.primary} />
@@ -452,11 +493,17 @@ function CodeModal({ visible, code, productName, onClose }: { visible: boolean; 
           <Text style={modalStyles.codeNote}>
             احتفظ بهذا الرمز، أعطه للزبون لتأكيد الاستلام
           </Text>
-          <View style={modalStyles.codeBox}>
-            {code.split("").map((char, i) => (
-              <Text key={i} style={modalStyles.codeCharText}>{char}</Text>
-            ))}
+          <View style={{ position: "relative" }}>
+            <View style={modalStyles.codeBox}>
+              {code.split("").map((char, i) => (
+                <Text key={i} style={modalStyles.codeCharText}>{char}</Text>
+              ))}
+            </View>
+            <Pressable onPress={handleCopy} style={modalStyles.copyBtn}>
+              <Feather name="copy" size={18} color={C.accent} />
+            </Pressable>
           </View>
+          <CopyToast visible={toastVisible} />
           <Pressable style={modalStyles.codeDoneBtn} onPress={onClose}>
             <Text style={modalStyles.codeDoneText}>حسناً، فهمت</Text>
           </Pressable>
@@ -514,6 +561,31 @@ function EnterCodeModal({ visible, mode, onClose, onConfirm }: {
   );
 }
 
+function CardCodeRow({ code }: { code: string }) {
+  const [toastVisible, setToastVisible] = useState(false);
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(code);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2000);
+  };
+  return (
+    <View style={{ position: "relative" }}>
+      <View style={cardStyles.codeRow}>
+        <Pressable onPress={handleCopy} style={cardStyles.copyIconBtn} hitSlop={10}>
+          <Feather name="copy" size={15} color={C.accent} />
+        </Pressable>
+        <View style={cardStyles.codePill}>
+          {code.split("").map((c, i) => (
+            <Text key={i} style={cardStyles.codeChar}>{c}</Text>
+          ))}
+        </View>
+        <Text style={cardStyles.codeLabel}>الرمز السري:</Text>
+      </View>
+      <CopyToast visible={toastVisible} />
+    </View>
+  );
+}
+
 function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser: string; onAction: () => void }) {
   const isMerchant = order.merchantId === currentUser;
   const isMyDelivery = order.acceptedBy === currentUser;
@@ -559,14 +631,7 @@ function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser
         </View>
       </View>
       {isMerchant && order.status === "pending" && (
-        <View style={cardStyles.codeRow}>
-          <Text style={cardStyles.codeLabel}>الرمز السري:</Text>
-          <View style={cardStyles.codePill}>
-            {order.uniqueCode.split("").map((c, i) => (
-              <Text key={i} style={cardStyles.codeChar}>{c}</Text>
-            ))}
-          </View>
-        </View>
+        <CardCodeRow code={order.uniqueCode} />
       )}
       {isMyDelivery && order.status === "in_delivery" && (
         <View style={cardStyles.phonesSection}>
@@ -1158,8 +1223,13 @@ const cardStyles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(201,168,76,0.2)",
   },
   codeLabel: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
-  codePill: { flexDirection: "row", gap: 4 },
+  codePill: { flexDirection: "row", gap: 4, flex: 1, justifyContent: "center" },
   codeChar: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent, letterSpacing: 2 },
+  copyIconBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    alignItems: "center", justifyContent: "center",
+  },
   actionArea: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 2,
@@ -1265,6 +1335,13 @@ const modalStyles = StyleSheet.create({
   codeBox: {
     flexDirection: "row", gap: 8, backgroundColor: C.primary,
     borderRadius: 14, paddingHorizontal: 20, paddingVertical: 16, marginVertical: 4,
+  },
+  copyBtn: {
+    position: "absolute", right: -10, top: -10,
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
   },
   codeCharText: { fontSize: 26, fontFamily: "Cairo_700Bold", color: C.accent, letterSpacing: 4 },
   codeDoneBtn: {
