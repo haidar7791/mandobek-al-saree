@@ -22,6 +22,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { ensureUserDocument } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 function toFirebaseEmail(contact: string): string {
@@ -139,7 +140,8 @@ export default function RegisterScreen() {
 
     try {
       const email = toFirebaseEmail(contact);
-      await createUserWithEmailAndPassword(auth, email, password);
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      await ensureUserDocument(credential.user.uid, email);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
         { text: "تسجيل الدخول", onPress: () => router.replace("/login") },

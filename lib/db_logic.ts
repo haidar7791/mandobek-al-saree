@@ -239,3 +239,34 @@ export const setUserProfile = async (
 ): Promise<void> => {
   await setDoc(doc(db, "users", userId), profile, { merge: true });
 };
+
+export const ensureUserDocument = async (
+  userId: string,
+  email: string
+): Promise<void> => {
+  try {
+    const ref = doc(db, "users", userId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      const isPhone = email.endsWith("@mandobek.app");
+      const defaultName = isPhone
+        ? email.replace("@mandobek.app", "")
+        : email.split("@")[0];
+      await setDoc(
+        ref,
+        {
+          name: defaultName,
+          email,
+          role: "delivery",
+          balance: 0,
+          phone: isPhone ? email.replace("@mandobek.app", "") : "",
+          photoUri: null,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    console.error("ensureUserDocument error:", err);
+  }
+};
