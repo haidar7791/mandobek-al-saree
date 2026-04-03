@@ -26,6 +26,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { ensureUserDocument } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 function toFirebaseEmail(contact: string): string {
@@ -159,7 +160,8 @@ export default function LoginScreen() {
 
     try {
       const email = toFirebaseEmail(contact);
-      await signInWithEmailAndPassword(auth, email, password);
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      await ensureUserDocument(credential.user.uid, email);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
     } catch (err: any) {
