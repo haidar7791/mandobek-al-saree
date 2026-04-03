@@ -3,7 +3,7 @@ modules = ["nodejs-20", "web"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["gh"]
+packages = ["gh", "eas-cli"]
 
 [deployment]
 deploymentTarget = "cloudrun"
@@ -21,6 +21,10 @@ externalPort = 80
 [[ports]]
 localPort = 8082
 externalPort = 3001
+
+[[ports]]
+localPort = 8083
+externalPort = 3000
 
 [env]
 PORT = "5000"

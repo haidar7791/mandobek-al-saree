@@ -119,8 +119,15 @@ export default function RegisterScreen() {
   }));
 
   const handleRegister = async () => {
-    if (!contact.trim()) {
+    const trimmedContact = contact.trim();
+    if (!trimmedContact) {
       Alert.alert("خطأ", "يرجى إدخال البريد الإلكتروني أو رقم الهاتف");
+      return;
+    }
+    const isEmail = trimmedContact.includes("@");
+    const isPhone = /^[0-9+\-\s]{7,15}$/.test(trimmedContact);
+    if (!isEmail && !isPhone) {
+      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح أو رقم هاتف (أرقام فقط)");
       return;
     }
     if (password.length < 6) {
@@ -201,11 +208,11 @@ export default function RegisterScreen() {
           <View style={styles.card}>
             <InputField
               label="البريد الإلكتروني أو رقم الهاتف"
-              placeholder="example@email.com أو 05xxxxxxxx"
+              placeholder="example@email.com أو 07xxxxxxxx"
               value={contact}
               onChangeText={setContact}
               icon={<Feather name="user" size={18} color={C.textSecondary} />}
-              keyboardType="email-address"
+              keyboardType="default"
               onSubmitEditing={() => ref2.current?.focus()}
             />
 
