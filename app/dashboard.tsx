@@ -24,8 +24,10 @@ import {
   getAllOrders,
   getBalance,
   setBalance,
+  adjustBalanceByDelta,
   createOrder,
   updateOrderStatus,
+  getUserProfile,
 } from "../lib/db_logic";
 import { auth } from "../lib/firebase";
 import * as Haptics from "expo-haptics";
@@ -678,6 +680,15 @@ function MarketOrderCard({ order, userBalance, dataLoading, onAccept }: { order:
   const canAfford = userBalance >= order.productPrice;
   const date = new Date(order.createdAt);
   const formatted = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+  const [merchantName, setMerchantName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUserProfile(order.merchantId).then((profile) => {
+      if (!cancelled && profile?.name) setMerchantName(profile.name);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [order.merchantId]);
 
   return (
     <View style={cardStyles.card}>
@@ -688,6 +699,12 @@ function MarketOrderCard({ order, userBalance, dataLoading, onAccept }: { order:
         </View>
         <View style={cardStyles.cardHeaderRight}>
           <Text style={cardStyles.productName}>{order.productName}</Text>
+          {merchantName && (
+            <View style={cardStyles.merchantRow}>
+              <Feather name="user" size={11} color={C.textMuted} />
+              <Text style={cardStyles.merchantNameText}>{merchantName}</Text>
+            </View>
+          )}
           <Text style={cardStyles.dateText}>{formatted}</Text>
         </View>
       </View>
@@ -818,9 +835,8 @@ export default function DashboardScreen() {
                 );
                 return;
               }
-              const newBal = freshBal - order.productPrice;
-              await setBalance(uid, newBal);
-              setBalanceState(newBal);
+              await adjustBalanceByDelta(uid, -order.productPrice);
+              setBalanceState(freshBal - order.productPrice);
               await updateOrderStatus(order.id, "in_delivery", uid);
               const updated = allOrders.map((o) =>
                 o.id === order.id ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: uid } : o
@@ -858,11 +874,10 @@ export default function DashboardScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       if (mode === "deliver") {
-        const merchantCurrentBal = await getBalance(order.merchantId);
-        const merchantNewBal = merchantCurrentBal + order.productPrice + INSURANCE_AMOUNT;
-        await setBalance(order.merchantId, merchantNewBal);
+        const deliverDelta = order.productPrice + INSURANCE_AMOUNT;
+        await adjustBalanceByDelta(order.merchantId, deliverDelta);
         if (order.merchantId === currentUser) {
-          setBalanceState(merchantNewBal);
+          setBalanceState((prev) => prev + deliverDelta);
         }
         Alert.alert(
           "تم التوصيل بنجاح",
@@ -872,12 +887,9 @@ export default function DashboardScreen() {
           `ملاحظة: استلمت ${formatCurrency(order.productPrice + order.deliveryPrice)} كاش من الزبون.`
         );
       } else {
-        const mandoubNewBal = balance + order.productPrice;
-        await setBalance(currentUser, mandoubNewBal);
-        setBalanceState(mandoubNewBal);
-        const merchantCurrentBal = await getBalance(order.merchantId);
-        const merchantNewBal = merchantCurrentBal + INSURANCE_AMOUNT;
-        await setBalance(order.merchantId, merchantNewBal);
+        await adjustBalanceByDelta(currentUser, order.productPrice);
+        setBalanceState((prev) => prev + order.productPrice);
+        await adjustBalanceByDelta(order.merchantId, INSURANCE_AMOUNT);
         Alert.alert(
           "تم الإرجاع",
           `تم تأكيد إرجاع "${order.productName}".\n\n` +
@@ -1205,6 +1217,8 @@ const cardStyles = StyleSheet.create({
   cardHeaderRight: { flex: 1, alignItems: "flex-end", gap: 2 },
   productName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  merchantRow: { flexDirection: "row", alignItems: "center", gap: 4, justifyContent: "flex-end" },
+  merchantNameText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.textSecondary, textAlign: "right" },
   priceRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 10, padding: 10,

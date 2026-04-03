@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   Timestamp,
   onSnapshot,
+  increment,
   type Unsubscribe,
 } from "firebase/firestore";
 
@@ -124,7 +125,7 @@ export const getBalance = async (userId: string): Promise<number> => {
     const docRef = doc(db, "wallets", userId);
     const snap = await getDoc(docRef);
     if (snap.exists()) return snap.data().balance ?? 0;
-    await setDoc(docRef, { balance: 0, updatedAt: new Date().toISOString() });
+    await setDoc(docRef, { balance: 0 }, { merge: true });
     return 0;
   } catch (err) {
     console.error("getBalance error:", err);
@@ -138,7 +139,7 @@ export const setBalance = async (
 ): Promise<void> => {
   await setDoc(
     doc(db, "wallets", userId),
-    { balance: amount, updatedAt: new Date().toISOString() },
+    { balance: amount },
     { merge: true }
   );
 };
@@ -151,6 +152,14 @@ export const adjustBalance = async (
   const next = current + delta;
   await setBalance(userId, next);
   return next;
+};
+
+export const adjustBalanceByDelta = async (
+  userId: string,
+  delta: number
+): Promise<void> => {
+  const ref = doc(db, "wallets", userId);
+  await setDoc(ref, { balance: increment(delta) }, { merge: true });
 };
 
 // ─── Wallet Requests ─────────────────────────────────────────────────────────
