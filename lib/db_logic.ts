@@ -159,7 +159,15 @@ export const adjustBalanceByDelta = async (
   delta: number
 ): Promise<void> => {
   const ref = doc(db, "wallets", userId);
-  await setDoc(ref, { balance: increment(delta) }, { merge: true });
+  try {
+    await updateDoc(ref, { balance: increment(delta) });
+  } catch (err: any) {
+    if (err?.code === "not-found") {
+      await setDoc(ref, { balance: delta }, { merge: true });
+    } else {
+      throw err;
+    }
+  }
 };
 
 // ─── Wallet Requests ─────────────────────────────────────────────────────────
