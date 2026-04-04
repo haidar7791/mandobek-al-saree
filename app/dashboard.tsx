@@ -23,7 +23,6 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   getAllOrders,
   getBalance,
-  setBalance,
   adjustBalanceByDelta,
   createOrder,
   updateOrderStatus,
@@ -369,9 +368,8 @@ function AddOrderModal({
       };
       const newId = await createOrder(orderData);
       const newOrder: Order = { id: newId, ...orderData };
-      const newMerchantBal = merchantBalance - INSURANCE_AMOUNT;
-      await setBalance(currentUser, newMerchantBal);
-      onMerchantBalanceChanged(newMerchantBal);
+      await adjustBalanceByDelta(currentUser, -INSURANCE_AMOUNT);
+      onMerchantBalanceChanged(merchantBalance - INSURANCE_AMOUNT);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset(); onClose(); onCreated(newOrder);
     } catch {

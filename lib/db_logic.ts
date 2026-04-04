@@ -125,7 +125,6 @@ export const getBalance = async (userId: string): Promise<number> => {
     const docRef = doc(db, "wallets", userId);
     const snap = await getDoc(docRef);
     if (snap.exists()) return snap.data().balance ?? 0;
-    await setDoc(docRef, { balance: 0 }, { merge: true });
     return 0;
   } catch (err) {
     console.error("getBalance error:", err);
@@ -159,15 +158,7 @@ export const adjustBalanceByDelta = async (
   delta: number
 ): Promise<void> => {
   const ref = doc(db, "wallets", userId);
-  try {
-    await updateDoc(ref, { balance: increment(delta) });
-  } catch (err: any) {
-    if (err?.code === "not-found") {
-      await setDoc(ref, { balance: delta }, { merge: true });
-    } else {
-      throw err;
-    }
-  }
+  await updateDoc(ref, { balance: increment(delta) });
 };
 
 // ─── Wallet Requests ─────────────────────────────────────────────────────────
@@ -225,7 +216,16 @@ export const approveWalletRequest = async (
     processedAt: new Date().toISOString(),
   });
   const delta = type === "deposit" ? amount : -amount;
-  await adjustBalance(userId, delta);
+  const walletRef = doc(db, "wallets", userId);
+  try {
+    await updateDoc(walletRef, { balance: increment(delta) });
+  } catch (err: any) {
+    if (err?.code === "not-found") {
+      await setDoc(walletRef, { balance: delta });
+    } else {
+      throw err;
+    }
+  }
 };
 
 export const rejectWalletRequest = async (reqId: string): Promise<void> => {
