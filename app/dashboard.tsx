@@ -26,7 +26,10 @@ import {
   adjustBalanceByDelta,
   createOrder,
   updateOrderStatus,
+  acceptOrderWithDeadline,
+  cancelOrder,
   getUserProfile,
+  type OrderStatus as DBOrderStatus,
 } from "../lib/db_logic";
 import { auth } from "../lib/firebase";
 import * as Haptics from "expo-haptics";
@@ -92,7 +95,7 @@ const IRAQ_GOVERNORATES = [
   "واسط",
 ];
 
-type OrderStatus = "pending" | "in_delivery" | "delivered" | "returned";
+type OrderStatus = DBOrderStatus;
 
 interface AddressFields {
   governorate: string;
@@ -113,16 +116,20 @@ interface Order {
   uniqueCode: string;
   status: OrderStatus;
   acceptedBy?: string;
+  acceptedAt?: string;
+  deadline?: string;
   createdAt: string;
 }
 const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; bg: string; icon: string }
 > = {
-  pending: { label: "بانتظار مندوب", color: "#F59E0B", bg: "#FEF3C7", icon: "clock" },
-  in_delivery: { label: "قيد التوصيل", color: "#3B82F6", bg: "#EFF6FF", icon: "truck" },
-  delivered: { label: "تم التوصيل", color: C.success, bg: C.successLight, icon: "check-circle" },
-  returned: { label: "تم الإرجاع", color: "#8B5CF6", bg: "#EDE9FE", icon: "rotate-ccw" },
+  pending:           { label: "بانتظار مندوب",  color: "#F59E0B",  bg: "#FEF3C7",  icon: "clock" },
+  in_delivery:       { label: "قيد التوصيل",    color: "#3B82F6",  bg: "#EFF6FF",  icon: "truck" },
+  delivered:         { label: "تم التوصيل",     color: C.success,  bg: C.successLight, icon: "check-circle" },
+  returned:          { label: "تم الإرجاع",     color: "#8B5CF6",  bg: "#EDE9FE",  icon: "rotate-ccw" },
+  cancelled:         { label: "ملغي",            color: "#6B7280",  bg: "#F3F4F6",  icon: "x-circle" },
+  expired_completed: { label: "مكتمل (منتهي المهلة)", color: "#EF4444", bg: "#FEE2E2", icon: "alert-triangle" },
 };
 
 function formatCurrency(amount: number): string {
@@ -586,7 +593,65 @@ function CardCodeRow({ code }: { code: string }) {
   );
 }
 
-function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser: string; onAction: () => void }) {
+function CountdownTimer({ deadline, onExpire }: { deadline: string; onExpire?: () => void }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, new Date(deadline).getTime() - Date.now()));
+  const expiredCalled = React.useRef(false);
+
+  useEffect(() => {
+    const deadlineMs = new Date(deadline).getTime();
+    const tick = () => {
+      const diff = Math.max(0, deadlineMs - Date.now());
+      setRemaining(diff);
+      if (diff === 0 && !expiredCalled.current) {
+        expiredCalled.current = true;
+        onExpire?.();
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  const isExpired = remaining === 0;
+  const isWarning = remaining > 0 && remaining < 2 * 60 * 60 * 1000;
+  const hours   = Math.floor(remaining / (1000 * 60 * 60));
+  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  if (isExpired) {
+    return (
+      <View style={timerStyles.expiredBadge}>
+        <Feather name="alert-triangle" size={12} color="#EF4444" />
+        <Text style={timerStyles.expiredText}>انتهت مهلة التوصيل — جارٍ المعالجة…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[timerStyles.container, isWarning && timerStyles.containerWarning]}>
+      <Feather name="clock" size={12} color={isWarning ? "#EF4444" : "#3B82F6"} />
+      <Text style={[timerStyles.timerText, isWarning && timerStyles.timerWarning]}>
+        المتبقي: {pad(hours)}:{pad(minutes)}:{pad(seconds)}
+      </Text>
+      {isWarning && <Text style={timerStyles.urgentLabel}>عاجل</Text>}
+    </View>
+  );
+}
+
+function OrderCard({
+  order,
+  currentUser,
+  onAction,
+  onCancel,
+  onExpire,
+}: {
+  order: Order;
+  currentUser: string;
+  onAction: () => void;
+  onCancel?: () => void;
+  onExpire?: () => void;
+}) {
   const isMerchant = order.merchantId === currentUser;
   const isMyDelivery = order.acceptedBy === currentUser;
   const st = STATUS_CONFIG[order.status];
@@ -632,6 +697,27 @@ function OrderCard({ order, currentUser, onAction }: { order: Order; currentUser
       </View>
       {isMerchant && order.status === "pending" && (
         <CardCodeRow code={order.uniqueCode} />
+      )}
+      {isMerchant && order.status === "pending" && onCancel && (
+        <Pressable
+          style={cardStyles.cancelBtn}
+          onPress={() => {
+            Alert.alert(
+              "إلغاء الطلب",
+              "سيتم إلغاء الطلب واسترداد مبلغ الضمان (10,000 د.ع) فوراً. هل تريد المتابعة؟",
+              [
+                { text: "تراجع", style: "cancel" },
+                { text: "نعم، إلغاء الطلب", style: "destructive", onPress: onCancel },
+              ]
+            );
+          }}
+        >
+          <Feather name="x-circle" size={14} color="#EF4444" />
+          <Text style={cardStyles.cancelBtnText}>إلغاء الطلب</Text>
+        </Pressable>
+      )}
+      {isMyDelivery && order.status === "in_delivery" && order.deadline && (
+        <CountdownTimer deadline={order.deadline} onExpire={onExpire} />
       )}
       {isMyDelivery && order.status === "in_delivery" && (
         <View style={cardStyles.phonesSection}>
@@ -791,9 +877,28 @@ export default function DashboardScreen() {
       const bal = await getBalance(uid);
       setBalanceState(bal);
       const orders = await getAllOrders();
-      setAllOrders(
-        orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      );
+      const sorted = orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setAllOrders(sorted);
+      const now = Date.now();
+      for (const o of sorted) {
+        if (
+          o.status === "in_delivery" &&
+          o.acceptedBy === uid &&
+          o.deadline &&
+          new Date(o.deadline).getTime() <= now
+        ) {
+          try {
+            await updateOrderStatus(o.id, "expired_completed");
+            const totalToMerchant = o.productPrice + INSURANCE_AMOUNT;
+            await adjustBalanceByDelta(o.merchantId, totalToMerchant);
+            setAllOrders((prev) =>
+              prev.map((x) => x.id === o.id ? { ...x, status: "expired_completed" as OrderStatus } : x)
+            );
+          } catch (e) {
+            console.error("auto-expire error:", e);
+          }
+        }
+      }
     } catch (err) {
       console.error("loadData error:", err);
     } finally {
@@ -835,9 +940,11 @@ export default function DashboardScreen() {
               }
               await adjustBalanceByDelta(uid, -order.productPrice);
               setBalanceState(freshBal - order.productPrice);
-              await updateOrderStatus(order.id, "in_delivery", uid);
+              const deadlineStr = await acceptOrderWithDeadline(order.id, uid);
               const updated = allOrders.map((o) =>
-                o.id === order.id ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: uid } : o
+                o.id === order.id
+                  ? { ...o, status: "in_delivery" as OrderStatus, acceptedBy: uid, deadline: deadlineStr, acceptedAt: new Date().toISOString() }
+                  : o
               );
               setAllOrders(updated);
               setActiveTab("my_deliveries");
@@ -898,6 +1005,38 @@ export default function DashboardScreen() {
     } catch (err) {
       console.error("handleConfirmCode error:", err);
       Alert.alert("خطأ", "حدث خطأ أثناء تحديث حالة الطلب");
+    }
+  };
+
+  const handleCancelOrder = async (order: Order) => {
+    try {
+      await cancelOrder(order.id);
+      await adjustBalanceByDelta(currentUser, INSURANCE_AMOUNT);
+      setBalanceState((prev) => prev + INSURANCE_AMOUNT);
+      setAllOrders((prev) => prev.filter((o) => o.id !== order.id));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("تم الإلغاء", `تم إلغاء طلب "${order.productName}" وإعادة ضمان ${formatCurrency(INSURANCE_AMOUNT)} إلى محفظتك.`);
+    } catch (err) {
+      console.error("handleCancelOrder error:", err);
+      Alert.alert("خطأ", "حدث خطأ أثناء إلغاء الطلب");
+    }
+  };
+
+  const handleExpiredOrder = async (order: Order) => {
+    if (order.status !== "in_delivery") return;
+    try {
+      await updateOrderStatus(order.id, "expired_completed");
+      const totalToMerchant = order.productPrice + INSURANCE_AMOUNT;
+      await adjustBalanceByDelta(order.merchantId, totalToMerchant);
+      setAllOrders((prev) =>
+        prev.map((o) => o.id === order.id ? { ...o, status: "expired_completed" as OrderStatus } : o)
+      );
+      Alert.alert(
+        "انتهت مهلة التوصيل",
+        `لم يتم إدخال الرمز في الوقت المحدد.\n\n• تم تحويل ${formatCurrency(totalToMerchant)} إلى محفظة التاجر.\n• تم إغلاق الطلب تلقائياً.`
+      );
+    } catch (err) {
+      console.error("handleExpiredOrder error:", err);
     }
   };
 
@@ -1059,6 +1198,16 @@ export default function DashboardScreen() {
                         ]);
                       }
                     : () => {}
+                }
+                onCancel={
+                  item.merchantId === currentUser && item.status === "pending"
+                    ? () => handleCancelOrder(item)
+                    : undefined
+                }
+                onExpire={
+                  item.acceptedBy === currentUser && item.status === "in_delivery"
+                    ? () => handleExpiredOrder(item)
+                    : undefined
                 }
               />
             )}
@@ -1252,6 +1401,13 @@ const cardStyles = StyleSheet.create({
     backgroundColor: C.dangerLight, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
   },
   noBalanceText: { flex: 1, fontSize: 11, fontFamily: "Cairo_400Regular", color: C.danger, textAlign: "right" },
+  cancelBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    borderRadius: 10, paddingVertical: 9,
+    backgroundColor: "rgba(239,68,68,0.07)",
+    borderWidth: 1, borderColor: "rgba(239,68,68,0.2)",
+  },
+  cancelBtnText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: "#EF4444" },
   acceptBtn: { borderRadius: 12, overflow: "hidden" },
   acceptBtnDisabled: { opacity: 0.5 },
   acceptGradient: {
