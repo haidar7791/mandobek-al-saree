@@ -17,6 +17,14 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 
+export type OrderStatus =
+  | "pending"
+  | "in_delivery"
+  | "delivered"
+  | "returned"
+  | "cancelled"
+  | "expired_completed";
+
 export interface Order {
   id: string;
   merchantId: string;
@@ -30,8 +38,10 @@ export interface Order {
   productPrice: number;
   deliveryPrice: number;
   uniqueCode: string;
-  status: "pending" | "in_delivery" | "delivered" | "returned";
+  status: OrderStatus;
   acceptedBy?: string;
+  acceptedAt?: string;
+  deadline?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -89,7 +99,7 @@ export const createOrder = async (
 
 export const updateOrderStatus = async (
   orderId: string,
-  status: Order["status"],
+  status: OrderStatus,
   acceptedBy?: string
 ): Promise<void> => {
   const ref = doc(db, "orders", orderId);
@@ -99,6 +109,33 @@ export const updateOrderStatus = async (
   };
   if (acceptedBy !== undefined) data.acceptedBy = acceptedBy;
   await updateDoc(ref, data);
+};
+
+export const acceptOrderWithDeadline = async (
+  orderId: string,
+  deliveryUid: string
+): Promise<string> => {
+  const now = new Date();
+  const deadline = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const acceptedAt = now.toISOString();
+  const deadlineStr = deadline.toISOString();
+  await updateDoc(doc(db, "orders", orderId), {
+    status: "in_delivery",
+    acceptedBy: deliveryUid,
+    acceptedAt,
+    deadline: deadlineStr,
+    updatedAt: acceptedAt,
+  });
+  return deadlineStr;
+};
+
+export const cancelOrder = async (
+  orderId: string
+): Promise<void> => {
+  await updateDoc(doc(db, "orders", orderId), {
+    status: "cancelled",
+    updatedAt: new Date().toISOString(),
+  });
 };
 
 export const saveAllOrders = async (orders: Order[]): Promise<void> => {
