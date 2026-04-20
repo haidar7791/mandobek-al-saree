@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db, storage } from "./firebase";
 import {
   collection,
   addDoc,
@@ -14,8 +14,11 @@ import {
   onSnapshot,
   increment,
   deleteDoc,
+  arrayUnion,
+  arrayRemove,
   type Unsubscribe,
 } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 // ─── Artisan Specialties ──────────────────────────────────────────────────────
 
@@ -491,6 +494,7 @@ export interface UserProfile {
   role: "client" | "artisan" | "admin";
   location?: GeoLocation | null;
   specialty?: string;
+  portfolio_images?: string[];
   createdAt?: any;
   email?: string;
 }
@@ -511,6 +515,43 @@ export const setUserProfile = async (
   profile: Partial<UserProfile>
 ): Promise<void> => {
   await setDoc(doc(db, "users", userId), profile, { merge: true });
+};
+
+// ─── Portfolio Images ─────────────────────────────────────────────────────────
+
+export const uploadPortfolioImage = async (
+  userId: string,
+  localUri: string
+): Promise<string> => {
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+  const storageRef = ref(storage, `portfolio/${userId}/${Date.now()}.jpg`);
+  await uploadBytes(storageRef, blob);
+  return await getDownloadURL(storageRef);
+};
+
+export const addPortfolioImage = async (
+  userId: string,
+  imageUrl: string
+): Promise<void> => {
+  await updateDoc(doc(db, "users", userId), {
+    portfolio_images: arrayUnion(imageUrl),
+  });
+};
+
+export const removePortfolioImage = async (
+  userId: string,
+  imageUrl: string
+): Promise<void> => {
+  await updateDoc(doc(db, "users", userId), {
+    portfolio_images: arrayRemove(imageUrl),
+  });
+  try {
+    const storageRef = ref(storage, imageUrl);
+    await deleteObject(storageRef);
+  } catch {
+    // ignore if file already removed
+  }
 };
 
 export const ensureUserDocument = async (
