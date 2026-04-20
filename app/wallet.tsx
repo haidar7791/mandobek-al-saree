@@ -283,7 +283,8 @@ export default function WalletScreen() {
               <MaterialCommunityIcons name="information" size={20} color={C.accent} />
             </View>
             <View style={styles.bannerText}>
-              <Text style={styles.bannerTitle}>للإيداع أو السحب، حوّل إلى:</Text>
+              <Text style={styles.bannerTitle}>رصيد المحفظة يُستخدم لدفع رسوم الإعلانات داخل سند</Text>
+              <Text style={{ fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right", marginBottom: 4 }}>للإيداع، حوّل المبلغ إلى:</Text>
               <View style={styles.bannerRow}>
                 <MaterialCommunityIcons name="cellphone" size={14} color={C.textSecondary} />
                 <Text style={styles.bannerAccount}>

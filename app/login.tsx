@@ -32,7 +32,7 @@ import Colors from "@/constants/colors";
 function toFirebaseEmail(contact: string): string {
   const trimmed = contact.trim().toLowerCase();
   if (trimmed.includes("@")) return trimmed;
-  return `${trimmed}@mandobek.app`;
+  return `${trimmed}@sanad.app`;
 }
 
 const C = Colors.light;
