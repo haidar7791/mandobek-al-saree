@@ -258,7 +258,7 @@ export default function AdminDashboardScreen() {
           </Pressable>
           <View style={styles.headerTextGroup}>
             <Text style={styles.headerTitle}>لوحة تحكم المشرف</Text>
-            <Text style={styles.headerSub}>مندوبك السريع</Text>
+            <Text style={styles.headerSub}>سند</Text>
           </View>
           <View style={styles.adminBadge}>
             <Ionicons name="shield-checkmark" size={22} color="#8B5CF6" />

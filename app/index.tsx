@@ -18,7 +18,7 @@ import Animated, {
   withSpring,
   Easing,
 } from "react-native-reanimated";
-import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 
@@ -72,16 +72,12 @@ function ActionButton({
       : variant === "gold"
         ? C.accent
         : "transparent";
-
   const borderStyle =
     variant === "outline" ? { borderWidth: 1.5, borderColor: C.accent } : {};
-
   const iconColor =
     variant === "outline" ? C.accent : variant === "gold" ? C.primary : C.accent;
-
   const textColor =
     variant === "outline" ? C.primary : variant === "gold" ? C.primary : C.card;
-
   const subColor =
     variant === "outline"
       ? C.textSecondary
@@ -92,13 +88,7 @@ function ActionButton({
   return (
     <Animated.View style={[animStyle, pressStyle]}>
       <Pressable onPress={handlePress}>
-        <View
-          style={[
-            styles.actionBtn,
-            { backgroundColor: bgColor },
-            borderStyle,
-          ]}
-        >
+        <View style={[styles.actionBtn, { backgroundColor: bgColor }, borderStyle]}>
           <View
             style={[
               styles.iconWrap,
@@ -114,16 +104,9 @@ function ActionButton({
           </View>
           <View style={styles.btnTextGroup}>
             <Text style={[styles.btnLabel, { color: textColor }]}>{label}</Text>
-            <Text style={[styles.btnSubtitle, { color: subColor }]}>
-              {subtitle}
-            </Text>
+            <Text style={[styles.btnSubtitle, { color: subColor }]}>{subtitle}</Text>
           </View>
-          <Feather
-            name="chevron-left"
-            size={20}
-            color={iconColor}
-            style={{ opacity: 0.7 }}
-          />
+          <Feather name="chevron-left" size={20} color={iconColor} style={{ opacity: 0.7 }} />
         </View>
       </Pressable>
     </Animated.View>
@@ -137,10 +120,7 @@ export default function WelcomeScreen() {
   const logoScale = useSharedValue(0.7);
 
   useEffect(() => {
-    logoOpacity.value = withTiming(1, {
-      duration: 700,
-      easing: Easing.out(Easing.cubic),
-    });
+    logoOpacity.value = withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) });
     logoScale.value = withSpring(1, { damping: 14 });
   }, []);
 
@@ -149,10 +129,8 @@ export default function WelcomeScreen() {
     transform: [{ scale: logoScale.value }],
   }));
 
-  const topPad =
-    Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
-  const bottomPad =
-    Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
+  const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+  const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
   return (
     <View style={styles.root}>
@@ -169,11 +147,20 @@ export default function WelcomeScreen() {
               colors={[C.accent, C.accentLight]}
               style={styles.logoGradient}
             >
-              <MaterialCommunityIcons name="lightning-bolt" size={42} color={C.primary} />
+              <Text style={styles.logoLetters}>سند</Text>
             </LinearGradient>
           </View>
-          <Text style={styles.appName}>مندوبك السريع</Text>
-          <Text style={styles.appTagline}>خدمات الإيداع والسحب بكل سهولة</Text>
+          <Text style={styles.appName}>سند</Text>
+          <Text style={styles.appTaglineAr}>Sanad</Text>
+          <Text style={styles.appTagline}>منصة خدمات المنزل والسيارة</Text>
+
+          <View style={styles.featureRow}>
+            {["سباكة", "كهرباء", "ميكانيك", "تنظيف"].map((f) => (
+              <View key={f} style={styles.featurePill}>
+                <Text style={styles.featurePillText}>{f}</Text>
+              </View>
+            ))}
+          </View>
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
@@ -210,7 +197,7 @@ export default function WelcomeScreen() {
           ]}
         >
           <Text style={styles.footerText}>
-            منصة موثوقة وآمنة لإدارة طلباتك المالية
+            اعثر على أقرب حرفي موثوق في ثوانٍ
           </Text>
         </Animated.View>
       </View>
@@ -219,19 +206,13 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#0D1B3E",
-  },
+  root: { flex: 1, backgroundColor: "#0D1B3E" },
   container: {
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: "space-between",
   },
-  logoSection: {
-    alignItems: "center",
-    gap: 10,
-  },
+  logoSection: { alignItems: "center", gap: 8 },
   logoCircle: {
     width: 90,
     height: 90,
@@ -250,18 +231,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  logoLetters: {
+    fontSize: 28,
+    fontFamily: "Cairo_700Bold",
+    color: "#0D1B3E",
+  },
   appName: {
-    fontSize: 32,
+    fontSize: 40,
     fontFamily: "Cairo_700Bold",
     color: "#FFFFFF",
     textAlign: "center",
-    letterSpacing: 0.5,
+    letterSpacing: 2,
+  },
+  appTaglineAr: {
+    fontSize: 16,
+    fontFamily: "Cairo_400Regular",
+    color: C.accent,
+    textAlign: "center",
+    letterSpacing: 4,
+    marginTop: -4,
   },
   appTagline: {
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: "rgba(255,255,255,0.55)",
     textAlign: "center",
+    marginTop: 4,
+  },
+  featureRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  featurePill: {
+    backgroundColor: "rgba(201,168,76,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.3)",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  featurePillText: {
+    fontSize: 12,
+    fontFamily: "Cairo_400Regular",
+    color: C.accent,
   },
   divider: {
     flexDirection: "row",
@@ -270,20 +285,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     width: "60%",
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(201,168,76,0.3)",
-  },
-  dividerDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: C.accent,
-  },
-  btnGroup: {
-    gap: 14,
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(201,168,76,0.3)" },
+  dividerDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: C.accent },
+  btnGroup: { gap: 14 },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -299,24 +303,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  btnTextGroup: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  btnLabel: {
-    fontSize: 16,
-    fontFamily: "Cairo_600SemiBold",
-    textAlign: "right",
-  },
+  btnTextGroup: { flex: 1, alignItems: "flex-end" },
+  btnLabel: { fontSize: 16, fontFamily: "Cairo_600SemiBold", textAlign: "right" },
   btnSubtitle: {
     fontSize: 12,
     fontFamily: "Cairo_400Regular",
     textAlign: "right",
     marginTop: 1,
   },
-  footer: {
-    alignItems: "center",
-  },
+  footer: { alignItems: "center" },
   footerText: {
     fontSize: 12,
     fontFamily: "Cairo_400Regular",

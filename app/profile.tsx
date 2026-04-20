@@ -99,7 +99,7 @@ export default function ProfileScreen() {
         }
         const uid = user.uid;
         setUid(uid);
-        const displayId = user.email?.replace("@mandobek.app", "") || uid;
+        const displayId = user.email?.replace("@sanad.app", "") || uid;
         setCurrentUser(displayId);
 
         const profile = await getUserProfile(uid);
@@ -324,11 +324,11 @@ export default function ProfileScreen() {
             <Pressable style={styles.settingsRow} onPress={() => router.push("/dashboard")}>
               <Feather name="chevron-left" size={18} color={C.textMuted} />
               <View style={styles.settingsRowText}>
-                <Text style={styles.settingsRowLabel}>طلباتي وتوصيلاتي</Text>
-                <Text style={styles.settingsRowSub}>عرض جميع الطلبات</Text>
+                <Text style={styles.settingsRowLabel}>الرئيسية</Text>
+                <Text style={styles.settingsRowSub}>عرض الحرفيين القريبين</Text>
               </View>
               <View style={[styles.settingsRowIcon, { backgroundColor: "rgba(59,130,246,0.1)" }]}>
-                <Feather name="package" size={18} color="#3B82F6" />
+                <Feather name="home" size={18} color="#3B82F6" />
               </View>
             </Pressable>
 
@@ -370,7 +370,7 @@ export default function ProfileScreen() {
             <Feather name="chevron-left" size={16} color={C.danger} style={{ opacity: 0.5 }} />
           </Pressable>
 
-          <Text style={styles.versionNote}>مندوبك السريع • السوق العراقي</Text>
+          <Text style={styles.versionNote}>سند • خدمات المنزل والسيارة</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

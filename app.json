@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "مندوبك السريع",
-    "slug": "mandobek-al-saree",
+    "name": "سند",
+    "slug": "sanad-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mandobek",
+    "scheme": "sanad",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -15,11 +15,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mandobek.alsaree",
+      "bundleIdentifier": "com.sanad.app",
       "buildNumber": "1"
     },
     "android": {
-      "package": "com.mandobek.alsaree",
+      "package": "com.sanad.app",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "adaptiveIcon": {
@@ -32,7 +32,9 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -50,8 +52,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "التطبيق يحتاج للوصول إلى مكتبة الصور لرفع صورة الإيصال.",
-          "cameraPermission": "التطبيق يحتاج للوصول إلى الكاميرا لالتقاط صورة الإيصال."
+          "photosPermission": "التطبيق يحتاج للوصول إلى مكتبة الصور لرفع صورتك الشخصية.",
+          "cameraPermission": "التطبيق يحتاج للوصول إلى الكاميرا لالتقاط صورتك الشخصية."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "يحتاج سند للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
+          "locationWhenInUsePermission": "يحتاج سند للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
         }
       ]
     ],
