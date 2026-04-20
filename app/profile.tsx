@@ -10,6 +10,10 @@ import {
   Platform,
   Alert,
   Image,
+  Modal,
+  FlatList,
+  ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,16 +28,20 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { getBalance, getUserProfile, setUserProfile } from "@/lib/db_logic";
+import {
+  getBalance,
+  getUserProfile,
+  setUserProfile,
+  ALL_SPECIALTIES,
+  addPortfolioImage,
+  removePortfolioImage,
+  uploadPortfolioImage,
+} from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-
-interface UserProfile {
-  name: string;
-  phone: string;
-  photoUri: string | null;
-}
+const SCREEN_W = Dimensions.get("window").width;
+const IMG_SIZE = (SCREEN_W - 18 * 2 - 18 * 2 - 10 * 2) / 3;
 
 function InputField({
   label,
@@ -82,6 +90,13 @@ export default function ProfileScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
+
+  const [specialty, setSpecialty] = useState("");
+  const [showSpecialtyModal, setShowSpecialtyModal] = useState(false);
+
+  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
+  const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
 
   const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
 
@@ -97,21 +112,24 @@ export default function ProfileScreen() {
           router.replace("/");
           return;
         }
-        const uid = user.uid;
-        setUid(uid);
-        const displayId = user.email?.replace("@sanad.app", "") || uid;
+        const userId = user.uid;
+        setUid(userId);
+        const displayId = user.email?.replace("@sanad.app", "") || userId;
         setCurrentUser(displayId);
 
-        const profile = await getUserProfile(uid);
+        const profile = await getUserProfile(userId);
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
           setPhotoUri(profile.photoUri || null);
+          setRole(profile.role || "client");
+          setSpecialty(profile.specialty || "");
+          setPortfolioImages(profile.portfolio_images || []);
         } else {
           setName(displayId);
         }
 
-        const bal = await getBalance(uid);
+        const bal = await getBalance(userId);
         setBalance(bal);
       };
       load();
@@ -161,6 +179,52 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleAddPortfolioImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("إذن مرفوض", "يرجى السماح بالوصول إلى مكتبة الصور");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    setUploadingPortfolio(true);
+    try {
+      const downloadUrl = await uploadPortfolioImage(uid, result.assets[0].uri);
+      await addPortfolioImage(uid, downloadUrl);
+      setPortfolioImages((prev) => [...prev, downloadUrl]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("خطأ", "تعذّر رفع الصورة، حاول مرة أخرى");
+    } finally {
+      setUploadingPortfolio(false);
+    }
+  };
+
+  const handleDeletePortfolioImage = (imageUrl: string) => {
+    Alert.alert("حذف الصورة", "هل تريد حذف هذه الصورة من معرضك؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await removePortfolioImage(uid, imageUrl);
+            setPortfolioImages((prev) => prev.filter((u) => u !== imageUrl));
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          } catch {
+            Alert.alert("خطأ", "تعذّر حذف الصورة");
+          }
+        },
+      },
+    ]);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("خطأ", "يرجى إدخال الاسم");
@@ -168,12 +232,13 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error("not authenticated");
-      await setUserProfile(uid, {
+      const userId = auth.currentUser?.uid;
+      if (!userId) throw new Error("not authenticated");
+      await setUserProfile(userId, {
         name: name.trim(),
         phone: phone.trim(),
         photoUri,
+        specialty: specialty || undefined,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("تم الحفظ", "تم حفظ بياناتك بنجاح");
@@ -202,6 +267,9 @@ export default function ProfileScreen() {
       ]
     );
   };
+
+  const selectedSpecialtyLabel =
+    ALL_SPECIALTIES.find((s) => s.key === specialty)?.label || "اختر تخصصك";
 
   const btnScale = useSharedValue(1);
   const btnAnimStyle = useAnimatedStyle(() => ({
@@ -267,6 +335,7 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* ─── Personal Data Card ─── */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>البيانات الشخصية</Text>
 
@@ -287,17 +356,39 @@ export default function ProfileScreen() {
               keyboardType="phone-pad"
             />
 
+            {/* Specialty Dropdown (always shown) */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>التخصص المهني</Text>
+              <Pressable
+                style={styles.dropdownBtn}
+                onPress={() => setShowSpecialtyModal(true)}
+              >
+                <Feather name="chevron-down" size={17} color={C.textSecondary} />
+                <Text
+                  style={[
+                    styles.dropdownBtnText,
+                    !specialty && { color: C.textMuted },
+                  ]}
+                >
+                  {selectedSpecialtyLabel}
+                </Text>
+                <View style={styles.inputIcon}>
+                  <MaterialCommunityIcons
+                    name="briefcase-outline"
+                    size={17}
+                    color={C.textSecondary}
+                  />
+                </View>
+              </Pressable>
+            </View>
+
             <Animated.View style={btnAnimStyle}>
               <Pressable
                 style={[styles.saveBtn, saving && { opacity: 0.6 }]}
                 onPress={handleSave}
                 disabled={saving}
-                onPressIn={() => {
-                  btnScale.value = withSpring(0.97);
-                }}
-                onPressOut={() => {
-                  btnScale.value = withSpring(1);
-                }}
+                onPressIn={() => { btnScale.value = withSpring(0.97); }}
+                onPressOut={() => { btnScale.value = withSpring(1); }}
               >
                 <LinearGradient
                   colors={[C.accent, C.accentLight]}
@@ -318,6 +409,62 @@ export default function ProfileScreen() {
             </Animated.View>
           </View>
 
+          {/* ─── Portfolio Gallery (artisan only) ─── */}
+          {role === "artisan" && (
+            <View style={styles.card}>
+              <View style={styles.portfolioHeader}>
+                <Pressable
+                  style={[styles.addImageBtn, uploadingPortfolio && { opacity: 0.5 }]}
+                  onPress={handleAddPortfolioImage}
+                  disabled={uploadingPortfolio}
+                >
+                  {uploadingPortfolio ? (
+                    <ActivityIndicator size="small" color={C.accent} />
+                  ) : (
+                    <Feather name="plus" size={15} color={C.accent} />
+                  )}
+                  <Text style={styles.addImageBtnText}>إضافة صورة</Text>
+                </Pressable>
+                <Text style={styles.cardTitle}>معرض أعمالي</Text>
+              </View>
+
+              {portfolioImages.length === 0 ? (
+                <View style={styles.emptyPortfolio}>
+                  <MaterialCommunityIcons
+                    name="image-multiple-outline"
+                    size={42}
+                    color={C.textMuted}
+                  />
+                  <Text style={styles.emptyPortfolioText}>
+                    لم تضف أي صور بعد
+                  </Text>
+                  <Text style={styles.emptyPortfolioSub}>
+                    اضغط "إضافة صورة" لرفع أعمالك السابقة
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.portfolioGrid}>
+                  {portfolioImages.map((uri, index) => (
+                    <View key={index} style={styles.portfolioImgWrap}>
+                      <Image
+                        source={{ uri }}
+                        style={styles.portfolioImg}
+                        resizeMode="cover"
+                      />
+                      <Pressable
+                        style={styles.deleteImgBtn}
+                        onPress={() => handleDeletePortfolioImage(uri)}
+                      >
+                        <Feather name="trash-2" size={13} color="#fff" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ─── Account Settings Card ─── */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>إعدادات الحساب</Text>
 
@@ -334,10 +481,7 @@ export default function ProfileScreen() {
 
             <View style={styles.divider} />
 
-            <Pressable
-              style={styles.settingsRow}
-              onPress={handleChangePhoto}
-            >
+            <Pressable style={styles.settingsRow} onPress={handleChangePhoto}>
               <Feather name="chevron-left" size={18} color={C.textMuted} />
               <View style={styles.settingsRowText}>
                 <Text style={styles.settingsRowLabel}>تغيير الصورة الشخصية</Text>
@@ -373,6 +517,58 @@ export default function ProfileScreen() {
           <Text style={styles.versionNote}>سند • خدمات المنزل والسيارة</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ─── Specialty Picker Modal ─── */}
+      <Modal
+        visible={showSpecialtyModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSpecialtyModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSpecialtyModal(false)}
+        >
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>اختر تخصصك</Text>
+            <FlatList
+              data={ALL_SPECIALTIES}
+              keyExtractor={(item) => item.key}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              renderItem={({ item }) => {
+                const selected = specialty === item.key;
+                return (
+                  <Pressable
+                    style={[
+                      styles.specialtyItem,
+                      selected && styles.specialtyItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSpecialty(item.key);
+                      Haptics.selectionAsync();
+                      setShowSpecialtyModal(false);
+                    }}
+                  >
+                    {selected && (
+                      <Feather name="check" size={16} color={C.accent} />
+                    )}
+                    <Text
+                      style={[
+                        styles.specialtyItemText,
+                        selected && { color: C.accent, fontFamily: "Cairo_700Bold" },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -409,10 +605,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarSection: {
-    alignItems: "center",
-    gap: 8,
-  },
+  avatarSection: { alignItems: "center", gap: 8 },
   avatarWrap: {
     width: 100,
     height: 100,
@@ -452,11 +645,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#0D1B3E",
   },
-  cameraBtnGrad: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  cameraBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   displayName: {
     fontSize: 18,
     fontFamily: "Cairo_700Bold",
@@ -537,6 +726,24 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     textAlign: "right",
   },
+  dropdownBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 10,
+  },
+  dropdownBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlign: "right",
+  },
   saveBtn: { borderRadius: 13, overflow: "hidden", marginTop: 4 },
   saveBtnGrad: {
     flexDirection: "row",
@@ -549,6 +756,70 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Cairo_700Bold",
     color: C.primary,
+  },
+  portfolioHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  addImageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(201,168,76,0.1)",
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.3)",
+  },
+  addImageBtnText: {
+    fontSize: 12,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
+  },
+  emptyPortfolio: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 6,
+  },
+  emptyPortfolioText: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textSecondary,
+  },
+  emptyPortfolioSub: {
+    fontSize: 12,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "center",
+  },
+  portfolioGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  portfolioImgWrap: {
+    width: IMG_SIZE,
+    height: IMG_SIZE,
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+  },
+  portfolioImg: {
+    width: "100%",
+    height: "100%",
+  },
+  deleteImgBtn: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: "rgba(229,57,53,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   settingsRow: {
     flexDirection: "row",
@@ -575,11 +846,7 @@ const styles = StyleSheet.create({
     color: C.textSecondary,
     textAlign: "right",
   },
-  divider: {
-    height: 1,
-    backgroundColor: C.border,
-    marginVertical: 2,
-  },
+  divider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -646,5 +913,53 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     textAlign: "center",
     marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    maxHeight: "70%",
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: C.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+    textAlign: "right",
+    marginBottom: 12,
+  },
+  specialtyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  specialtyItemSelected: {
+    backgroundColor: "rgba(201,168,76,0.06)",
+    borderRadius: 10,
+  },
+  specialtyItemText: {
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlign: "right",
   },
 });
