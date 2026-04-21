@@ -83,8 +83,32 @@ export interface ArtisanProfile {
   rating: number;
   reviewCount: number;
   isAvailable: boolean;
+  featuredUntil?: string | null;
   createdAt: string;
 }
+
+export function isFeaturedActive(a: { featuredUntil?: string | null }): boolean {
+  if (!a.featuredUntil) return false;
+  return new Date(a.featuredUntil).getTime() > Date.now();
+}
+
+export interface PromotionPlan {
+  id: string;
+  days: number;
+  cost: number;
+  label: string;
+}
+
+export const PROMOTION_PLANS: PromotionPlan[] = [
+  { id: "p3", days: 3, cost: 5000, label: "٣ أيام" },
+  { id: "p7", days: 7, cost: 10000, label: "٧ أيام" },
+  { id: "p30", days: 30, cost: 35000, label: "٣٠ يوم" },
+];
+
+export const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
+export const ADMIN_DISPLAY_NAME = "فريق الدعم - سند";
+export const SUPPORT_AUTO_REPLY =
+  "أهلاً بك، نحن جاهزون لخدمتك. تفضل بطرح مشكلتك بوضوح وسوف يتواصل معك فريق الدعم قريباً.";
 
 export interface Review {
   id: string;
@@ -99,9 +123,27 @@ export interface Review {
 export type ServiceRequestStatus =
   | "pending"
   | "accepted"
+  | "on_the_way"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "rejected";
+
+export const STATUS_LABELS: Record<ServiceRequestStatus, string> = {
+  pending: "قيد الانتظار",
+  accepted: "تم القبول",
+  on_the_way: "في الطريق إليك",
+  in_progress: "قيد التنفيذ",
+  completed: "مكتمل",
+  cancelled: "ملغى",
+  rejected: "مرفوض",
+};
+
+export const ACTIVE_STATUSES: ServiceRequestStatus[] = [
+  "accepted",
+  "on_the_way",
+  "in_progress",
+];
 
 export interface ServiceRequest {
   id: string;
@@ -109,11 +151,13 @@ export interface ServiceRequest {
   clientName: string;
   clientPhone: string;
   artisanId: string;
+  artisanUserId?: string;
   artisanName: string;
   specialty: string;
   problemDescription: string;
   clientLocation: GeoLocation | null;
   clientAddress: string;
+  artisanLiveLocation?: GeoLocation | null;
   status: ServiceRequestStatus;
   createdAt: string;
   updatedAt?: string;
@@ -160,10 +204,44 @@ export const getArtisans = async (category?: ServiceCategory): Promise<ArtisanPr
       q = query(collection(db, "artisans"));
     }
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+    // Featured (with valid expiry) come first, others keep original order
+    return list.sort((a, b) => {
+      const fa = isFeaturedActive(a) ? 1 : 0;
+      const fb = isFeaturedActive(b) ? 1 : 0;
+      return fb - fa;
+    });
   } catch (err) {
     console.error("getArtisans error:", err);
     return [];
+  }
+};
+
+export const promoteArtisan = async (
+  userId: string,
+  artisanId: string,
+  days: number,
+  cost: number
+): Promise<{ ok: true; until: string } | { ok: false; reason: "no_balance" | "error"; balance?: number }> => {
+  try {
+    const balance = await getBalance(userId);
+    if (balance < cost) {
+      return { ok: false, reason: "no_balance", balance };
+    }
+    // Compute new featured-until: extend if currently active
+    const artisanSnap = await getDoc(doc(db, "artisans", artisanId));
+    const current = artisanSnap.exists() ? (artisanSnap.data() as any).featuredUntil : null;
+    const startMs = current && new Date(current).getTime() > Date.now()
+      ? new Date(current).getTime()
+      : Date.now();
+    const untilIso = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
+
+    await adjustBalanceByDelta(userId, -cost);
+    await updateDoc(doc(db, "artisans", artisanId), { featuredUntil: untilIso });
+    return { ok: true, until: untilIso };
+  } catch (err) {
+    console.error("promoteArtisan error:", err);
+    return { ok: false, reason: "error" };
   }
 };
 
@@ -265,17 +343,19 @@ export const addReview = async (
 // ─── Service Requests ─────────────────────────────────────────────────────────
 
 export const createServiceRequest = async (
-  data: Omit<ServiceRequest, "id" | "createdAt" | "status">
+  data: Omit<ServiceRequest, "id" | "createdAt" | "status" | "artisanUserId">
 ): Promise<string> => {
+  // Resolve artisan user id so we can subscribe by user later
+  const artisan = await getArtisanById(data.artisanId);
   const docRef = await addDoc(collection(db, "serviceRequests"), {
     ...data,
+    artisanUserId: artisan?.userId || null,
     status: "pending",
     createdAt: new Date().toISOString(),
   });
 
   // Notify artisan via push
   try {
-    const artisan = await getArtisanById(data.artisanId);
     if (artisan?.userId) {
       const profile = await getUserProfile(artisan.userId);
       if (profile?.pushToken) {
@@ -356,6 +436,106 @@ export const updateServiceRequestStatus = async (
   });
 };
 
+async function notifyClientOnRequest(
+  request: ServiceRequest,
+  title: string,
+  body: string
+) {
+  try {
+    const profile = await getUserProfile(request.clientId);
+    if (profile?.pushToken) {
+      await sendExpoPush(profile.pushToken, title, body, {
+        type: "requestStatus",
+        requestId: request.id,
+        status: request.status,
+        artisanName: request.artisanName,
+      });
+    }
+  } catch (err) {
+    console.error("notifyClientOnRequest failed:", err);
+  }
+}
+
+export const acceptServiceRequest = async (requestId: string): Promise<void> => {
+  const ref = doc(db, "serviceRequests", requestId);
+  await updateDoc(ref, { status: "accepted", updatedAt: new Date().toISOString() });
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const req = { id: snap.id, ...snap.data() } as ServiceRequest;
+    await notifyClientOnRequest(
+      req,
+      "تم قبول طلبك! 🎉",
+      `قَبِل ${req.artisanName} طلبك. سيتواصل معك قريباً.`
+    );
+  }
+};
+
+export const rejectServiceRequest = async (requestId: string): Promise<void> => {
+  const ref = doc(db, "serviceRequests", requestId);
+  await updateDoc(ref, { status: "rejected", updatedAt: new Date().toISOString() });
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const req = { id: snap.id, ...snap.data() } as ServiceRequest;
+    await notifyClientOnRequest(
+      req,
+      "تم رفض طلبك",
+      `اعتذر ${req.artisanName} عن قبول طلبك. يمكنك تجربة حرفي آخر.`
+    );
+  }
+};
+
+export const markRequestOnTheWay = async (
+  requestId: string,
+  liveLocation: GeoLocation | null
+): Promise<void> => {
+  const ref = doc(db, "serviceRequests", requestId);
+  await updateDoc(ref, {
+    status: "on_the_way",
+    artisanLiveLocation: liveLocation,
+    updatedAt: new Date().toISOString(),
+  });
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const req = { id: snap.id, ...snap.data() } as ServiceRequest;
+    await notifyClientOnRequest(
+      req,
+      "الحرفي في الطريق إليك 🚗",
+      `${req.artisanName} في طريقه إلى موقعك الآن.`
+    );
+  }
+};
+
+export const updateRequestLiveLocation = async (
+  requestId: string,
+  location: GeoLocation
+): Promise<void> => {
+  await updateDoc(doc(db, "serviceRequests", requestId), {
+    artisanLiveLocation: location,
+    updatedAt: new Date().toISOString(),
+  });
+};
+
+export const completeServiceRequest = async (requestId: string): Promise<void> => {
+  const ref = doc(db, "serviceRequests", requestId);
+  await updateDoc(ref, { status: "completed", updatedAt: new Date().toISOString() });
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const req = { id: snap.id, ...snap.data() } as ServiceRequest;
+    await notifyClientOnRequest(
+      req,
+      "اكتملت الخدمة ✓",
+      `تم إنجاز طلبك مع ${req.artisanName}. لا تنسَ تقييم الخدمة.`
+    );
+  }
+};
+
+export const cancelServiceRequest = async (requestId: string): Promise<void> => {
+  await updateDoc(doc(db, "serviceRequests", requestId), {
+    status: "cancelled",
+    updatedAt: new Date().toISOString(),
+  });
+};
+
 export const subscribeToServiceRequests = (
   artisanId: string,
   callback: (requests: ServiceRequest[]) => void
@@ -369,6 +549,81 @@ export const subscribeToServiceRequests = (
     const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
     callback(requests);
   });
+};
+
+export const subscribeToClientServiceRequests = (
+  clientId: string,
+  callback: (requests: ServiceRequest[]) => void
+): Unsubscribe => {
+  const q = query(
+    collection(db, "serviceRequests"),
+    where("clientId", "==", clientId),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(q, (snap) => {
+    const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
+    callback(requests);
+  });
+};
+
+export const subscribeToServiceRequest = (
+  requestId: string,
+  callback: (request: ServiceRequest | null) => void
+): Unsubscribe => {
+  return onSnapshot(doc(db, "serviceRequests", requestId), (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    callback({ id: snap.id, ...snap.data() } as ServiceRequest);
+  });
+};
+
+export const getServiceRequest = async (requestId: string): Promise<ServiceRequest | null> => {
+  try {
+    const snap = await getDoc(doc(db, "serviceRequests", requestId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as ServiceRequest;
+  } catch (err) {
+    console.error("getServiceRequest error:", err);
+    return null;
+  }
+};
+
+// ─── Support Chat ─────────────────────────────────────────────────────────────
+
+export function buildSupportChatId(userId: string): string {
+  return buildChatId(userId, ADMIN_UID);
+}
+
+export const ensureSupportWelcome = async (userId: string): Promise<void> => {
+  const chatId = buildSupportChatId(userId);
+  try {
+    const msgsSnap = await getDocs(
+      query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"))
+    );
+    if (!msgsSnap.empty) return; // already initialized
+
+    await addDoc(collection(db, "chats", chatId, "messages"), {
+      chatId,
+      senderId: ADMIN_UID,
+      senderName: ADMIN_DISPLAY_NAME,
+      text: SUPPORT_AUTO_REPLY,
+      createdAt: new Date().toISOString(),
+    });
+    await setDoc(
+      doc(db, "chats", chatId),
+      {
+        participants: [userId, ADMIN_UID].sort(),
+        lastMessage: SUPPORT_AUTO_REPLY,
+        lastAt: new Date().toISOString(),
+        isSupport: true,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("ensureSupportWelcome failed:", err);
+  }
 };
 
 // ─── Push Notifications ───────────────────────────────────────────────────────

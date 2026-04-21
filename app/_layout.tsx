@@ -26,6 +26,10 @@ function RootLayoutNav() {
       <Stack.Screen name="artisan-profile" />
       <Stack.Screen name="chat" />
       <Stack.Screen name="messages" />
+      <Stack.Screen name="reservations" />
+      <Stack.Screen name="active-order" />
+      <Stack.Screen name="support" />
+      <Stack.Screen name="promote" />
     </Stack>
   );
 }
