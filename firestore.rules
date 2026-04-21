@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// قواعد أمان Firestore لتطبيق "سند"
+// انسخ هذا الملف بالكامل إلى:
+// Firebase Console > Firestore Database > Rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2";
+    }
+
+    // ── المستخدمون ──
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── الحرفيون (يجب أن تكون قابلة للقراءة من جميع المسجلين) ──
+    match /artisans/{artisanId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // ── التقييمات ──
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.clientId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── طلبات الخدمة ──
+    match /serviceRequests/{requestId} {
+      allow read: if isSignedIn() && (
+                    resource.data.clientId == request.auth.uid
+                    || resource.data.artisanId == request.auth.uid
+                    || isAdmin()
+                  );
+      allow create: if isSignedIn()
+                    && request.resource.data.clientId == request.auth.uid;
+      allow update: if isSignedIn() && (
+                      resource.data.clientId == request.auth.uid
+                      || resource.data.artisanId == request.auth.uid
+                      || isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // ── المحادثات ──
+    match /chats/{chatId} {
+      allow read, write: if isSignedIn()
+                          && request.auth.uid in chatId.split("_");
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn()
+                    && request.auth.uid in chatId.split("_");
+        allow create: if isSignedIn()
+                      && request.resource.data.senderId == request.auth.uid
+                      && request.auth.uid in chatId.split("_");
+      }
+    }
+
+    // ── المحفظة ──
+    match /wallets/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── طلبات المحفظة ──
+    match /walletRequests/{requestId} {
+      allow read: if isSignedIn() && (
+                    resource.data.userId == request.auth.uid || isAdmin()
+                  );
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+  }
+}
