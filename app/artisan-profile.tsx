@@ -165,6 +165,11 @@ export default function ArtisanProfileScreen() {
   const handleBooking = async () => {
     const user = auth.currentUser;
     if (!user || !artisan) return;
+    if (user.uid === artisan.userId) {
+      Alert.alert("غير مسموح", "لا يمكنك إرسال طلب خدمة لنفسك");
+      setBookingModal(false);
+      return;
+    }
     if (!problemDesc.trim()) {
       Alert.alert("خطأ", "يرجى وصف المشكلة التي تحتاج مساعدة فيها");
       return;
@@ -198,6 +203,11 @@ export default function ArtisanProfileScreen() {
   const handleAddReview = async () => {
     const user = auth.currentUser;
     if (!user || !artisan) return;
+    if (user.uid === artisan.userId) {
+      Alert.alert("غير مسموح", "لا يمكنك تقييم نفسك");
+      setReviewModal(false);
+      return;
+    }
     setReviewLoading(true);
     try {
       await addReview({
@@ -234,6 +244,7 @@ export default function ArtisanProfileScreen() {
   }
 
   const initials = artisan.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const isOwnProfile = !!auth.currentUser && auth.currentUser.uid === artisan.userId;
 
   return (
     <View style={styles.root}>
@@ -242,10 +253,12 @@ export default function ArtisanProfileScreen() {
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
-          <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
-            <Ionicons name="star" size={16} color={C.accent} />
-            <Text style={styles.reviewNavText}>تقييم</Text>
-          </Pressable>
+          {!isOwnProfile && (
+            <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
+              <Ionicons name="star" size={16} color={C.accent} />
+              <Text style={styles.reviewNavText}>تقييم</Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.heroContent}>
@@ -329,10 +342,17 @@ export default function ArtisanProfileScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Pressable style={styles.addReviewBtn} onPress={() => setReviewModal(true)}>
-              <Feather name="plus" size={14} color={C.accent} />
-              <Text style={styles.addReviewText}>أضف تقييم</Text>
-            </Pressable>
+            {isOwnProfile ? (
+              <View style={styles.selfRatingBadge}>
+                <Feather name="user" size={12} color={C.textMuted} />
+                <Text style={styles.selfRatingText}>هذه صفحتك الشخصية</Text>
+              </View>
+            ) : (
+              <Pressable style={styles.addReviewBtn} onPress={() => setReviewModal(true)}>
+                <Feather name="plus" size={14} color={C.accent} />
+                <Text style={styles.addReviewText}>أضف تقييم</Text>
+              </Pressable>
+            )}
             <Text style={styles.sectionTitle}>التقييمات والآراء</Text>
           </View>
 
@@ -541,6 +561,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
   },
   addReviewText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  selfRatingBadge: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(156,163,175,0.12)", borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  selfRatingText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
   bioText: {
     fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
     textAlign: "right", lineHeight: 22,

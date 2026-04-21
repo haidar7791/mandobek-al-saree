@@ -34,6 +34,10 @@ import {
 } from "../lib/db_logic";
 import { signOut } from "firebase/auth";
 import Colors from "@/constants/colors";
+import {
+  registerForPushNotifications,
+  addNotificationTapListener,
+} from "../lib/push_notifications";
 
 const C = Colors.light;
 
@@ -205,6 +209,25 @@ export default function DashboardScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
+  // Register for push notifications + handle notification taps
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    registerForPushNotifications(user.uid).catch(() => {});
+
+    const sub = addNotificationTapListener((data) => {
+      if (data?.type === "chat" && data?.chatId && data?.senderName) {
+        router.push({
+          pathname: "/chat",
+          params: { chatId: data.chatId, otherName: data.senderName },
+        });
+      } else if (data?.type === "serviceRequest") {
+        router.push("/messages" as any);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -266,6 +289,9 @@ export default function DashboardScreen() {
                 <Feather name="shield" size={20} color={C.accent} />
               </Pressable>
             )}
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/messages" as any)}>
+              <Feather name="message-circle" size={20} color="#FFF" />
+            </Pressable>
             <Pressable style={styles.headerIconBtn} onPress={() => router.push("/wallet" as any)}>
               <Feather name="credit-card" size={20} color="#FFF" />
             </Pressable>

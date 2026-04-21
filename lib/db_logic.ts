@@ -272,6 +272,36 @@ export const createServiceRequest = async (
     status: "pending",
     createdAt: new Date().toISOString(),
   });
+
+  // Notify artisan via push
+  try {
+    const artisan = await getArtisanById(data.artisanId);
+    if (artisan?.userId) {
+      const profile = await getUserProfile(artisan.userId);
+      if (profile?.pushToken) {
+        const desc = data.problemDescription || "";
+        const body =
+          `العميل: ${data.clientName}\n` +
+          `الهاتف: ${data.clientPhone || "غير متوفر"}\n` +
+          `المشكلة: ${desc.length > 100 ? desc.slice(0, 100) + "…" : desc}` +
+          (data.clientAddress ? `\nالعنوان: ${data.clientAddress}` : "");
+        await sendExpoPush(
+          profile.pushToken,
+          `طلب خدمة جديد - ${getSpecialtyLabel(data.specialty)}`,
+          body,
+          {
+            type: "serviceRequest",
+            requestId: docRef.id,
+            clientId: data.clientId,
+            artisanId: data.artisanId,
+          }
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on createServiceRequest failed:", err);
+  }
+
   return docRef.id;
 };
 
@@ -341,6 +371,38 @@ export const subscribeToServiceRequests = (
   });
 };
 
+// ─── Push Notifications ───────────────────────────────────────────────────────
+
+export const sendExpoPush = async (
+  toToken: string | null | undefined,
+  title: string,
+  body: string,
+  data: Record<string, any> = {}
+): Promise<void> => {
+  if (!toToken) return;
+  try {
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Accept-encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: toToken,
+        sound: "default",
+        title,
+        body,
+        data,
+        priority: "high",
+        channelId: "default",
+      }),
+    });
+  } catch (err) {
+    console.error("sendExpoPush failed:", err);
+  }
+};
+
 // ─── Chat Messages ─────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
@@ -350,6 +412,15 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   createdAt: string;
+}
+
+export interface ChatSummary {
+  chatId: string;
+  otherUserId: string;
+  otherName: string;
+  otherPhotoUri: string | null;
+  lastMessage: string;
+  lastAt: string;
 }
 
 export function buildChatId(uid1: string, uid2: string): string {
@@ -378,6 +449,24 @@ export const sendMessage = async (
     },
     { merge: true }
   );
+
+  // Notify recipient
+  try {
+    const otherUid = chatId.split("_").find((u) => u !== senderId);
+    if (otherUid) {
+      const profile = await getUserProfile(otherUid);
+      if (profile?.pushToken) {
+        await sendExpoPush(
+          profile.pushToken,
+          `رسالة جديدة من ${senderName}`,
+          text.length > 80 ? `${text.slice(0, 80)}…` : text,
+          { type: "chat", chatId, senderId, senderName }
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on sendMessage failed:", err);
+  }
 };
 
 export const subscribeToMessages = (
@@ -391,6 +480,65 @@ export const subscribeToMessages = (
   return onSnapshot(q, (snap) => {
     const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
     callback(msgs);
+  });
+};
+
+export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
+  try {
+    const q = query(
+      collection(db, "chats"),
+      where("participants", "array-contains", userId)
+    );
+    const snap = await getDocs(q);
+    const summaries = await Promise.all(
+      snap.docs.map(async (d) => {
+        const data = d.data();
+        const participants: string[] = data.participants || [];
+        const otherUid = participants.find((u) => u !== userId) || "";
+        const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+        return {
+          chatId: d.id,
+          otherUserId: otherUid,
+          otherName: otherProfile?.name || "مستخدم سند",
+          otherPhotoUri: otherProfile?.photoUri || null,
+          lastMessage: data.lastMessage || "",
+          lastAt: data.lastAt || "",
+        } as ChatSummary;
+      })
+    );
+    return summaries.sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1));
+  } catch (err) {
+    console.error("getUserChats error:", err);
+    return [];
+  }
+};
+
+export const subscribeToUserChats = (
+  userId: string,
+  callback: (chats: ChatSummary[]) => void
+): Unsubscribe => {
+  const q = query(
+    collection(db, "chats"),
+    where("participants", "array-contains", userId)
+  );
+  return onSnapshot(q, async (snap) => {
+    const summaries = await Promise.all(
+      snap.docs.map(async (d) => {
+        const data = d.data();
+        const participants: string[] = data.participants || [];
+        const otherUid = participants.find((u) => u !== userId) || "";
+        const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+        return {
+          chatId: d.id,
+          otherUserId: otherUid,
+          otherName: otherProfile?.name || "مستخدم سند",
+          otherPhotoUri: otherProfile?.photoUri || null,
+          lastMessage: data.lastMessage || "",
+          lastAt: data.lastAt || "",
+        } as ChatSummary;
+      })
+    );
+    callback(summaries.sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1)));
   });
 };
 
@@ -495,9 +643,17 @@ export interface UserProfile {
   location?: GeoLocation | null;
   specialty?: string;
   portfolio_images?: string[];
+  pushToken?: string | null;
   createdAt?: any;
   email?: string;
 }
+
+export const setUserPushToken = async (
+  userId: string,
+  token: string | null
+): Promise<void> => {
+  await setDoc(doc(db, "users", userId), { pushToken: token }, { merge: true });
+};
 
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
   try {
@@ -519,24 +675,58 @@ export const setUserProfile = async (
 
 // ─── Portfolio Images ─────────────────────────────────────────────────────────
 
+async function uriToBlob(uri: string): Promise<Blob> {
+  // fetch() works on web AND on React Native (Hermes/JSC) for file:// URIs
+  try {
+    const response = await fetch(uri);
+    if (!response.ok && response.status !== 0) {
+      throw new Error(`fetch failed: ${response.status}`);
+    }
+    return await response.blob();
+  } catch (err) {
+    // XHR fallback for stubborn cases on native
+    return new Promise<Blob>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.responseType = "blob";
+      xhr.onload = () => resolve(xhr.response as Blob);
+      xhr.onerror = () => reject(new Error("XHR failed reading file"));
+      xhr.open("GET", uri, true);
+      xhr.send(null);
+    });
+  }
+}
+
 export const uploadPortfolioImage = async (
   userId: string,
   localUri: string
 ): Promise<string> => {
-  const response = await fetch(localUri);
-  const blob = await response.blob();
-  const storageRef = ref(storage, `portfolio/${userId}/${Date.now()}.jpg`);
-  await uploadBytes(storageRef, blob);
-  return await getDownloadURL(storageRef);
+  try {
+    const blob = await uriToBlob(localUri);
+    const path = `portfolio/${userId}/${Date.now()}.jpg`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+    const url = await getDownloadURL(storageRef);
+    return url;
+  } catch (err: any) {
+    console.error("uploadPortfolioImage failed:", err?.code, err?.message, err);
+    throw new Error(err?.message || "upload failed");
+  }
 };
 
 export const addPortfolioImage = async (
   userId: string,
   imageUrl: string
 ): Promise<void> => {
-  await updateDoc(doc(db, "users", userId), {
-    portfolio_images: arrayUnion(imageUrl),
-  });
+  const userRef = doc(db, "users", userId);
+  try {
+    await updateDoc(userRef, { portfolio_images: arrayUnion(imageUrl) });
+  } catch (err: any) {
+    if (err?.code === "not-found") {
+      await setDoc(userRef, { portfolio_images: [imageUrl] }, { merge: true });
+    } else {
+      throw err;
+    }
+  }
 };
 
 export const removePortfolioImage = async (
