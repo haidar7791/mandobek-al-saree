@@ -25,6 +25,7 @@ function RootLayoutNav() {
       <Stack.Screen name="wallet" />
       <Stack.Screen name="artisan-profile" />
       <Stack.Screen name="chat" />
+      <Stack.Screen name="messages" />
     </Stack>
   );
 }

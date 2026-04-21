@@ -201,8 +201,20 @@ export default function ProfileScreen() {
       await addPortfolioImage(uid, downloadUrl);
       setPortfolioImages((prev) => [...prev, downloadUrl]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      Alert.alert("خطأ", "تعذّر رفع الصورة، حاول مرة أخرى");
+    } catch (err: any) {
+      const code = err?.code || "";
+      const msg = err?.message || "";
+      let userMsg = "تعذّر رفع الصورة، حاول مرة أخرى";
+      if (code.includes("unauthorized") || msg.includes("unauthorized") || msg.includes("permission")) {
+        userMsg =
+          "صلاحيات الرفع مرفوضة من قِبل Firebase Storage.\n" +
+          "تأكد من نشر قواعد storage.rules في لوحة Firebase.";
+      } else if (msg.includes("network") || code.includes("network")) {
+        userMsg = "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
+      } else if (msg.includes("retry-limit") || msg.includes("canceled")) {
+        userMsg = "انقطع الرفع، حاول مرة أخرى";
+      }
+      Alert.alert("خطأ في رفع الصورة", `${userMsg}\n\n[${code || "unknown"}]`);
     } finally {
       setUploadingPortfolio(false);
     }
