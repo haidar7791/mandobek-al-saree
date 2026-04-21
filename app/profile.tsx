@@ -36,6 +36,8 @@ import {
   addPortfolioImage,
   removePortfolioImage,
   uploadPortfolioImage,
+  createOrUpdateArtisan,
+  getCategoryForSpecialty,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
@@ -240,6 +242,22 @@ export default function ProfileScreen() {
         photoUri,
         specialty: specialty || undefined,
       });
+
+      // Sync artisan record so the user appears in dashboard search
+      if (role === "artisan" && specialty) {
+        const profile = await getUserProfile(userId);
+        await createOrUpdateArtisan(userId, {
+          name: name.trim(),
+          phone: phone.trim(),
+          photoUri,
+          specialty,
+          category: getCategoryForSpecialty(specialty),
+          location: profile?.location ?? null,
+          bio: "",
+          isAvailable: true,
+        });
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("تم الحفظ", "تم حفظ بياناتك بنجاح");
     } catch {
