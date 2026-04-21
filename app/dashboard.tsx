@@ -31,6 +31,7 @@ import {
   CAR_SERVICES,
   GENERAL_SERVICES,
   getSpecialtyLabel,
+  isFeaturedActive,
 } from "../lib/db_logic";
 import { signOut } from "firebase/auth";
 import Colors from "@/constants/colors";
@@ -115,6 +116,12 @@ function ArtisanCard({
         </View>
 
         <View style={styles.cardBody}>
+          {isFeaturedActive(artisan) && (
+            <View style={styles.featuredBadge}>
+              <Ionicons name="star" size={10} color={C.primary} />
+              <Text style={styles.featuredBadgeText}>مميز</Text>
+            </View>
+          )}
           <View style={styles.cardTopRow}>
             <View style={styles.specialtyBadge}>
               <Text style={styles.specialtyText}>{getSpecialtyLabel(artisan.specialty)}</Text>
@@ -289,8 +296,14 @@ export default function DashboardScreen() {
                 <Feather name="shield" size={20} color={C.accent} />
               </Pressable>
             )}
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/reservations" as any)}>
+              <Feather name="calendar" size={20} color="#FFF" />
+            </Pressable>
             <Pressable style={styles.headerIconBtn} onPress={() => router.push("/messages" as any)}>
               <Feather name="message-circle" size={20} color="#FFF" />
+            </Pressable>
+            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/support" as any)}>
+              <Feather name="headphones" size={20} color="#FFF" />
             </Pressable>
             <Pressable style={styles.headerIconBtn} onPress={() => router.push("/wallet" as any)}>
               <Feather name="credit-card" size={20} color="#FFF" />
@@ -390,6 +403,27 @@ export default function DashboardScreen() {
         </ScrollView>
       )}
 
+      {userRole === "artisan" && (
+        <Pressable
+          style={styles.promoteBanner}
+          onPress={() => router.push("/promote" as any)}
+        >
+          <LinearGradient
+            colors={["rgba(201,168,76,0.2)", "rgba(201,168,76,0.08)"]}
+            style={styles.promoteBannerGrad}
+          >
+            <View style={styles.promoteIcon}>
+              <Ionicons name="rocket" size={18} color={C.accent} />
+            </View>
+            <View style={{ flex: 1, alignItems: "flex-end" }}>
+              <Text style={styles.promoteTitle}>روّج لحسابك واظهر في القمة</Text>
+              <Text style={styles.promoteSub}>زبائن أكثر، طلبات أكثر</Text>
+            </View>
+            <Feather name="chevron-left" size={18} color={C.accent} />
+          </LinearGradient>
+        </Pressable>
+      )}
+
       <FlatList
         data={filteredArtisans}
         keyExtractor={(item) => item.id}
@@ -442,7 +476,33 @@ const styles = StyleSheet.create({
   greetText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
   locationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   locationText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
-  headerActions: { flexDirection: "row", gap: 8 },
+  headerActions: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  featuredBadge: {
+    position: "absolute", top: -8, right: -8,
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: "#C9A84C", borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
+    zIndex: 5,
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }, elevation: 3,
+  },
+  featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
+  promoteBanner: {
+    marginHorizontal: 12, marginTop: 6, marginBottom: 4,
+    borderRadius: 12, overflow: "hidden",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+  },
+  promoteBannerGrad: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  promoteIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    alignItems: "center", justifyContent: "center",
+  },
+  promoteTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: Colors.light.text, textAlign: "right" },
+  promoteSub: { fontSize: 11, fontFamily: "Cairo_400Regular", color: Colors.light.textSecondary, textAlign: "right" },
   headerIconBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.1)",
