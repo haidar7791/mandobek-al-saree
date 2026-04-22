@@ -95,6 +95,7 @@ export default function ProfileScreen() {
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
 
   const [specialty, setSpecialty] = useState("");
+  const [professionalBio, setProfessionalBio] = useState("");
   const [showSpecialtyModal, setShowSpecialtyModal] = useState(false);
 
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
@@ -126,6 +127,7 @@ export default function ProfileScreen() {
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
+          setProfessionalBio(profile.professionalBio || "");
           setPortfolioImages(profile.portfolio_images || []);
         } else {
           setName(displayId);
@@ -253,6 +255,7 @@ export default function ProfileScreen() {
         phone: phone.trim(),
         photoUri,
         specialty: specialty || undefined,
+        professionalBio: professionalBio.trim(),
       });
 
       // Sync artisan record so the user appears in dashboard search
@@ -265,7 +268,7 @@ export default function ProfileScreen() {
           specialty,
           category: getCategoryForSpecialty(specialty),
           location: profile?.location ?? null,
-          bio: "",
+          bio: professionalBio.trim(),
           isAvailable: true,
         });
       }
@@ -410,6 +413,25 @@ export default function ProfileScreen() {
                   />
                 </View>
               </Pressable>
+            </View>
+
+            {/* Professional Bio (optional, multi-line) */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>الوصف المهني أو النبذة (اختياري)</Text>
+              <View style={styles.bioInputRow}>
+                <TextInput
+                  style={styles.bioInput}
+                  placeholder="اكتب نبذة عنك، اختصاصك، شهاداتك أو خبراتك..."
+                  placeholderTextColor={C.textMuted}
+                  value={professionalBio}
+                  onChangeText={setProfessionalBio}
+                  textAlign="right"
+                  multiline
+                  numberOfLines={4}
+                  maxLength={500}
+                />
+              </View>
+              <Text style={styles.bioCounter}>{professionalBio.length}/500</Text>
             </View>
 
             <Animated.View style={btnAnimStyle}>
@@ -747,6 +769,29 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inputFocused: { borderColor: C.accent, backgroundColor: "#FFF" },
+  bioInputRow: {
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 100,
+  },
+  bioInput: {
+    fontSize: 13,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlignVertical: "top",
+    minHeight: 80,
+    padding: 0,
+  },
+  bioCounter: {
+    fontSize: 11,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "left",
+  },
   inputIcon: { width: 28, alignItems: "center" },
   input: {
     flex: 1,
