@@ -362,6 +362,7 @@ export default function DashboardScreen() {
         </View>
       </LinearGradient>
 
+      <View style={styles.stickyBar}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -418,7 +419,9 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
       )}
+      </View>
 
+      <View style={styles.listWrapper}>
       {userRole === "artisan" && (
         <Pressable
           style={styles.promoteBanner}
@@ -474,12 +477,18 @@ export default function DashboardScreen() {
           ) : null
         }
       />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.background },
+  root: {
+    flex: 1, backgroundColor: C.background,
+    ...(Platform.OS === "web" ? ({ height: "100vh", overflow: "hidden" } as any) : null),
+  },
+  stickyBar: { backgroundColor: "#FFF", borderBottomWidth: 1, borderBottomColor: C.border },
+  listWrapper: { flex: 1, minHeight: 0 },
   headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
   headerTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   logoMark: {
