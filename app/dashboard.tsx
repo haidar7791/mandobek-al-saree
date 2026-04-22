@@ -116,18 +116,20 @@ function ArtisanCard({
         </View>
 
         <View style={styles.cardBody}>
-          {isFeaturedActive(artisan) && (
-            <View style={styles.featuredBadge}>
-              <Ionicons name="star" size={10} color={C.primary} />
-              <Text style={styles.featuredBadgeText}>مميز</Text>
-            </View>
-          )}
           <View style={styles.cardTopRow}>
             <View style={styles.specialtyBadge}>
               <Text style={styles.specialtyText}>{getSpecialtyLabel(artisan.specialty)}</Text>
             </View>
             <Text style={styles.artisanName} numberOfLines={1}>{artisan.name}</Text>
           </View>
+          {isFeaturedActive(artisan) && (
+            <View style={styles.featuredBadgeRow}>
+              <View style={styles.featuredBadge}>
+                <Ionicons name="star" size={10} color={C.primary} />
+                <Text style={styles.featuredBadgeText}>مميز</Text>
+              </View>
+            </View>
+          )}
 
           <View style={styles.cardMidRow}>
             <StarRating rating={artisan.rating} />
@@ -289,43 +291,57 @@ export default function DashboardScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerActions}>
-            {userRole === "admin" && (
-              <Pressable style={styles.headerIconBtn} onPress={() => router.push("/admin-dashboard" as any)}>
-                <Feather name="shield" size={20} color={C.accent} />
-              </Pressable>
-            )}
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/reservations" as any)}>
-              <Feather name="calendar" size={20} color="#FFF" />
-            </Pressable>
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/messages" as any)}>
-              <Feather name="message-circle" size={20} color="#FFF" />
-            </Pressable>
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/support" as any)}>
-              <Feather name="headphones" size={20} color="#FFF" />
-            </Pressable>
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/wallet" as any)}>
-              <Feather name="credit-card" size={20} color="#FFF" />
-            </Pressable>
-            <Pressable style={styles.headerIconBtn} onPress={() => router.push("/profile" as any)}>
-              <Feather name="user" size={20} color="#FFF" />
-            </Pressable>
+        <View style={styles.headerTopRow}>
+          <View style={styles.locationRow}>
+            <Feather name="map-pin" size={12} color={C.accent} />
+            <Text style={styles.locationText}>
+              {userLocation ? "موقعك الحالي" : "الموقع غير متاح"}
+            </Text>
           </View>
-
-          <View style={styles.headerTextGroup}>
-            <Text style={styles.greetText}>مرحباً، {userName}</Text>
-            <View style={styles.locationRow}>
-              <Feather name="map-pin" size={12} color={C.accent} />
-              <Text style={styles.locationText}>
-                {userLocation ? "موقعك الحالي" : "الموقع غير متاح"}
-              </Text>
-            </View>
-          </View>
-
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>سند</Text>
           </View>
+        </View>
+
+        <View style={styles.headerActions}>
+          {userRole === "admin" && (
+            <Pressable style={styles.headerIconCol} onPress={() => router.push("/admin-dashboard" as any)}>
+              <View style={styles.headerIconBtn}>
+                <Feather name="shield" size={20} color={C.accent} />
+              </View>
+              <Text style={styles.headerIconLabel}>الإدارة</Text>
+            </Pressable>
+          )}
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/reservations" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="calendar" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>الحجوزات</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/messages" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="message-circle" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>المراسلات</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/support" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="headphones" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>خدمة العملاء</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/wallet" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="credit-card" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>المحفظة</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/profile" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="user" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
+          </Pressable>
         </View>
 
         <View style={styles.searchBar}>
@@ -465,26 +481,32 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
   headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   logoMark: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.2)",
     alignItems: "center", justifyContent: "center",
   },
   logoMarkText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent },
-  headerTextGroup: { flex: 1, alignItems: "flex-end" },
-  greetText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   locationText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
-  headerActions: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  headerActions: {
+    flexDirection: "row-reverse", justifyContent: "space-between",
+    alignItems: "flex-start", gap: 4,
+  },
+  headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
+  headerIconLabel: {
+    fontSize: 10, fontFamily: "Cairo_600SemiBold",
+    color: "rgba(255,255,255,0.85)", textAlign: "center",
+  },
+  featuredBadgeRow: {
+    flexDirection: "row", justifyContent: "flex-end", marginTop: 2,
+  },
   featuredBadge: {
-    position: "absolute", top: -8, right: -8,
     flexDirection: "row", alignItems: "center", gap: 3,
     backgroundColor: "#C9A84C", borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 3,
-    zIndex: 5,
-    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    alignSelf: "flex-end",
   },
   featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
   promoteBanner: {
