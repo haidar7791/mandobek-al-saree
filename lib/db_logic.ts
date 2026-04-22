@@ -30,7 +30,7 @@ export const HOME_SERVICES = [
   { key: "mason", label: "بنّاء", icon: "home" },
   { key: "tiler", label: "سيراميك", icon: "grid" },
   { key: "ironsmith", label: "حداد", icon: "settings" },
-  { key: "ac_tech", label: "فيتر مكيفات", icon: "wind" },
+  { key: "ac_tech", label: "صيانة مكيفات", icon: "wind" },
 ];
 
 export const CAR_SERVICES = [
@@ -42,11 +42,7 @@ export const CAR_SERVICES = [
 ];
 
 export const GENERAL_SERVICES = [
-  { key: "cleaning", label: "تنظيف منازل", icon: "trash-2" },
-  { key: "moving", label: "نقل عفش", icon: "package" },
-  { key: "pest_control", label: "مكافحة حشرات", icon: "shield" },
-  { key: "generator", label: "مولدات كهرباء", icon: "battery-charging" },
-  { key: "satellite", label: "دشات وأنظمة", icon: "radio" },
+  { key: "medical_clinic", label: "عيادات طبية", icon: "activity" },
 ];
 
 export type ServiceCategory = "home" | "car" | "general";
