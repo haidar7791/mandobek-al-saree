@@ -893,6 +893,7 @@ export interface UserProfile {
   role: "client" | "artisan" | "admin";
   location?: GeoLocation | null;
   specialty?: string;
+  professionalBio?: string;
   portfolio_images?: string[];
   pushToken?: string | null;
   createdAt?: any;

@@ -140,7 +140,7 @@ function ArtisanCard({
           </View>
 
           {artisan.bio ? (
-            <Text style={styles.artisanBio} numberOfLines={1}>{artisan.bio}</Text>
+            <Text style={styles.artisanBio} numberOfLines={4}>{artisan.bio}</Text>
           ) : null}
 
           <View style={styles.cardFooter}>
@@ -453,28 +453,31 @@ export default function DashboardScreen() {
           <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
         )}
         ListHeaderComponent={
-          <View style={styles.listHeader}>
-            <Text style={styles.listCount}>
-              {filteredArtisans.length > 0
-                ? `${filteredArtisans.length} حرفي متاح`
-                : loading ? "جارٍ التحميل..." : ""}
-            </Text>
-            {userLocation && (
-              <View style={styles.sortedBadge}>
-                <Feather name="navigation" size={11} color={C.accent} />
-                <Text style={styles.sortedText}>مرتب حسب القرب</Text>
-              </View>
-            )}
-          </View>
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyState}>
-              <Feather name="users" size={48} color={C.textMuted} />
-              <Text style={styles.emptyTitle}>لا يوجد حرفيون</Text>
-              <Text style={styles.emptySubtitle}>لم نجد حرفيين في هذه الفئة حالياً</Text>
+          filteredArtisans.length > 0 ? (
+            <View style={styles.listHeader}>
+              <Text style={styles.listCount}>{`${filteredArtisans.length} حرفي متاح`}</Text>
+              {userLocation && (
+                <View style={styles.sortedBadge}>
+                  <Feather name="navigation" size={11} color={C.accent} />
+                  <Text style={styles.sortedText}>مرتب حسب القرب</Text>
+                </View>
+              )}
             </View>
           ) : null
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <Feather name="loader" size={36} color={C.textMuted} />
+              <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Feather name="users" size={48} color={C.textMuted} />
+              <Text style={styles.emptyTitle}>لا يوجد حرفيون في هذا القسم حالياً</Text>
+              <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
+            </View>
+          )
         }
       />
       </View>
