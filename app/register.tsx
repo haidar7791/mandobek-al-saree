@@ -38,7 +38,10 @@ function isValidEmail(s: string): boolean {
 
 const API_BASE = (() => {
   const dom = process.env.EXPO_PUBLIC_DOMAIN;
-  if (dom) return `https://${dom}`;
+  if (dom) {
+    const cleaned = dom.replace(/:\d+$/, "");
+    return `https://${cleaned}`;
+  }
   return "";
 })();
 
