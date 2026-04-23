@@ -109,7 +109,7 @@ export default function ChatScreen() {
         ListEmptyComponent={
           <View style={styles.emptyChat}>
             <Feather name="message-circle" size={40} color={C.textMuted} />
-            <Text style={styles.emptyChatText}>ابدأ محادثة مع الحرفي</Text>
+            <Text style={styles.emptyChatText}>ابدأ محادثة مع صاحب الاختصاص</Text>
           </View>
         }
       />

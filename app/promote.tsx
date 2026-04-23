@@ -71,7 +71,7 @@ export default function PromoteScreen() {
 
   const handlePay = () => {
     if (!artisan) {
-      Alert.alert("خطأ", "يجب أن يكون لديك ملف حرفي مكتمل أولاً");
+      Alert.alert("خطأ", "يجب أن يكون لديك ملف صاحب اختصاص مكتمل أولاً");
       return;
     }
     if (balance < plan.cost) {
@@ -171,7 +171,7 @@ export default function PromoteScreen() {
           <Text style={styles.benefitsTitle}>ماذا يقدم الترويج؟</Text>
           <View style={styles.benefitItem}>
             <Ionicons name="trending-up" size={16} color={C.accent} />
-            <Text style={styles.benefitText}>ظهور حسابك في أعلى قائمة الحرفيين</Text>
+            <Text style={styles.benefitText}>ظهور حسابك في أعلى قائمة أصحاب الاختصاص</Text>
           </View>
           <View style={styles.benefitItem}>
             <Ionicons name="star" size={16} color={C.accent} />

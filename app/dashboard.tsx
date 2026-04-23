@@ -348,7 +348,7 @@ export default function DashboardScreen() {
           <Feather name="search" size={16} color={C.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="ابحث عن حرفي أو خدمة..."
+            placeholder="ابحث عن صاحب اختصاص أو خدمة..."
             placeholderTextColor={C.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -455,7 +455,7 @@ export default function DashboardScreen() {
         ListHeaderComponent={
           filteredArtisans.length > 0 ? (
             <View style={styles.listHeader}>
-              <Text style={styles.listCount}>{`${filteredArtisans.length} حرفي متاح`}</Text>
+              <Text style={styles.listCount}>{`${filteredArtisans.length} صاحب اختصاص متاح`}</Text>
               {userLocation && (
                 <View style={styles.sortedBadge}>
                   <Feather name="navigation" size={11} color={C.accent} />
@@ -474,7 +474,7 @@ export default function DashboardScreen() {
           ) : (
             <View style={styles.emptyState}>
               <Feather name="users" size={48} color={C.textMuted} />
-              <Text style={styles.emptyTitle}>لا يوجد حرفيون في هذا القسم حالياً</Text>
+              <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
               <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
             </View>
           )

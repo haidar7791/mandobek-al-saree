@@ -192,7 +192,7 @@ export default function ArtisanProfileScreen() {
       setBookingModal(false);
       setProblemDesc("");
       setClientAddress("");
-      Alert.alert("تم الإرسال", "تم إرسال طلب خدمتك للحرفي، سيتواصل معك قريباً");
+      Alert.alert("تم الإرسال", "تم إرسال طلب خدمتك لصاحب الاختصاص، سيتواصل معك قريباً");
     } catch (err) {
       Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً");
     } finally {
@@ -335,7 +335,7 @@ export default function ArtisanProfileScreen() {
       >
         {artisan.bio ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>عن الحرفي</Text>
+            <Text style={styles.sectionTitle}>عن صاحب الاختصاص</Text>
             <Text style={styles.bioText}>{artisan.bio}</Text>
           </View>
         ) : null}
@@ -369,7 +369,7 @@ export default function ArtisanProfileScreen() {
             <View style={styles.noReviews}>
               <Ionicons name="star-outline" size={32} color={C.textMuted} />
               <Text style={styles.noReviewsText}>لا توجد تقييمات بعد</Text>
-              <Text style={styles.noReviewsSub}>كن أول من يقيّم هذا الحرفي</Text>
+              <Text style={styles.noReviewsSub}>كن أول من يقيّم صاحب الاختصاص هذا</Text>
             </View>
           ) : (
             reviews.map((r, i) => <ReviewCard key={r.id} review={r} index={i} />)
@@ -420,7 +420,7 @@ export default function ArtisanProfileScreen() {
               {userLocation && (
                 <View style={styles.locationNote}>
                   <Feather name="map-pin" size={14} color={C.accent} />
-                  <Text style={styles.locationNoteText}>سيتم إرسال موقعك الجغرافي تلقائياً للحرفي</Text>
+                  <Text style={styles.locationNoteText}>سيتم إرسال موقعك الجغرافي تلقائياً لصاحب الاختصاص</Text>
                 </View>
               )}
 
@@ -461,7 +461,7 @@ export default function ArtisanProfileScreen() {
                 <Text style={styles.fieldLabel}>تعليقك (اختياري)</Text>
                 <TextInput
                   style={styles.textArea}
-                  placeholder="شاركنا تجربتك مع هذا الحرفي..."
+                  placeholder="شاركنا تجربتك مع صاحب الاختصاص هذا..."
                   placeholderTextColor={C.textMuted}
                   value={reviewComment}
                   onChangeText={setReviewComment}

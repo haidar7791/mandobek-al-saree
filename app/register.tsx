@@ -98,21 +98,27 @@ function InputField({
   );
 }
 
+const CLIENT_OPTION = { key: "client", label: "زبون", icon: "user" };
+
 const SPECIALTY_SECTIONS = [
+  { title: "نوع الحساب", items: [CLIENT_OPTION] },
   { title: "خدمات المنزل", items: HOME_SERVICES },
   { title: "خدمات السيارات", items: CAR_SERVICES },
   { title: "خدمات عامة", items: GENERAL_SERVICES },
 ];
+
+const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES];
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [contact, setContact] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState<"client" | "artisan">("client");
   const [specialty, setSpecialty] = useState("");
   const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
 
   const ref2 = useRef<TextInput>(null);
   const ref3 = useRef<TextInput>(null);
@@ -151,8 +157,8 @@ export default function RegisterScreen() {
       Alert.alert("خطأ", "كلمتا المرور غير متطابقتين");
       return;
     }
-    if (role === "artisan" && !specialty) {
-      Alert.alert("خطأ", "يرجى اختيار تخصصك");
+    if (!specialty) {
+      Alert.alert("خطأ", "يرجى اختيار نوع الحساب أو التخصص");
       return;
     }
 
@@ -166,7 +172,8 @@ export default function RegisterScreen() {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = credential.user.uid;
 
-      await ensureUserDocument(uid, email, role, { specialty: specialty || undefined, location });
+      const savedSpecialty = role === "artisan" ? specialty : undefined;
+      await ensureUserDocument(uid, email, role, { specialty: savedSpecialty, location });
 
       if (role === "artisan" && specialty) {
         const category = getCategoryForSpecialty(specialty);
@@ -204,7 +211,7 @@ export default function RegisterScreen() {
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
-  const selectedSpecialtyLabel = ALL_SPECIALTIES.find((s) => s.key === specialty)?.label ?? "";
+  const selectedSpecialtyLabel = ALL_OPTIONS.find((s) => s.key === specialty)?.label ?? "";
 
   return (
     <View style={styles.root}>
@@ -230,26 +237,6 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-            <View style={styles.roleSection}>
-              <Text style={styles.sectionLabel}>نوع الحساب</Text>
-              <View style={styles.roleRow}>
-                <Pressable
-                  style={[styles.roleBtn, role === "artisan" && styles.roleBtnActive]}
-                  onPress={() => { Haptics.selectionAsync(); setRole("artisan"); }}
-                >
-                  <Feather name="tool" size={18} color={role === "artisan" ? C.card : C.textSecondary} />
-                  <Text style={[styles.roleBtnText, role === "artisan" && styles.roleBtnTextActive]}>حرفي</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.roleBtn, role === "client" && styles.roleBtnActive]}
-                  onPress={() => { Haptics.selectionAsync(); setRole("client"); setSpecialty(""); }}
-                >
-                  <Feather name="user" size={18} color={role === "client" ? C.card : C.textSecondary} />
-                  <Text style={[styles.roleBtnText, role === "client" && styles.roleBtnTextActive]}>زبون</Text>
-                </Pressable>
-              </View>
-            </View>
-
             <InputField
               label="البريد الإلكتروني أو رقم الهاتف"
               placeholder="example@email.com أو 07xxxxxxxx"
@@ -260,23 +247,24 @@ export default function RegisterScreen() {
               onSubmitEditing={() => ref2.current?.focus()}
             />
 
-            {role === "artisan" && (
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>التخصص</Text>
-                <Pressable
-                  style={[styles.inputRow, styles.pickerRow]}
-                  onPress={() => setSpecialtyModal(true)}
-                >
-                  <Feather name="chevron-down" size={16} color={C.textMuted} />
-                  <Text style={[styles.input, { paddingVertical: 13, color: specialty ? C.text : C.textMuted }]}>
-                    {selectedSpecialtyLabel || "اختر تخصصك"}
-                  </Text>
-                  <View style={styles.inputIcon}>
-                    <Feather name="briefcase" size={15} color={C.textMuted} />
-                  </View>
-                </Pressable>
-              </View>
-            )}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>نوع الحساب / التخصص</Text>
+              <Pressable
+                style={[styles.inputRow, styles.pickerRow]}
+                onPress={() => setSpecialtyModal(true)}
+              >
+                <Feather name="chevron-down" size={16} color={C.textMuted} />
+                <Text style={[styles.input, { paddingVertical: 13, color: specialty ? C.text : C.textMuted }]}>
+                  {selectedSpecialtyLabel || "اختر زبون أو تخصصك المهني"}
+                </Text>
+                <View style={styles.inputIcon}>
+                  <Feather name="briefcase" size={15} color={C.textMuted} />
+                </View>
+              </Pressable>
+              <Text style={styles.helperText}>
+                يمكنك تغيير التخصص لاحقاً من ملفك الشخصي
+              </Text>
+            </View>
 
             <InputField
               label="كلمة المرور"
@@ -304,7 +292,7 @@ export default function RegisterScreen() {
             <View style={styles.locationNote}>
               <Feather name="map-pin" size={14} color={C.accent} />
               <Text style={styles.locationNoteText}>
-                سيطلب التطبيق إذن الوصول إلى موقعك لعرض أقرب الحرفيين إليك
+                سيطلب التطبيق إذن الوصول إلى موقعك لعرض أقرب أصحاب الاختصاص إليك
               </Text>
             </View>
 
@@ -434,6 +422,7 @@ const styles = StyleSheet.create({
   roleBtnTextActive: { color: C.card },
   fieldWrap: { gap: 6 },
   fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  helperText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 4 },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 12,

@@ -8,6 +8,7 @@ import {
   Image,
   Platform,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +17,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { auth } from "../lib/firebase";
-import { subscribeToUserChats, type ChatSummary } from "../lib/db_logic";
+import { subscribeToUserChats, deleteChat, type ChatSummary } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -35,12 +36,17 @@ function formatTime(iso: string): string {
   return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
-function ChatItem({ chat, index }: { chat: ChatSummary; index: number }) {
+function ChatItem({ chat, index, onDelete }: { chat: ChatSummary; index: number; onDelete: (c: ChatSummary) => void }) {
   const initial = chat.otherName?.[0] || "?";
   return (
     <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
       <Pressable
         style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          onDelete(chat);
+        }}
+        delayLongPress={350}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           router.push({
@@ -70,6 +76,16 @@ function ChatItem({ chat, index }: { chat: ChatSummary; index: number }) {
             {chat.lastMessage || "ابدأ المحادثة الآن"}
           </Text>
         </View>
+        <Pressable
+          hitSlop={10}
+          style={styles.deleteIconBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onDelete(chat);
+          }}
+        >
+          <Feather name="trash-2" size={16} color={C.danger} />
+        </Pressable>
       </Pressable>
     </Animated.View>
   );
@@ -83,6 +99,29 @@ export default function MessagesScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
+
+  const handleDeleteChat = (chat: ChatSummary) => {
+    Alert.alert(
+      "حذف المحادثة",
+      `هل تريد حذف محادثتك مع ${chat.otherName}؟ سيتم حذف جميع الرسائل نهائياً.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteChat(chat.chatId);
+              setChats((prev) => prev.filter((c) => c.chatId !== chat.chatId));
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch {
+              Alert.alert("خطأ", "تعذّر حذف المحادثة، حاول مرة أخرى");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -121,7 +160,9 @@ export default function MessagesScreen() {
       <FlatList
         data={chats}
         keyExtractor={(c) => c.chatId}
-        renderItem={({ item, index }) => <ChatItem chat={item} index={index} />}
+        renderItem={({ item, index }) => (
+          <ChatItem chat={item} index={index} onDelete={handleDeleteChat} />
+        )}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: bottomPad + 20 },
@@ -150,7 +191,7 @@ export default function MessagesScreen() {
             </Text>
             {!loading && (
               <Text style={styles.emptySub}>
-                ابدأ بالتواصل مع أحد الحرفيين من صفحته الشخصية
+                ابدأ بالتواصل مع أحد أصحاب الاختصاص من صفحته الشخصية
               </Text>
             )}
           </View>
@@ -212,6 +253,14 @@ const styles = StyleSheet.create({
   name: { flex: 1, fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   time: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, marginLeft: 8 },
   last: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  deleteIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(239,68,68,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 30 },
   emptyIcon: {
     width: 80,

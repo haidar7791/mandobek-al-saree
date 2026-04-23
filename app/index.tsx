@@ -197,7 +197,7 @@ export default function WelcomeScreen() {
           ]}
         >
           <Text style={styles.footerText}>
-            اعثر على أقرب حرفي موثوق في ثوانٍ
+            اعثر على أقرب صاحب اختصاص موثوق في ثوانٍ
           </Text>
         </Animated.View>
       </View>

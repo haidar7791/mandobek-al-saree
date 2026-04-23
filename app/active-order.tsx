@@ -199,7 +199,7 @@ export default function ActiveOrderScreen() {
         <View style={styles.peerCard}>
           <View style={styles.peerLeft}>
             <Text style={styles.peerLabel}>
-              {isArtisanSide ? "العميل" : "الحرفي"}
+              {isArtisanSide ? "العميل" : "صاحب الاختصاص"}
             </Text>
             <Text style={styles.peerName}>
               {isArtisanSide ? request.clientName : request.artisanName}
@@ -235,7 +235,7 @@ export default function ActiveOrderScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
               {request.status === "on_the_way" && live
-                ? "الموقع المباشر للحرفي"
+                ? "الموقع المباشر لصاحب الاختصاص"
                 : "موقع العميل"}
             </Text>
             {(() => {
@@ -271,7 +271,7 @@ export default function ActiveOrderScreen() {
                   onPress={() => openMaps(live.lat, live.lng)}
                 >
                   <Feather name="navigation" size={14} color="#22C55E" />
-                  <Text style={[styles.mapBtnText, { color: "#22C55E" }]}>موقع الحرفي</Text>
+                  <Text style={[styles.mapBtnText, { color: "#22C55E" }]}>موقع صاحب الاختصاص</Text>
                 </Pressable>
               )}
             </View>
