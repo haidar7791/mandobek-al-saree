@@ -524,7 +524,7 @@ export default function ProfileScreen() {
               <Feather name="chevron-left" size={18} color={C.textMuted} />
               <View style={styles.settingsRowText}>
                 <Text style={styles.settingsRowLabel}>الرئيسية</Text>
-                <Text style={styles.settingsRowSub}>عرض الحرفيين القريبين</Text>
+                <Text style={styles.settingsRowSub}>عرض أصحاب الاختصاص القريبين</Text>
               </View>
               <View style={[styles.settingsRowIcon, { backgroundColor: "rgba(59,130,246,0.1)" }]}>
                 <Feather name="home" size={18} color="#3B82F6" />

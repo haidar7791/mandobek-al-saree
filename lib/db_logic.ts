@@ -26,7 +26,7 @@ export const HOME_SERVICES = [
   { key: "plumber", label: "سباك", icon: "droplet" },
   { key: "electrician", label: "كهربائي", icon: "zap" },
   { key: "carpenter", label: "نجار", icon: "tool" },
-  { key: "painter", label: "دهّان", icon: "edit-3" },
+  { key: "painter", label: "صباغ", icon: "edit-3" },
   { key: "mason", label: "بنّاء", icon: "home" },
   { key: "tiler", label: "سيراميك", icon: "grid" },
   { key: "ironsmith", label: "حداد", icon: "settings" },
@@ -36,9 +36,9 @@ export const HOME_SERVICES = [
 export const CAR_SERVICES = [
   { key: "mechanic", label: "ميكانيكي", icon: "settings" },
   { key: "auto_elec", label: "كهرباء سيارات", icon: "zap" },
-  { key: "tire_spec", label: "كاوتش", icon: "circle" },
-  { key: "body_repair", label: "تصليح بودي", icon: "truck" },
-  { key: "ac_car", label: "مكيف سيارة", icon: "wind" },
+  { key: "tire_spec", label: "كرين", icon: "circle" },
+  { key: "body_repair", label: "بنجرجي", icon: "truck" },
+  { key: "ac_car", label: "تبريد سيارات", icon: "wind" },
 ];
 
 export const GENERAL_SERVICES = [
@@ -475,7 +475,7 @@ export const rejectServiceRequest = async (requestId: string): Promise<void> => 
     await notifyClientOnRequest(
       req,
       "تم رفض طلبك",
-      `اعتذر ${req.artisanName} عن قبول طلبك. يمكنك تجربة حرفي آخر.`
+      `اعتذر ${req.artisanName} عن قبول طلبك. يمكنك تجربة صاحب اختصاص آخر.`
     );
   }
 };
@@ -495,7 +495,7 @@ export const markRequestOnTheWay = async (
     const req = { id: snap.id, ...snap.data() } as ServiceRequest;
     await notifyClientOnRequest(
       req,
-      "الحرفي في الطريق إليك 🚗",
+      "صاحب الاختصاص في الطريق إليك 🚗",
       `${req.artisanName} في طريقه إلى موقعك الآن.`
     );
   }
@@ -791,6 +791,17 @@ export const subscribeToUserChats = (
     );
     callback(summaries.sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1)));
   });
+};
+
+export const deleteChat = async (chatId: string): Promise<void> => {
+  try {
+    const msgsSnap = await getDocs(collection(db, "chats", chatId, "messages"));
+    await Promise.all(msgsSnap.docs.map((d) => deleteDoc(d.ref)));
+    await deleteDoc(doc(db, "chats", chatId));
+  } catch (err) {
+    console.error("deleteChat error:", err);
+    throw err;
+  }
 };
 
 // ─── Wallet ─────────────────────────────────────────────────────────────────

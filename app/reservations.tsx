@@ -141,7 +141,7 @@ function RequestCard({
       {showLiveLink ? (
         <Pressable style={styles.trackBtn} onPress={onOpen}>
           <Feather name="navigation" size={15} color="#FFF" />
-          <Text style={styles.trackText}>تتبّع الحرفي مباشرة</Text>
+          <Text style={styles.trackText}>تتبّع صاحب الاختصاص مباشرة</Text>
         </Pressable>
       ) : null}
 
@@ -333,7 +333,7 @@ export default function ReservationsScreen() {
               <Text style={styles.emptySub}>
                 {isArtisan
                   ? "ستظهر طلبات العملاء هنا فور وصولها"
-                  : "ابحث عن حرفي وأرسل طلب خدمتك من صفحته الشخصية"}
+                  : "ابحث عن صاحب اختصاص وأرسل طلب خدمتك من صفحته الشخصية"}
               </Text>
             )}
           </View>
