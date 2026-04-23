@@ -31,9 +31,11 @@ function isValidEmail(email: string): boolean {
 
 function getTransporter() {
   const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_APP_PASS;
   if (!user || !pass) {
-    throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD not configured");
+    const err: any = new Error("GMAIL_USER / GMAIL_APP_PASSWORD not configured");
+    err.code = "email_not_configured";
+    throw err;
   }
   return nodemailer.createTransport({
     service: "gmail",
@@ -97,8 +99,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[otp] sent to ${email}`);
       return res.json({ ok: true, expiresIn: OTP_TTL_MS / 1000 });
     } catch (err: any) {
-      console.error("[otp] request error:", err?.message || err);
-      return res.status(500).json({ ok: false, error: "send_failed" });
+      console.error("[otp] request error:", err?.message || err, err?.response || "");
+      const code = err?.code === "email_not_configured" ? "email_not_configured" : "send_failed";
+      return res.status(500).json({ ok: false, error: code, message: err?.message || "send failed" });
     }
   });
 
