@@ -30,7 +30,7 @@ externalPort = 3000
 PORT = "5000"
 
 [agent]
-stack = "EXPO"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [workflows]
