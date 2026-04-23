@@ -169,8 +169,10 @@ export default function RegisterScreen() {
           setOtpResendIn(data.waitSeconds || 60);
         } else if (data.error === "invalid_email") {
           Alert.alert("خطأ", "البريد الإلكتروني غير صحيح");
+        } else if (data.error === "email_not_configured") {
+          Alert.alert("إعدادات البريد ناقصة", "لم يتم تكوين بريد الإرسال على الخادم. يرجى التواصل مع الإدارة.");
         } else {
-          Alert.alert("خطأ", "تعذّر إرسال رمز التحقق، تأكد من اتصالك بالإنترنت");
+          Alert.alert("فشل الإرسال", "تأكد من إعدادات البريد أو حاول مرة أخرى.");
         }
         return false;
       }
