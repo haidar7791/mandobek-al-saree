@@ -36,17 +36,6 @@ function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
-const API_BASE = (() => {
-  const explicit = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (explicit) return explicit.replace(/\/$/, "");
-  const dom = process.env.EXPO_PUBLIC_DOMAIN;
-  if (dom) {
-    const cleaned = dom.replace(/:\d+$/, "");
-    return `https://${cleaned}`;
-  }
-  return "";
-})();
-
 const C = Colors.light;
 
 function InputField({
@@ -127,21 +116,7 @@ export default function RegisterScreen() {
   const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const [step, setStep] = useState<"form" | "otp">("form");
-  const [otp, setOtp] = useState("");
-  const [otpResendIn, setOtpResendIn] = useState(0);
-  const [otpExpiresIn, setOtpExpiresIn] = useState(0);
-
   const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
-
-  React.useEffect(() => {
-    if (step !== "otp") return;
-    const t = setInterval(() => {
-      setOtpResendIn((n) => (n > 0 ? n - 1 : 0));
-      setOtpExpiresIn((n) => (n > 0 ? n - 1 : 0));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [step]);
 
   const ref2 = useRef<TextInput>(null);
   const ref3 = useRef<TextInput>(null);
@@ -160,37 +135,7 @@ export default function RegisterScreen() {
     }
   };
 
-  const requestOtp = async (): Promise<boolean> => {
-    try {
-      const res = await fetch(`${API_BASE}/api/otp/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        if (data.error === "cooldown") {
-          Alert.alert("انتظر قليلاً", `يرجى المحاولة بعد ${data.waitSeconds} ثانية`);
-          setOtpResendIn(data.waitSeconds || 60);
-        } else if (data.error === "invalid_email") {
-          Alert.alert("خطأ", "البريد الإلكتروني غير صحيح");
-        } else if (data.error === "email_not_configured") {
-          Alert.alert("إعدادات البريد ناقصة", "لم يتم تكوين بريد الإرسال على الخادم. يرجى التواصل مع الإدارة.");
-        } else {
-          Alert.alert("فشل الإرسال", "تأكد من إعدادات البريد أو حاول مرة أخرى.");
-        }
-        return false;
-      }
-      setOtpExpiresIn(data.expiresIn || 600);
-      setOtpResendIn(60);
-      return true;
-    } catch (err) {
-      Alert.alert("خطأ", "تعذّر الاتصال بالخادم");
-      return false;
-    }
-  };
-
-  const handleSendOtp = async () => {
+  const handleRegister = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
       Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح");
@@ -213,58 +158,6 @@ export default function RegisterScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     try {
-      const ok = await requestOtp();
-      if (ok) {
-        setStep("otp");
-        setOtp("");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    if (otpResendIn > 0) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setLoading(true);
-    try {
-      await requestOtp();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyAndCreate = async () => {
-    if (otp.trim().length !== 6) {
-      Alert.alert("خطأ", "يرجى إدخال رمز التحقق المكوّن من 6 أرقام");
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setLoading(true);
-    try {
-      const trimmedEmail = email.trim().toLowerCase();
-      // Verify OTP first
-      const vres = await fetch(`${API_BASE}/api/otp/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, code: otp.trim() }),
-      });
-      const vdata = await vres.json();
-      if (!vres.ok || !vdata.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        if (vdata.error === "wrong_code") {
-          Alert.alert("رمز خاطئ", `الرمز غير صحيح. المحاولات المتبقية: ${vdata.attemptsLeft}`);
-        } else if (vdata.error === "expired") {
-          Alert.alert("انتهت الصلاحية", "انتهت صلاحية الرمز، يرجى طلب رمز جديد");
-        } else if (vdata.error === "too_many_attempts") {
-          Alert.alert("محاولات كثيرة", "تجاوزت عدد المحاولات، يرجى طلب رمز جديد");
-        } else {
-          Alert.alert("خطأ", "تعذّر التحقق من الرمز");
-        }
-        return;
-      }
-
-      // OTP verified — now create account
       const location = await requestLocation();
       const credential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
       const uid = credential.user.uid;
@@ -287,7 +180,7 @@ export default function RegisterScreen() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم التسجيل", "تم التحقق من بريدك وإنشاء حسابك بنجاح!", [
+      Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
         { text: "تسجيل الدخول", onPress: () => router.replace("/login") },
       ]);
     } catch (err: any) {
@@ -295,22 +188,16 @@ export default function RegisterScreen() {
       const code = err?.code || "";
       if (code === "auth/email-already-in-use") {
         Alert.alert("خطأ", "هذا البريد مسجل مسبقاً");
-        setStep("form");
       } else if (code === "auth/weak-password") {
         Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
-        setStep("form");
+      } else if (code === "auth/invalid-email") {
+        Alert.alert("خطأ", "البريد الإلكتروني غير صحيح");
       } else {
         Alert.alert("خطأ", "حدث خطأ أثناء إنشاء الحساب");
       }
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatSeconds = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -341,8 +228,7 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {step === "form" ? (
-            <View style={styles.card}>
+          <View style={styles.card}>
               <InputField
                 label="البريد الإلكتروني"
                 placeholder="example@email.com"
@@ -392,20 +278,13 @@ export default function RegisterScreen() {
                 secureTextEntry
                 innerRef={ref3}
                 returnKeyType="done"
-                onSubmitEditing={handleSendOtp}
+                onSubmitEditing={handleRegister}
               />
-
-              <View style={styles.locationNote}>
-                <Feather name="mail" size={14} color={C.accent} />
-                <Text style={styles.locationNoteText}>
-                  سنرسل رمز تحقق مكوّن من 6 أرقام إلى بريدك لإكمال التسجيل
-                </Text>
-              </View>
 
               <Animated.View style={btnStyle}>
                 <Pressable
                   style={[styles.registerBtn, loading && styles.btnDisabled]}
-                  onPress={handleSendOtp}
+                  onPress={handleRegister}
                   disabled={loading}
                 >
                   <LinearGradient
@@ -415,94 +294,17 @@ export default function RegisterScreen() {
                     end={{ x: 1, y: 0 }}
                   >
                     {loading ? (
-                      <Text style={styles.registerBtnText}>جارٍ الإرسال...</Text>
+                      <Text style={styles.registerBtnText}>جارٍ إنشاء الحساب...</Text>
                     ) : (
                       <>
-                        <Text style={styles.registerBtnText}>إرسال رمز التحقق</Text>
-                        <Feather name="send" size={18} color={C.primary} />
-                      </>
-                    )}
-                  </LinearGradient>
-                </Pressable>
-              </Animated.View>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              <View style={otpStyles.iconCircle}>
-                <Feather name="mail" size={28} color={C.accent} />
-              </View>
-              <Text style={otpStyles.title}>تحقق من بريدك</Text>
-              <Text style={otpStyles.subtitle}>
-                أرسلنا رمز تحقق إلى{"\n"}
-                <Text style={{ color: C.accent, fontFamily: "Cairo_700Bold" }}>{email}</Text>
-              </Text>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>الرمز المكوّن من 6 أرقام</Text>
-                <View style={styles.inputRow}>
-                  <View style={styles.inputIcon}>
-                    <Feather name="hash" size={16} color={C.textSecondary} />
-                  </View>
-                  <TextInput
-                    style={[styles.input, { letterSpacing: 8, fontSize: 22, textAlign: "center", fontFamily: "Cairo_700Bold" }]}
-                    placeholder="------"
-                    placeholderTextColor={C.textMuted}
-                    value={otp}
-                    onChangeText={(t) => setOtp(t.replace(/[^0-9]/g, "").slice(0, 6))}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    autoFocus
-                  />
-                </View>
-                {otpExpiresIn > 0 && (
-                  <Text style={styles.helperText}>
-                    تنتهي صلاحية الرمز خلال {formatSeconds(otpExpiresIn)}
-                  </Text>
-                )}
-              </View>
-
-              <Animated.View style={btnStyle}>
-                <Pressable
-                  style={[styles.registerBtn, (loading || otp.length !== 6) && styles.btnDisabled]}
-                  onPress={handleVerifyAndCreate}
-                  disabled={loading || otp.length !== 6}
-                >
-                  <LinearGradient
-                    colors={[C.accent, C.accentLight]}
-                    style={styles.registerGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {loading ? (
-                      <Text style={styles.registerBtnText}>جارٍ التحقق...</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.registerBtnText}>تأكيد وإنشاء الحساب</Text>
+                        <Text style={styles.registerBtnText}>إنشاء حساب</Text>
                         <Feather name="check" size={18} color={C.primary} />
                       </>
                     )}
                   </LinearGradient>
                 </Pressable>
               </Animated.View>
-
-              <Pressable
-                style={otpStyles.resendBtn}
-                onPress={handleResendOtp}
-                disabled={otpResendIn > 0 || loading}
-              >
-                <Text style={[otpStyles.resendText, otpResendIn > 0 && { color: C.textMuted }]}>
-                  {otpResendIn > 0
-                    ? `إعادة إرسال الرمز خلال ${otpResendIn} ثانية`
-                    : "إعادة إرسال الرمز"}
-                </Text>
-              </Pressable>
-
-              <Pressable style={otpStyles.changeBtn} onPress={() => setStep("form")}>
-                <Feather name="edit-2" size={13} color={C.textSecondary} />
-                <Text style={otpStyles.changeText}>تعديل البريد الإلكتروني</Text>
-              </Pressable>
             </View>
-          )}
 
           <Pressable onPress={() => router.push("/login")} style={styles.loginLink}>
             <Text style={styles.loginLinkText}>
@@ -678,20 +480,3 @@ const modalStyles = StyleSheet.create({
   itemTextSelected: { color: C.accent, fontFamily: "Cairo_600SemiBold" },
 });
 
-const otpStyles = StyleSheet.create({
-  iconCircle: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: "rgba(201,168,76,0.12)",
-    alignItems: "center", justifyContent: "center",
-    alignSelf: "center", marginBottom: 4,
-  },
-  title: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center" },
-  subtitle: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 6 },
-  resendBtn: { alignItems: "center", paddingVertical: 8 },
-  resendText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  changeBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 6,
-  },
-  changeText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-});
