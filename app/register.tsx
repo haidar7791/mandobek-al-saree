@@ -37,6 +37,8 @@ function isValidEmail(s: string): boolean {
 }
 
 const API_BASE = (() => {
+  const explicit = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
   const dom = process.env.EXPO_PUBLIC_DOMAIN;
   if (dom) {
     const cleaned = dom.replace(/:\d+$/, "");
