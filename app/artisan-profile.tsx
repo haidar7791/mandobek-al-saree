@@ -97,8 +97,6 @@ export default function ArtisanProfileScreen() {
   const [loading, setLoading] = useState(true);
 
   const [bookingModal, setBookingModal] = useState(false);
-  const [problemDesc, setProblemDesc] = useState("");
-  const [clientAddress, setClientAddress] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
 
   const [reviewModal, setReviewModal] = useState(false);
@@ -170,10 +168,6 @@ export default function ArtisanProfileScreen() {
       setBookingModal(false);
       return;
     }
-    if (!problemDesc.trim()) {
-      Alert.alert("خطأ", "يرجى وصف المشكلة التي تحتاج مساعدة فيها");
-      return;
-    }
     setBookingLoading(true);
     try {
       const userProfile = await getUserProfile(user.uid);
@@ -184,19 +178,33 @@ export default function ArtisanProfileScreen() {
         artisanId: artisan.id,
         artisanName: artisan.name,
         specialty: artisan.specialty,
-        problemDescription: problemDesc.trim(),
+        problemDescription: "",
         clientLocation: userLocation,
-        clientAddress: clientAddress.trim(),
+        clientAddress: "",
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setBookingModal(false);
-      setProblemDesc("");
-      setClientAddress("");
-      Alert.alert("تم الإرسال", "تم إرسال طلب خدمتك لصاحب الاختصاص، سيتواصل معك قريباً");
+      Alert.alert("تم الإرسال ✓", "تم إرسال طلب خدمتك لصاحب الاختصاص، سيتواصل معك قريباً");
     } catch (err) {
       Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً");
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handleOpenMap = () => {
+    if (!artisan?.location) {
+      Alert.alert("تنبيه", "لا يوجد موقع محدد لصاحب الاختصاص");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { lat, lng } = artisan.location;
+    if (userLocation) {
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}&travelmode=driving`;
+      Linking.openURL(url);
+    } else {
+      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      Linking.openURL(url);
     }
   };
 
@@ -329,6 +337,11 @@ export default function ArtisanProfileScreen() {
         </LinearGradient>
       </Pressable>
 
+      <Pressable style={styles.mapBtn} onPress={handleOpenMap}>
+        <Feather name="map-pin" size={18} color={C.accent} />
+        <Text style={styles.mapBtnText}>عرض على الخريطة</Text>
+      </Pressable>
+
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
@@ -377,64 +390,44 @@ export default function ArtisanProfileScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={bookingModal} transparent animationType="slide" onRequestClose={() => setBookingModal(false)}>
+      <Modal visible={bookingModal} transparent animationType="fade" onRequestClose={() => setBookingModal(false)}>
         <View style={modalStyles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setBookingModal(false)} />
-          <View style={modalStyles.sheet}>
-            <View style={modalStyles.handle} />
-            <View style={modalStyles.header}>
-              <Pressable onPress={() => setBookingModal(false)} style={modalStyles.closeBtn}>
-                <Feather name="x" size={18} color={C.textSecondary} />
-              </Pressable>
-              <Text style={modalStyles.title}>طلب خدمة من {artisan.name}</Text>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !bookingLoading && setBookingModal(false)} />
+          <View style={modalStyles.confirmCard}>
+            <View style={modalStyles.confirmIconCircle}>
+              <Feather name="calendar" size={28} color={C.accent} />
             </View>
-
-            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>وصف المشكلة أو الخدمة المطلوبة</Text>
-                <TextInput
-                  style={styles.textArea}
-                  placeholder="مثال: تسريب مياه في المطبخ..."
-                  placeholderTextColor={C.textMuted}
-                  value={problemDesc}
-                  onChangeText={setProblemDesc}
-                  multiline
-                  numberOfLines={4}
-                  textAlign="right"
-                  textAlignVertical="top"
-                />
+            <Text style={modalStyles.confirmTitle}>تأكيد طلب الخدمة</Text>
+            <Text style={modalStyles.confirmMsg}>
+              هل تريد تأكيد طلب الخدمة من{"\n"}
+              <Text style={{ fontFamily: "Cairo_700Bold", color: C.accent }}>{artisan.name}</Text>
+              ؟
+            </Text>
+            {userLocation && (
+              <View style={styles.locationNote}>
+                <Feather name="map-pin" size={13} color={C.accent} />
+                <Text style={styles.locationNoteText}>سيُرسل موقعك الجغرافي تلقائياً</Text>
               </View>
-
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>عنوانك (اختياري)</Text>
-                <TextInput
-                  style={styles.inputField}
-                  placeholder="مثال: الكرادة، شارع فلسطين"
-                  placeholderTextColor={C.textMuted}
-                  value={clientAddress}
-                  onChangeText={setClientAddress}
-                  textAlign="right"
-                />
-              </View>
-
-              {userLocation && (
-                <View style={styles.locationNote}>
-                  <Feather name="map-pin" size={14} color={C.accent} />
-                  <Text style={styles.locationNoteText}>سيتم إرسال موقعك الجغرافي تلقائياً لصاحب الاختصاص</Text>
-                </View>
-              )}
-
+            )}
+            <View style={modalStyles.confirmActions}>
               <Pressable
-                style={[modalStyles.sendBtn, bookingLoading && { opacity: 0.6 }]}
+                style={[modalStyles.cancelBtn, bookingLoading && { opacity: 0.5 }]}
+                onPress={() => setBookingModal(false)}
+                disabled={bookingLoading}
+              >
+                <Text style={modalStyles.cancelBtnText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[modalStyles.confirmBtn, bookingLoading && { opacity: 0.6 }]}
                 onPress={handleBooking}
                 disabled={bookingLoading}
               >
-                <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.sendGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                  <Text style={modalStyles.sendText}>{bookingLoading ? "جارٍ الإرسال..." : "إرسال الطلب"}</Text>
-                  <Feather name="send" size={16} color={C.primary} />
+                <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.confirmBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                  <Text style={modalStyles.confirmBtnText}>{bookingLoading ? "جارٍ الإرسال..." : "تأكيد"}</Text>
+                  {!bookingLoading && <Feather name="check" size={16} color={C.primary} />}
                 </LinearGradient>
               </Pressable>
-            </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -617,10 +610,21 @@ const styles = StyleSheet.create({
   },
   locationNoteText: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
   ratingLabel: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "center" },
+  mapBtn: {
+    marginHorizontal: 16, marginBottom: 10, borderRadius: 14,
+    borderWidth: 1.5, borderColor: C.accent,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 12, gap: 8,
+    backgroundColor: "rgba(201,168,76,0.06)",
+  },
+  mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
 });
 
 const modalStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  overlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
+  },
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "90%" },
   handle: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: C.border,
@@ -642,4 +646,33 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 14, gap: 10,
   },
   sendText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+  confirmCard: {
+    width: "100%", backgroundColor: C.card, borderRadius: 22,
+    padding: 24, gap: 14, alignItems: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 20, elevation: 10,
+  },
+  confirmIconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    alignItems: "center", justifyContent: "center",
+  },
+  confirmTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
+  confirmMsg: {
+    fontSize: 15, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    textAlign: "center", lineHeight: 26,
+  },
+  confirmActions: { flexDirection: "row", gap: 10, width: "100%", marginTop: 4 },
+  cancelBtn: {
+    flex: 1, borderRadius: 14, paddingVertical: 13,
+    borderWidth: 1.5, borderColor: C.border,
+    alignItems: "center", justifyContent: "center",
+  },
+  cancelBtnText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  confirmBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
+  confirmBtnGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 13, gap: 8,
+  },
+  confirmBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
 });

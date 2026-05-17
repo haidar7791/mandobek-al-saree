@@ -43,6 +43,8 @@ export const CAR_SERVICES = [
 
 export const GENERAL_SERVICES = [
   { key: "medical_clinic", label: "عيادات طبية", icon: "activity" },
+  { key: "taxi", label: "تكسي", icon: "navigation" },
+  { key: "heavy_machinery", label: "آليات ثقيلة", icon: "truck" },
 ];
 
 export type ServiceCategory = "home" | "car" | "general";

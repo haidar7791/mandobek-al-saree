@@ -115,7 +115,9 @@ function RequestCard({
         </Text>
       </View>
 
-      <Text style={styles.problem}>{request.problemDescription}</Text>
+      {request.problemDescription ? (
+        <Text style={styles.problem}>{request.problemDescription}</Text>
+      ) : null}
 
       {isArtisan && request.clientPhone ? (
         <View style={styles.metaRow}>
