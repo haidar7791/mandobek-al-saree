@@ -92,6 +92,7 @@ export default function ArtisanProfileScreen() {
 
   const [artisan, setArtisan] = useState<ArtisanProfile | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [userName, setUserName] = useState("مستخدم");
   const [loading, setLoading] = useState(true);
@@ -129,6 +130,10 @@ export default function ArtisanProfileScreen() {
       ]);
       setArtisan(artisanData);
       setReviews(reviewData);
+      if (artisanData?.userId) {
+        const artisanProfile = await getUserProfile(artisanData.userId);
+        setPortfolioImages(artisanProfile?.portfolio_images || []);
+      }
     } catch (err) {
       console.error("loadData error:", err);
     } finally {
@@ -352,6 +357,26 @@ export default function ArtisanProfileScreen() {
             <Text style={styles.bioText}>{artisan.bio}</Text>
           </View>
         ) : null}
+
+        {portfolioImages.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>معرض الأعمال</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.portfolioRow}
+            >
+              {portfolioImages.map((uri, idx) => (
+                <Image
+                  key={idx}
+                  source={{ uri }}
+                  style={styles.portfolioImg}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
@@ -618,6 +643,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.06)",
   },
   mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
+  portfolioRow: { gap: 10, paddingVertical: 4 },
+  portfolioImg: {
+    width: 140, height: 140, borderRadius: 14,
+    backgroundColor: C.inputBg,
+  },
 });
 
 const modalStyles = StyleSheet.create({

@@ -82,6 +82,7 @@ export interface ArtisanProfile {
   reviewCount: number;
   isAvailable: boolean;
   featuredUntil?: string | null;
+  isPromoted?: boolean;
   createdAt: string;
 }
 
@@ -264,6 +265,17 @@ export const getArtisanById = async (artisanId: string): Promise<ArtisanProfile 
   } catch (err) {
     console.error("getArtisanById error:", err);
     return null;
+  }
+};
+
+export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
+  try {
+    const q = query(collection(db, "artisans"), where("isPromoted", "==", true));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+  } catch (err) {
+    console.error("getPromotedArtisans error:", err);
+    return [];
   }
 };
 

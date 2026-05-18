@@ -196,21 +196,26 @@ export default function ReservationsScreen() {
     }
     let unsub: (() => void) | null = null;
     (async () => {
-      const profile = await getUserProfile(user.uid);
-      const artisanRecord = await getArtisanByUserId(user.uid);
-      const asArtisan = profile?.role === "artisan" && !!artisanRecord;
-      setIsArtisan(asArtisan);
+      try {
+        const profile = await getUserProfile(user.uid);
+        const artisanRecord = await getArtisanByUserId(user.uid);
+        const asArtisan = profile?.role === "artisan" && !!artisanRecord;
+        setIsArtisan(asArtisan);
 
-      if (asArtisan && artisanRecord) {
-        unsub = subscribeToServiceRequests(artisanRecord.id, (list) => {
-          setRequests(list);
-          setLoading(false);
-        });
-      } else {
-        unsub = subscribeToClientServiceRequests(user.uid, (list) => {
-          setRequests(list);
-          setLoading(false);
-        });
+        if (asArtisan && artisanRecord) {
+          unsub = subscribeToServiceRequests(artisanRecord.id, (list) => {
+            setRequests(list);
+            setLoading(false);
+          });
+        } else {
+          unsub = subscribeToClientServiceRequests(user.uid, (list) => {
+            setRequests(list);
+            setLoading(false);
+          });
+        }
+      } catch (err) {
+        console.error("reservations setup error:", err);
+        setLoading(false);
       }
     })();
     return () => {

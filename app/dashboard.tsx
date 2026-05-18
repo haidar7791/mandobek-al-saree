@@ -22,6 +22,7 @@ import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
 import {
   getArtisans,
+  getPromotedArtisans,
   getUserProfile,
   calcDistanceKm,
   type ArtisanProfile,
@@ -70,6 +71,95 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
         />
       ))}
     </View>
+  );
+}
+
+function FeaturedCard({
+  artisan,
+  userLocation,
+}: {
+  artisan: ArtisanProfile;
+  userLocation: GeoLocation | null;
+}) {
+  const distance =
+    userLocation && artisan.location
+      ? calcDistanceKm(userLocation, artisan.location)
+      : null;
+
+  const initials = artisan.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const coverUri =
+    artisan.photoUri || null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [featStyles.card, pressed && { opacity: 0.93 }]}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
+      }}
+    >
+      <View style={featStyles.coverWrap}>
+        {coverUri ? (
+          <Image source={{ uri: coverUri }} style={featStyles.cover} resizeMode="cover" />
+        ) : (
+          <LinearGradient colors={[C.primary, "#1E2F60"]} style={featStyles.cover} />
+        )}
+        <LinearGradient
+          colors={["transparent", "rgba(13,27,62,0.88)"]}
+          style={featStyles.coverOverlay}
+        />
+        <View style={featStyles.ratingBadge}>
+          <Ionicons name="star" size={11} color="#F59E0B" />
+          <Text style={featStyles.ratingBadgeText}>
+            {artisan.rating > 0 ? artisan.rating.toFixed(2) : "جديد"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={featStyles.body}>
+        <View style={featStyles.nameRow}>
+          <View style={featStyles.specialtyBadge}>
+            <Text style={featStyles.specialtyText}>{getSpecialtyLabel(artisan.specialty)}</Text>
+          </View>
+          <Text style={featStyles.name} numberOfLines={1}>{artisan.name}</Text>
+        </View>
+
+        {distance !== null && (
+          <View style={featStyles.distRow}>
+            <Feather name="map-pin" size={12} color={C.accent} />
+            <Text style={featStyles.distText}>
+              {distance < 1
+                ? `${Math.round(distance * 1000)} م منك`
+                : `${distance.toFixed(2)} كم منك`}
+            </Text>
+          </View>
+        )}
+
+        <Pressable
+          style={featStyles.bookBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
+          }}
+        >
+          <LinearGradient
+            colors={[C.accent, C.accentLight]}
+            style={featStyles.bookBtnGrad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Text style={featStyles.bookBtnText}>طلب الخدمة الآن</Text>
+            <Feather name="arrow-left" size={14} color={C.primary} />
+          </LinearGradient>
+        </Pressable>
+      </View>
+    </Pressable>
   );
 }
 
@@ -174,6 +264,7 @@ function ArtisanCard({
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
+  const [promotedArtisans, setPromotedArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("all");
   const [activeSpecialty, setActiveSpecialty] = useState<string>("all");
@@ -191,9 +282,10 @@ export default function DashboardScreen() {
     if (!user) { router.replace("/login" as any); return; }
 
     try {
-      const [profile, allArtisans] = await Promise.all([
+      const [profile, allArtisans, promoted] = await Promise.all([
         getUserProfile(user.uid),
         getArtisans(),
+        getPromotedArtisans(),
       ]);
 
       if (profile) {
@@ -203,6 +295,7 @@ export default function DashboardScreen() {
       }
 
       setArtisans(allArtisans);
+      setPromotedArtisans(promoted);
 
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -443,6 +536,27 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
+      {promotedArtisans.length > 0 && (
+        <View style={featStyles.section}>
+          <View style={featStyles.sectionHeader}>
+            <View style={featStyles.sectionBadge}>
+              <Ionicons name="star" size={13} color={C.primary} />
+              <Text style={featStyles.sectionBadgeText}>ترويج</Text>
+            </View>
+            <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={featStyles.scrollRow}
+          >
+            {promotedArtisans.map((a) => (
+              <FeaturedCard key={a.id} artisan={a} userLocation={userLocation} />
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       <FlatList
         data={filteredArtisans}
         keyExtractor={(item) => item.id}
@@ -632,4 +746,58 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", paddingTop: 60, gap: 12 },
   emptyTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
   emptySubtitle: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+});
+
+const featStyles = StyleSheet.create({
+  section: {
+    paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  sectionHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
+    gap: 8, paddingHorizontal: 16, marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text },
+  sectionBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: C.accent, borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  sectionBadgeText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
+  scrollRow: { paddingHorizontal: 16, gap: 12 },
+  card: {
+    width: 200,
+    backgroundColor: C.card, borderRadius: 18,
+    overflow: "hidden",
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 5,
+  },
+  coverWrap: { width: "100%", height: 130, position: "relative" },
+  cover: { width: "100%", height: "100%" },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  ratingBadge: {
+    position: "absolute", top: 10, right: 10,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(13,27,62,0.75)",
+    borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  ratingBadgeText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
+  body: { padding: 12, gap: 8 },
+  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  name: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  specialtyBadge: {
+    backgroundColor: "rgba(13,27,62,0.08)", borderRadius: 8,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  specialtyText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.primary },
+  distRow: { flexDirection: "row", alignItems: "center", gap: 4, justifyContent: "flex-end" },
+  distText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  bookBtn: { borderRadius: 10, overflow: "hidden" },
+  bookBtnGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 9, gap: 6,
+  },
+  bookBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary },
 });
