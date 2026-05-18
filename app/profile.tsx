@@ -566,7 +566,7 @@ export default function ProfileScreen() {
             <Feather name="chevron-left" size={16} color={C.danger} style={{ opacity: 0.5 }} />
           </Pressable>
 
-          <Text style={styles.versionNote}>سند • خدمات المنزل والسيارة</Text>
+          <Text style={styles.versionNote}>فورس - ForUs • خدمات المنزل والسيارة</Text>
         </ScrollView>
       </KeyboardAvoidingView>
 

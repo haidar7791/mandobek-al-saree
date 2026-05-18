@@ -392,7 +392,7 @@ export default function DashboardScreen() {
             </Text>
           </View>
           <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>سند</Text>
+            <Text style={styles.logoMarkText}>ForUs</Text>
           </View>
         </View>
 

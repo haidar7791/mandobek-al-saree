@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sanad",
+    "name": "ForUs",
     "slug": "sanad-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,7 +16,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sanad.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleDisplayName": "ForUs"
+      }
     },
     "android": {
       "package": "com.sanad.app",
@@ -59,8 +62,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "يحتاج سند للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
-          "locationWhenInUsePermission": "يحتاج سند للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
+          "locationAlwaysAndWhenInUsePermission": "يحتاج فورس للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
+          "locationWhenInUsePermission": "يحتاج فورس للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
         }
       ]
     ],

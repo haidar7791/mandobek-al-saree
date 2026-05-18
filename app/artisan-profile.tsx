@@ -153,7 +153,7 @@ export default function ArtisanProfileScreen() {
     if (!artisan?.phone) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const phone = artisan.phone.replace(/^0/, "964").replace(/\s+/g, "");
-    const msg = encodeURIComponent(`مرحباً، أريد الاستفسار عن خدمة ${getSpecialtyLabel(artisan.specialty)} عبر تطبيق سند`);
+    const msg = encodeURIComponent(`مرحباً، أريد الاستفسار عن خدمة ${getSpecialtyLabel(artisan.specialty)} عبر تطبيق فورس`);
     Linking.openURL(`https://wa.me/${phone}?text=${msg}`);
   };
 

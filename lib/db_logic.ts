@@ -105,7 +105,7 @@ export const PROMOTION_PLANS: PromotionPlan[] = [
 ];
 
 export const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
-export const ADMIN_DISPLAY_NAME = "فريق الدعم - سند";
+export const ADMIN_DISPLAY_NAME = "فريق الدعم - فورس";
 export const SUPPORT_AUTO_REPLY =
   "أهلاً بك، نحن جاهزون لخدمتك. تفضل بطرح مشكلتك بوضوح وسوف يتواصل معك فريق الدعم قريباً.";
 
@@ -764,7 +764,7 @@ export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
         return {
           chatId: d.id,
           otherUserId: otherUid,
-          otherName: otherProfile?.name || "مستخدم سند",
+          otherName: otherProfile?.name || "مستخدم فورس",
           otherPhotoUri: otherProfile?.photoUri || null,
           lastMessage: data.lastMessage || "",
           lastAt: data.lastAt || "",
@@ -796,7 +796,7 @@ export const subscribeToUserChats = (
         return {
           chatId: d.id,
           otherUserId: otherUid,
-          otherName: otherProfile?.name || "مستخدم سند",
+          otherName: otherProfile?.name || "مستخدم فورس",
           otherPhotoUri: otherProfile?.photoUri || null,
           lastMessage: data.lastMessage || "",
           lastAt: data.lastAt || "",

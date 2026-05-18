@@ -147,11 +147,11 @@ export default function WelcomeScreen() {
               colors={[C.accent, C.accentLight]}
               style={styles.logoGradient}
             >
-              <Text style={styles.logoLetters}>سند</Text>
+              <Text style={styles.logoLetters}>F</Text>
             </LinearGradient>
           </View>
-          <Text style={styles.appName}>سند</Text>
-          <Text style={styles.appTaglineAr}>Sanad</Text>
+          <Text style={styles.appName}>فورس</Text>
+          <Text style={styles.appTaglineAr}>ForUs</Text>
           <Text style={styles.appTagline}>منصة خدمات المنزل والسيارة</Text>
 
           <View style={styles.featureRow}>

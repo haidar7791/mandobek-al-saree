@@ -107,7 +107,7 @@ export default function SupportScreen() {
         </Pressable>
         <View style={styles.headerInfo}>
           <Text style={styles.headerName}>الدعم الفني</Text>
-          <Text style={styles.headerSub}>فريق سند جاهز لخدمتك</Text>
+          <Text style={styles.headerSub}>فريق فورس جاهز لخدمتك</Text>
         </View>
         <View style={styles.headerAvatar}>
           <Feather name="headphones" size={18} color={C.accent} />

@@ -33,7 +33,7 @@ export async function registerForPushNotifications(
   try {
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
-        name: "تنبيهات سند",
+        name: "تنبيهات فورس",
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#C9A84C",
