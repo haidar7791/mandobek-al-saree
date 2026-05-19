@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "فورز - ForUs",
-    "slug": "sanad-app",
+    "name": "ForUs",
+    "slug": "forus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -18,7 +18,7 @@
       "bundleIdentifier": "com.forus.app",
       "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "فورز - ForUs",
+        "CFBundleDisplayName": "ForUs",
         "CFBundleName": "ForUs"
       }
     },
@@ -43,7 +43,7 @@
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
-      "name": "فورز - ForUs"
+      "name": "ForUs"
     },
     "plugins": [
       [
@@ -57,15 +57,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "تطبيق فورز يحتاج للوصول إلى مكتبة الصور لرفع صورتك الشخصية.",
-          "cameraPermission": "تطبيق فورز يحتاج للوصول إلى الكاميرا لالتقاط صورتك الشخصية."
+          "photosPermission": "ForUs needs access to your photos to upload your profile picture.",
+          "cameraPermission": "ForUs needs access to your camera to take your profile picture."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "يحتاج فورز للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
-          "locationWhenInUsePermission": "يحتاج فورز للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
+          "locationAlwaysAndWhenInUsePermission": "ForUs needs your location to show nearby service providers.",
+          "locationWhenInUsePermission": "ForUs needs your location to show nearby service providers."
         }
       ]
     ],

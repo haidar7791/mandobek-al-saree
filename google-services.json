@@ -8,12 +8,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:911663879269:android:500280b5315d9e4855a28c",
+        "mobilesdk_app_id": "1:911663879269:android:0d68e2a57f0665f155a28c",
         "android_client_info": {
-          "package_name": "com.mandobek.alsaree"
+          "package_name": "com.forus.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAMrj6itX85DEwPjPTo6kMFszFQdc4n6CE"
@@ -21,7 +26,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -32,7 +42,12 @@
           "package_name": "com.sanad.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAMrj6itX85DEwPjPTo6kMFszFQdc4n6CE"
@@ -40,7 +55,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
