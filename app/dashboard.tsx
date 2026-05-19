@@ -11,6 +11,7 @@ import {
   RefreshControl,
   ScrollView,
   Alert,
+  TouchableOpacity,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -103,41 +104,36 @@ function FeaturedCard({
       ? calcDistanceKm(userLocation, artisan.location)
       : null;
 
-  const coverUri = artisan.photoUri || null;
+  const initials = artisan.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <Pressable
-      style={({ pressed }) => [featStyles.card, pressed && { transform: [{ scale: 0.96 }] }]}
+    <TouchableOpacity
+      activeOpacity={0.75}
+      style={featStyles.card}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
       }}
     >
-      {/* ── Compact cover ── */}
-      <View style={featStyles.coverWrap}>
-        {coverUri ? (
-          <Image source={{ uri: coverUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+      {/* Avatar */}
+      <View style={featStyles.avatarWrap}>
+        {artisan.photoUri ? (
+          <Image source={{ uri: artisan.photoUri }} style={featStyles.avatar} resizeMode="cover" />
         ) : (
-          <LinearGradient colors={["#162452", "#0D1B3E"]} style={StyleSheet.absoluteFillObject} />
+          <View style={featStyles.avatarFallback}>
+            <LinearGradient colors={[C.primary, "#1E2F60"]} style={StyleSheet.absoluteFill} />
+            <Text style={featStyles.avatarInitials}>{initials}</Text>
+          </View>
         )}
-        <LinearGradient
-          colors={["rgba(10,18,45,0.45)", "rgba(10,18,45,0.85)"]}
-          style={StyleSheet.absoluteFillObject}
-        />
-        {/* Rating pill top-right */}
-        <View style={featStyles.ratingBadge}>
-          <Ionicons name="star" size={9} color="#F59E0B" />
-          <Text style={featStyles.ratingBadgeText}>
-            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
-          </Text>
-        </View>
-        {/* Promo tag top-left */}
-        <View style={featStyles.promoTag}>
-          <Text style={featStyles.promoTagText}>مميز</Text>
-        </View>
+        <View style={[featStyles.availDot, artisan.isAvailable ? featStyles.availOnline : featStyles.availOffline]} />
       </View>
 
-      {/* ── Compact body ── */}
+      {/* Details */}
       <View style={featStyles.body}>
         <Text style={featStyles.name} numberOfLines={1}>{artisan.name}</Text>
 
@@ -147,35 +143,25 @@ function FeaturedCard({
           </Text>
         </View>
 
-        {distance !== null && (
-          <View style={featStyles.distRow}>
-            <Feather name="map-pin" size={9} color={C.accent} />
-            <Text style={featStyles.distText} numberOfLines={1}>
-              {distance < 1
-                ? `${Math.round(distance * 1000)} م`
-                : `${distance.toFixed(1)} كم`}
-            </Text>
-          </View>
-        )}
-
-        <Pressable
-          style={featStyles.bookBtn}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
-          }}
-        >
-          <LinearGradient
-            colors={[C.accent, C.accentLight]}
-            style={featStyles.bookBtnGrad}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Text style={featStyles.bookBtnText}>اطلب الآن</Text>
-          </LinearGradient>
-        </Pressable>
+        <View style={featStyles.metaRow}>
+          <Ionicons name="star" size={10} color="#F59E0B" />
+          <Text style={featStyles.ratingText}>
+            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
+          </Text>
+          {distance !== null && (
+            <>
+              <Text style={featStyles.metaSep}>·</Text>
+              <Feather name="map-pin" size={9} color={C.accent} />
+              <Text style={featStyles.distText} numberOfLines={1}>
+                {distance < 1
+                  ? `${Math.round(distance * 1000)} م`
+                  : `${distance.toFixed(1)} كم`}
+              </Text>
+            </>
+          )}
+        </View>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -475,10 +461,6 @@ export default function DashboardScreen() {
       {promotedArtisans.length > 0 && (
         <View style={featStyles.section}>
           <View style={featStyles.sectionHeader}>
-            <View style={featStyles.sectionBadge}>
-              <Ionicons name="star" size={11} color={C.primary} />
-              <Text style={featStyles.sectionBadgeText}>ترويج</Text>
-            </View>
             <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
           </View>
           <FlatList
@@ -774,55 +756,54 @@ const featStyles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
-    gap: 6, paddingHorizontal: 14, marginBottom: 8,
+    paddingHorizontal: 14, marginBottom: 8,
   },
   sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  sectionBadge: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    backgroundColor: C.accent, borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 3,
-  },
-  sectionBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
-  scrollRow: { paddingHorizontal: 14, gap: 10, paddingBottom: 4 },
-  /* Compact card: 150px wide */
+  scrollRow: { paddingHorizontal: 14, gap: 8, paddingBottom: 4 },
+  /* Compact horizontal card */
   card: {
-    width: 150,
+    width: 180,
     backgroundColor: C.card,
-    borderRadius: 14,
-    overflow: "hidden",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12, shadowRadius: 8, elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  /* Compact cover: 85px tall */
-  coverWrap: { width: "100%", height: 85, position: "relative" },
-  ratingBadge: {
-    position: "absolute", top: 5, right: 5,
-    flexDirection: "row", alignItems: "center", gap: 2,
-    backgroundColor: "rgba(10,18,45,0.80)",
-    borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
+  /* Avatar */
+  avatarWrap: { position: "relative" },
+  avatar: { width: 44, height: 44, borderRadius: 10 },
+  avatarFallback: {
+    width: 44, height: 44, borderRadius: 10,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
   },
-  ratingBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
-  promoTag: {
-    position: "absolute", top: 5, left: 5,
-    backgroundColor: C.accent,
-    borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2,
+  avatarInitials: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent },
+  availDot: {
+    position: "absolute", bottom: 1, right: 1,
+    width: 10, height: 10, borderRadius: 5,
+    borderWidth: 1.5, borderColor: C.card,
   },
-  promoTagText: { fontSize: 9, fontFamily: "Cairo_700Bold", color: C.primary },
-  body: { padding: 8, gap: 5 },
+  availOnline: { backgroundColor: "#22C55E" },
+  availOffline: { backgroundColor: "#9CA3AF" },
+  /* Body */
+  body: { flex: 1, gap: 3, alignItems: "flex-end" },
   name: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   specialtyBadge: {
-    alignSelf: "flex-end",
     backgroundColor: "rgba(13,27,62,0.08)", borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
   },
-  specialtyText: { fontSize: 9, fontFamily: "Cairo_600SemiBold", color: C.primary },
-  distRow: { flexDirection: "row", alignItems: "center", gap: 3, justifyContent: "flex-end" },
-  distText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  bookBtn: { borderRadius: 8, overflow: "hidden", marginTop: 2 },
-  bookBtnGrad: {
-    alignItems: "center", justifyContent: "center",
-    paddingVertical: 6,
+  specialtyText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.primary },
+  metaRow: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    justifyContent: "flex-end",
   },
-  bookBtnText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
+  ratingText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
+  metaSep: { fontSize: 10, color: C.textMuted },
+  distText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
 });
