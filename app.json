@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "ForUs",
+    "name": "فورز - ForUs",
     "slug": "sanad-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sanad",
+    "scheme": "forus",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -15,14 +15,15 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sanad.app",
+      "bundleIdentifier": "com.forus.app",
       "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "ForUs"
+        "CFBundleDisplayName": "فورز - ForUs",
+        "CFBundleName": "ForUs"
       }
     },
     "android": {
-      "package": "com.sanad.app",
+      "package": "com.forus.app",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "adaptiveIcon": {
@@ -41,7 +42,8 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "فورز - ForUs"
     },
     "plugins": [
       [
@@ -55,15 +57,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "التطبيق يحتاج للوصول إلى مكتبة الصور لرفع صورتك الشخصية.",
-          "cameraPermission": "التطبيق يحتاج للوصول إلى الكاميرا لالتقاط صورتك الشخصية."
+          "photosPermission": "تطبيق فورز يحتاج للوصول إلى مكتبة الصور لرفع صورتك الشخصية.",
+          "cameraPermission": "تطبيق فورز يحتاج للوصول إلى الكاميرا لالتقاط صورتك الشخصية."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "يحتاج فورس للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
-          "locationWhenInUsePermission": "يحتاج فورس للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
+          "locationAlwaysAndWhenInUsePermission": "يحتاج فورز للوصول إلى موقعك لعرض الحرفيين الأقرب إليك.",
+          "locationWhenInUsePermission": "يحتاج فورز للوصول إلى موقعك لعرض الحرفيين الأقرب إليك."
         }
       ]
     ],
