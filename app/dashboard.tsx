@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -11,13 +11,12 @@ import {
   RefreshControl,
   ScrollView,
   Alert,
-  TouchableOpacity,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
@@ -44,8 +43,6 @@ import {
 
 const C = Colors.light;
 
-const BOTTOM_NAV_HEIGHT = 64;
-
 type CategoryTab = "all" | ServiceCategory;
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
@@ -62,65 +59,6 @@ const SPECIALTY_FILTERS: Record<CategoryTab, { key: string; label: string; icon:
   general: GENERAL_SERVICES,
 };
 
-// ── Bottom Navigation Bar ───────────────────────────────────────────────────
-function BottomNavBar({
-  bottomInset,
-  userRole,
-}: {
-  bottomInset: number;
-  userRole: "client" | "artisan" | "admin";
-}) {
-  const navItems = [
-    { icon: "user", label: "البروفايل", route: "/profile" },
-    { icon: "credit-card", label: "المحفظة", route: "/wallet" },
-    { icon: "message-circle", label: "المراسلات", route: "/messages" },
-    { icon: "calendar", label: "الحجوزات", route: "/reservations" },
-  ];
-
-  return (
-    <View style={[navStyles.container, { paddingBottom: Math.max(bottomInset, 8) }]}>
-      <LinearGradient
-        colors={["rgba(255,255,255,0.98)", "#ffffff"]}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View style={navStyles.inner}>
-        {navItems.map((item) => (
-          <TouchableOpacity
-            key={item.route}
-            style={navStyles.item}
-            activeOpacity={0.7}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push(item.route as any);
-            }}
-          >
-            <View style={navStyles.iconWrap}>
-              <Feather name={item.icon as any} size={22} color={C.primary} />
-            </View>
-            <Text style={navStyles.label}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-        {userRole === "admin" && (
-          <TouchableOpacity
-            style={navStyles.item}
-            activeOpacity={0.7}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/admin-dashboard" as any);
-            }}
-          >
-            <View style={navStyles.iconWrap}>
-              <Feather name="shield" size={22} color={C.accent} />
-            </View>
-            <Text style={[navStyles.label, { color: C.accent }]}>الإدارة</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
-}
-
-// ── Star Rating ─────────────────────────────────────────────────────────────
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 2 }}>
@@ -136,7 +74,23 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   );
 }
 
-// ── Compact Featured Card ───────────────────────────────────────────────────
+function StarRow({ rating }: { rating: number }) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.4;
+  return (
+    <View style={{ flexDirection: "row", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Ionicons
+          key={i}
+          name={i <= full ? "star" : half && i === full + 1 ? "star-half" : "star-outline"}
+          size={12}
+          color="#F59E0B"
+        />
+      ))}
+    </View>
+  );
+}
+
 function FeaturedCard({
   artisan,
   userLocation,
@@ -149,37 +103,42 @@ function FeaturedCard({
       ? calcDistanceKm(userLocation, artisan.location)
       : null;
 
-  const initials = artisan.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const coverUri = artisan.photoUri || null;
 
   return (
-    <TouchableOpacity
-      style={featStyles.card}
-      activeOpacity={0.82}
+    <Pressable
+      style={({ pressed }) => [featStyles.card, pressed && { transform: [{ scale: 0.96 }] }]}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
       }}
     >
-      {/* Avatar */}
-      <View style={featStyles.avatarWrap}>
-        {artisan.photoUri ? (
-          <Image source={{ uri: artisan.photoUri }} style={featStyles.avatar} />
+      {/* ── Compact cover ── */}
+      <View style={featStyles.coverWrap}>
+        {coverUri ? (
+          <Image source={{ uri: coverUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
         ) : (
-          <LinearGradient colors={[C.primary, "#1E2F60"]} style={featStyles.avatarGrad}>
-            <Text style={featStyles.avatarInitials}>{initials}</Text>
-          </LinearGradient>
+          <LinearGradient colors={["#162452", "#0D1B3E"]} style={StyleSheet.absoluteFillObject} />
         )}
-        {/* Promo dot */}
-        <View style={featStyles.promoDot} />
+        <LinearGradient
+          colors={["rgba(10,18,45,0.45)", "rgba(10,18,45,0.85)"]}
+          style={StyleSheet.absoluteFillObject}
+        />
+        {/* Rating pill top-right */}
+        <View style={featStyles.ratingBadge}>
+          <Ionicons name="star" size={9} color="#F59E0B" />
+          <Text style={featStyles.ratingBadgeText}>
+            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
+          </Text>
+        </View>
+        {/* Promo tag top-left */}
+        <View style={featStyles.promoTag}>
+          <Text style={featStyles.promoTagText}>مميز</Text>
+        </View>
       </View>
 
-      {/* Info */}
-      <View style={featStyles.info}>
+      {/* ── Compact body ── */}
+      <View style={featStyles.body}>
         <Text style={featStyles.name} numberOfLines={1}>{artisan.name}</Text>
 
         <View style={featStyles.specialtyBadge}>
@@ -188,31 +147,38 @@ function FeaturedCard({
           </Text>
         </View>
 
-        <View style={featStyles.metaRow}>
-          <Ionicons name="star" size={10} color="#F59E0B" />
-          <Text style={featStyles.ratingText}>
-            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
-          </Text>
-          {distance !== null && (
-            <>
-              <Text style={featStyles.separator}>·</Text>
-              <Feather name="map-pin" size={9} color={C.accent} />
-              <Text style={featStyles.distText}>
-                {distance < 1
-                  ? `${Math.round(distance * 1000)} م`
-                  : `${distance.toFixed(1)} كم`}
-              </Text>
-            </>
-          )}
-        </View>
-      </View>
+        {distance !== null && (
+          <View style={featStyles.distRow}>
+            <Feather name="map-pin" size={9} color={C.accent} />
+            <Text style={featStyles.distText} numberOfLines={1}>
+              {distance < 1
+                ? `${Math.round(distance * 1000)} م`
+                : `${distance.toFixed(1)} كم`}
+            </Text>
+          </View>
+        )}
 
-      <Feather name="chevron-left" size={14} color={C.textMuted} />
-    </TouchableOpacity>
+        <Pressable
+          style={featStyles.bookBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
+          }}
+        >
+          <LinearGradient
+            colors={[C.accent, C.accentLight]}
+            style={featStyles.bookBtnGrad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Text style={featStyles.bookBtnText}>اطلب الآن</Text>
+          </LinearGradient>
+        </Pressable>
+      </View>
+    </Pressable>
   );
 }
 
-// ── Artisan List Card ───────────────────────────────────────────────────────
 function ArtisanCard({
   artisan,
   userLocation,
@@ -280,7 +246,7 @@ function ArtisanCard({
           </View>
 
           {artisan.bio ? (
-            <Text style={styles.artisanBio} numberOfLines={2}>{artisan.bio}</Text>
+            <Text style={styles.artisanBio} numberOfLines={4}>{artisan.bio}</Text>
           ) : null}
 
           <View style={styles.cardFooter}>
@@ -311,7 +277,6 @@ function ArtisanCard({
   );
 }
 
-// ── Main Screen ─────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
@@ -362,6 +327,7 @@ export default function DashboardScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
+  // Register for push notifications + handle notification taps
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -369,7 +335,10 @@ export default function DashboardScreen() {
 
     const sub = addNotificationTapListener((data) => {
       if (data?.type === "chat" && data?.chatId && data?.senderName) {
-        router.push({ pathname: "/chat", params: { chatId: data.chatId, otherName: data.senderName } });
+        router.push({
+          pathname: "/chat",
+          params: { chatId: data.chatId, otherName: data.senderName },
+        });
       } else if (data?.type === "serviceRequest") {
         router.push("/messages" as any);
       }
@@ -383,16 +352,38 @@ export default function DashboardScreen() {
     setRefreshing(false);
   }, [loadData]);
 
+  const handleLogout = async () => {
+    Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "خروج",
+        style: "destructive",
+        onPress: async () => {
+          await signOut(auth);
+          router.replace("/");
+        },
+      },
+    ]);
+  };
+
   const filteredArtisans = React.useMemo(() => {
     let result = [...artisans];
-    if (activeCategory !== "all") result = result.filter((a) => a.category === activeCategory);
-    if (activeSpecialty !== "all") result = result.filter((a) => a.specialty === activeSpecialty);
+
+    if (activeCategory !== "all") {
+      result = result.filter((a) => a.category === activeCategory);
+    }
+    if (activeSpecialty !== "all") {
+      result = result.filter((a) => a.specialty === activeSpecialty);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
-        (a) => a.name.toLowerCase().includes(q) || getSpecialtyLabel(a.specialty).includes(q)
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          getSpecialtyLabel(a.specialty).includes(q)
       );
     }
+
     if (userLocation) {
       result.sort((a, b) => {
         const da = a.location ? calcDistanceKm(userLocation, a.location) : Infinity;
@@ -400,6 +391,7 @@ export default function DashboardScreen() {
         return da - db;
       });
     }
+
     return result;
   }, [artisans, activeCategory, activeSpecialty, search, userLocation]);
 
@@ -407,40 +399,60 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.root}>
-      {/* ── Slim Header ── */}
-      <LinearGradient
-        colors={["#0D1B3E", "#162452"]}
-        style={[styles.headerGrad, { paddingTop: topPad }]}
-      >
-        {/* Top bar: customer service (left) | logo (center) | location (right) */}
+      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
         <View style={styles.headerTopRow}>
-          {/* Right: location */}
           <View style={styles.locationRow}>
             <Feather name="map-pin" size={12} color={C.accent} />
             <Text style={styles.locationText}>
               {userLocation ? "موقعك الحالي" : "الموقع غير متاح"}
             </Text>
           </View>
-
-          {/* Center: logo */}
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>ForUs</Text>
           </View>
-
-          {/* Left: customer service */}
-          <TouchableOpacity
-            style={styles.supportBtn}
-            activeOpacity={0.75}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/support" as any);
-            }}
-          >
-            <Feather name="headphones" size={18} color="#FFF" />
-          </TouchableOpacity>
         </View>
 
-        {/* Search bar */}
+        <View style={styles.headerActions}>
+          {userRole === "admin" && (
+            <Pressable style={styles.headerIconCol} onPress={() => router.push("/admin-dashboard" as any)}>
+              <View style={styles.headerIconBtn}>
+                <Feather name="shield" size={20} color={C.accent} />
+              </View>
+              <Text style={styles.headerIconLabel}>الإدارة</Text>
+            </Pressable>
+          )}
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/reservations" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="calendar" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>الحجوزات</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/messages" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="message-circle" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>المراسلات</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/support" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="headphones" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>خدمة العملاء</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/wallet" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="credit-card" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>المحفظة</Text>
+          </Pressable>
+          <Pressable style={styles.headerIconCol} onPress={() => router.push("/profile" as any)}>
+            <View style={styles.headerIconBtn}>
+              <Feather name="user" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.searchBar}>
           <Feather name="search" size={16} color={C.textMuted} />
           <TextInput
@@ -459,7 +471,7 @@ export default function DashboardScreen() {
         </View>
       </LinearGradient>
 
-      {/* ── أفضل مقدمي الخدمة ── */}
+      {/* ── أفضل مقدمي الخدمة — directly under search bar ── */}
       {promotedArtisans.length > 0 && (
         <View style={featStyles.section}>
           <View style={featStyles.sectionHeader}>
@@ -482,536 +494,335 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* ── Category + Specialty Tabs ── */}
       <View style={styles.stickyBar}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryTabs}
+        style={styles.categoryTabsWrapper}
+      >
+        {CATEGORY_TABS.map((tab) => (
+          <Pressable
+            key={tab.key}
+            style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setActiveCategory(tab.key);
+              setActiveSpecialty("all");
+            }}
+          >
+            <Feather
+              name={tab.icon as any}
+              size={14}
+              color={activeCategory === tab.key ? C.primary : C.textSecondary}
+            />
+            <Text style={[styles.catTabText, activeCategory === tab.key && styles.catTabTextActive]}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {specialtyFilters.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryTabs}
-          style={styles.categoryTabsWrapper}
+          contentContainerStyle={styles.specialtyFilters}
+          style={styles.specialtyFilterWrapper}
         >
-          {CATEGORY_TABS.map((tab) => (
+          <Pressable
+            style={[styles.specFilter, activeSpecialty === "all" && styles.specFilterActive]}
+            onPress={() => { Haptics.selectionAsync(); setActiveSpecialty("all"); }}
+          >
+            <Text style={[styles.specFilterText, activeSpecialty === "all" && styles.specFilterTextActive]}>
+              الكل
+            </Text>
+          </Pressable>
+          {specialtyFilters.map((sp) => (
             <Pressable
-              key={tab.key}
-              style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setActiveCategory(tab.key);
-                setActiveSpecialty("all");
-              }}
+              key={sp.key}
+              style={[styles.specFilter, activeSpecialty === sp.key && styles.specFilterActive]}
+              onPress={() => { Haptics.selectionAsync(); setActiveSpecialty(sp.key); }}
             >
-              <Feather
-                name={tab.icon as any}
-                size={14}
-                color={activeCategory === tab.key ? C.primary : C.textSecondary}
-              />
-              <Text style={[styles.catTabText, activeCategory === tab.key && styles.catTabTextActive]}>
-                {tab.label}
+              <Text style={[styles.specFilterText, activeSpecialty === sp.key && styles.specFilterTextActive]}>
+                {sp.label}
               </Text>
             </Pressable>
           ))}
         </ScrollView>
-
-        {specialtyFilters.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.specialtyFilters}
-            style={styles.specialtyFilterWrapper}
-          >
-            <Pressable
-              style={[styles.specFilter, activeSpecialty === "all" && styles.specFilterActive]}
-              onPress={() => { Haptics.selectionAsync(); setActiveSpecialty("all"); }}
-            >
-              <Text style={[styles.specFilterText, activeSpecialty === "all" && styles.specFilterTextActive]}>
-                الكل
-              </Text>
-            </Pressable>
-            {specialtyFilters.map((sp) => (
-              <Pressable
-                key={sp.key}
-                style={[styles.specFilter, activeSpecialty === sp.key && styles.specFilterActive]}
-                onPress={() => { Haptics.selectionAsync(); setActiveSpecialty(sp.key); }}
-              >
-                <Text style={[styles.specFilterText, activeSpecialty === sp.key && styles.specFilterTextActive]}>
-                  {sp.label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
+      )}
       </View>
 
-      {/* ── Artisan List ── */}
       <View style={styles.listWrapper}>
-        {userRole === "artisan" && (
-          <Pressable
-            style={styles.promoteBanner}
-            onPress={() => router.push("/promote" as any)}
+      {userRole === "artisan" && (
+        <Pressable
+          style={styles.promoteBanner}
+          onPress={() => router.push("/promote" as any)}
+        >
+          <LinearGradient
+            colors={["rgba(201,168,76,0.2)", "rgba(201,168,76,0.08)"]}
+            style={styles.promoteBannerGrad}
           >
-            <LinearGradient
-              colors={["rgba(201,168,76,0.2)", "rgba(201,168,76,0.08)"]}
-              style={styles.promoteBannerGrad}
-            >
-              <View style={styles.promoteIcon}>
-                <Ionicons name="rocket" size={18} color={C.accent} />
-              </View>
-              <View style={{ flex: 1, alignItems: "flex-end" }}>
-                <Text style={styles.promoteTitle}>روّج لحسابك واظهر في القمة</Text>
-                <Text style={styles.promoteSub}>زبائن أكثر، طلبات أكثر</Text>
-              </View>
-              <Feather name="chevron-left" size={18} color={C.accent} />
-            </LinearGradient>
-          </Pressable>
+            <View style={styles.promoteIcon}>
+              <Ionicons name="rocket" size={18} color={C.accent} />
+            </View>
+            <View style={{ flex: 1, alignItems: "flex-end" }}>
+              <Text style={styles.promoteTitle}>روّج لحسابك واظهر في القمة</Text>
+              <Text style={styles.promoteSub}>زبائن أكثر، طلبات أكثر</Text>
+            </View>
+            <Feather name="chevron-left" size={18} color={C.accent} />
+          </LinearGradient>
+        </Pressable>
+      )}
+
+      <FlatList
+        data={filteredArtisans}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item, index }) => (
+          <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
         )}
-
-        <FlatList
-          data={filteredArtisans}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: bottomPad + BOTTOM_NAV_HEIGHT + 16 },
-          ]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item, index }) => (
-            <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
-          )}
-          ListHeaderComponent={
-            filteredArtisans.length > 0 ? (
-              <View style={styles.listHeader}>
-                <Text style={styles.listCount}>{`${filteredArtisans.length} صاحب اختصاص متاح`}</Text>
-                {userLocation && (
-                  <View style={styles.sortedBadge}>
-                    <Feather name="navigation" size={11} color={C.accent} />
-                    <Text style={styles.sortedText}>مرتب حسب القرب</Text>
-                  </View>
-                )}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            loading ? (
-              <View style={styles.emptyState}>
-                <Feather name="loader" size={36} color={C.textMuted} />
-                <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyState}>
-                <Feather name="users" size={48} color={C.textMuted} />
-                <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
-                <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
-              </View>
-            )
-          }
-        />
+        ListHeaderComponent={
+          filteredArtisans.length > 0 ? (
+            <View style={styles.listHeader}>
+              <Text style={styles.listCount}>{`${filteredArtisans.length} صاحب اختصاص متاح`}</Text>
+              {userLocation && (
+                <View style={styles.sortedBadge}>
+                  <Feather name="navigation" size={11} color={C.accent} />
+                  <Text style={styles.sortedText}>مرتب حسب القرب</Text>
+                </View>
+              )}
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <Feather name="loader" size={36} color={C.textMuted} />
+              <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Feather name="users" size={48} color={C.textMuted} />
+              <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
+              <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
+            </View>
+          )
+        }
+      />
       </View>
-
-      {/* ── Bottom Navigation Bar ── */}
-      <BottomNavBar bottomInset={bottomPad} userRole={userRole} />
     </View>
   );
 }
 
-// ── Bottom Nav Styles ────────────────────────────────────────────────────────
-const navStyles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    backgroundColor: "#FFF",
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  inner: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingTop: 10,
-    paddingHorizontal: 8,
-    height: BOTTOM_NAV_HEIGHT,
-  },
-  item: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    flex: 1,
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "rgba(13,27,62,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  label: {
-    fontSize: 10,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.primary,
-    textAlign: "center",
-  },
-});
-
-// ── Featured Card Styles ─────────────────────────────────────────────────────
-const featStyles = StyleSheet.create({
-  section: {
-    paddingTop: 10,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    backgroundColor: C.background,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  sectionBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: C.accent,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  sectionBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
-  scrollRow: { paddingHorizontal: 14, gap: 10, paddingBottom: 4 },
-
-  /* Compact horizontal card */
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    width: 210,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-
-  /* Avatar */
-  avatarWrap: { position: "relative" },
-  avatar: { width: 44, height: 44, borderRadius: 12 },
-  avatarGrad: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarInitials: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent },
-  promoDot: {
-    position: "absolute",
-    bottom: 1,
-    right: 1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: C.accent,
-    borderWidth: 2,
-    borderColor: C.card,
-  },
-
-  /* Text info */
-  info: { flex: 1, gap: 3, alignItems: "flex-end" },
-  name: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  specialtyBadge: {
-    backgroundColor: "rgba(13,27,62,0.08)",
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  specialtyText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.primary },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    justifyContent: "flex-end",
-  },
-  ratingText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
-  separator: { fontSize: 11, color: C.textMuted },
-  distText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent },
-});
-
-// ── Main Styles ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
-    backgroundColor: C.background,
+    flex: 1, backgroundColor: C.background,
     ...(Platform.OS === "web" ? ({ height: "100vh", overflow: "hidden" } as any) : null),
   },
   stickyBar: { backgroundColor: "#FFF", borderBottomWidth: 1, borderBottomColor: C.border },
   listWrapper: { flex: 1, minHeight: 0 },
-
-  /* Slim header */
-  headerGrad: {
-    paddingBottom: 14,
-    paddingHorizontal: 18,
-    gap: 12,
-  },
-  headerTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locationText: {
-    fontSize: 12,
-    fontFamily: "Cairo_600SemiBold",
-    color: "rgba(255,255,255,0.85)",
-  },
+  headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
+  headerTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   logoMark: {
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: "rgba(201,168,76,0.2)",
+    alignItems: "center", justifyContent: "center",
   },
-  logoMarkText: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.accent },
-  supportBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
+  logoMarkText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  locationText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  headerActions: {
+    flexDirection: "row-reverse", justifyContent: "space-between",
+    alignItems: "flex-start", gap: 4,
   },
-
-  /* Search */
+  headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
+  headerIconLabel: {
+    fontSize: 10, fontFamily: "Cairo_600SemiBold",
+    color: "rgba(255,255,255,0.85)", textAlign: "center",
+  },
+  featuredBadgeRow: {
+    flexDirection: "row", justifyContent: "flex-end", marginTop: 2,
+  },
+  featuredBadge: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: "#C9A84C", borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
+    alignSelf: "flex-end",
+  },
+  featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
+  promoteBanner: {
+    marginHorizontal: 12, marginTop: 6, marginBottom: 4,
+    borderRadius: 12, overflow: "hidden",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+  },
+  promoteBannerGrad: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  promoteIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(201,168,76,0.18)",
+    alignItems: "center", justifyContent: "center",
+  },
+  promoteTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: Colors.light.text, textAlign: "right" },
+  promoteSub: { fontSize: 11, fontFamily: "Cairo_400Regular", color: Colors.light.textSecondary, textAlign: "right" },
+  headerIconBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center", justifyContent: "center",
+  },
   searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#FFF", borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 10, gap: 10,
   },
   searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_400Regular",
-    color: C.text,
-    padding: 0,
+    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
+    color: C.text, padding: 0,
   },
-
-  /* Category tabs */
   categoryTabsWrapper: { backgroundColor: "#FFF", maxHeight: 54 },
-  categoryTabs: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" },
-  catTab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: C.background,
-    borderWidth: 1.5,
-    borderColor: "transparent",
+  categoryTabs: {
+    paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row",
   },
-  catTabActive: { backgroundColor: C.accent, borderColor: C.accent },
+  catTab: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 20, backgroundColor: C.background,
+    borderWidth: 1.5, borderColor: "transparent",
+  },
+  catTabActive: {
+    backgroundColor: C.accent, borderColor: C.accent,
+  },
   catTabText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   catTabTextActive: { color: C.primary },
-
-  /* Specialty filters */
-  specialtyFilterWrapper: {
-    backgroundColor: "#FFF",
-    maxHeight: 46,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
+  specialtyFilterWrapper: { backgroundColor: "#FFF", maxHeight: 46, borderBottomWidth: 1, borderBottomColor: C.border },
   specialtyFilters: { paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexDirection: "row" },
   specFilter: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    backgroundColor: C.background,
-    borderWidth: 1,
-    borderColor: C.border,
+    paddingHorizontal: 12, paddingVertical: 4, borderRadius: 14,
+    backgroundColor: C.background, borderWidth: 1, borderColor: C.border,
   },
   specFilterActive: { backgroundColor: "rgba(13,27,62,0.08)", borderColor: C.primary },
   specFilterText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
   specFilterTextActive: { color: C.primary, fontFamily: "Cairo_600SemiBold" },
-
-  /* List */
   listContent: { padding: 16, gap: 12 },
   listHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", marginBottom: 4,
   },
   listCount: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   sortedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(201,168,76,0.1)",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
   sortedText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
-
-  /* Artisan card */
   artisanCard: {
-    backgroundColor: C.card,
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: C.card, borderRadius: 16, padding: 14,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
   },
   cardLeft: { position: "relative" },
   artisanPhoto: { width: 58, height: 58, borderRadius: 14 },
   artisanInitials: {
-    width: 58,
-    height: 58,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
+    width: 58, height: 58, borderRadius: 14,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
   },
   initialsText: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.accent },
   availDot: {
-    position: "absolute",
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: C.card,
+    position: "absolute", bottom: 2, right: 2,
+    width: 12, height: 12, borderRadius: 6,
+    borderWidth: 2, borderColor: C.card,
   },
   availOnline: { backgroundColor: "#22C55E" },
   availOffline: { backgroundColor: "#9CA3AF" },
   cardBody: { flex: 1, gap: 4 },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  artisanName: {
-    fontSize: 15,
-    fontFamily: "Cairo_700Bold",
-    color: C.text,
-    flex: 1,
-    textAlign: "right",
-  },
+  cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  artisanName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, flex: 1, textAlign: "right" },
   specialtyBadge: {
-    backgroundColor: "rgba(13,27,62,0.07)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: "rgba(13,27,62,0.07)", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
   specialtyText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.primary },
-  cardMidRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    justifyContent: "flex-end",
-  },
+  cardMidRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "flex-end" },
   ratingText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.text },
   reviewCount: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  artisanBio: {
-    fontSize: 12,
-    fontFamily: "Cairo_400Regular",
-    color: C.textSecondary,
-    textAlign: "right",
-  },
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  artisanBio: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   distancePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(201,168,76,0.1)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
   distanceText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent },
   availText: { fontSize: 11, fontFamily: "Cairo_400Regular" },
   availOnlineText: { color: "#22C55E" },
   availOfflineText: { color: C.textMuted },
-
-  /* Empty / loading states */
   emptyState: { alignItems: "center", paddingTop: 60, gap: 12 },
   emptyTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
   emptySubtitle: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+});
 
-  /* Promote banner */
-  promoteBanner: {
-    marginHorizontal: 12,
-    marginTop: 6,
-    marginBottom: 4,
-    borderRadius: 12,
+const featStyles = StyleSheet.create({
+  section: {
+    paddingTop: 10, paddingBottom: 8,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+    backgroundColor: C.background,
+  },
+  sectionHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
+    gap: 6, paddingHorizontal: 14, marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  sectionBadge: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: C.accent, borderRadius: 8,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  sectionBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+  scrollRow: { paddingHorizontal: 14, gap: 10, paddingBottom: 4 },
+  /* Compact card: 150px wide */
+  card: {
+    width: 150,
+    backgroundColor: C.card,
+    borderRadius: 14,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12, shadowRadius: 8, elevation: 5,
   },
-  promoteBannerGrad: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  /* Compact cover: 85px tall */
+  coverWrap: { width: "100%", height: 85, position: "relative" },
+  ratingBadge: {
+    position: "absolute", top: 5, right: 5,
+    flexDirection: "row", alignItems: "center", gap: 2,
+    backgroundColor: "rgba(10,18,45,0.80)",
+    borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
   },
-  promoteIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(201,168,76,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
+  ratingBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
+  promoTag: {
+    position: "absolute", top: 5, left: 5,
+    backgroundColor: C.accent,
+    borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2,
   },
-  promoteTitle: {
-    fontSize: 13,
-    fontFamily: "Cairo_700Bold",
-    color: Colors.light.text,
-    textAlign: "right",
-  },
-  promoteSub: {
-    fontSize: 11,
-    fontFamily: "Cairo_400Regular",
-    color: Colors.light.textSecondary,
-    textAlign: "right",
-  },
-
-  /* Featured badge on artisan list cards */
-  featuredBadgeRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 2 },
-  featuredBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#C9A84C",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+  promoTagText: { fontSize: 9, fontFamily: "Cairo_700Bold", color: C.primary },
+  body: { padding: 8, gap: 5 },
+  name: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  specialtyBadge: {
     alignSelf: "flex-end",
+    backgroundColor: "rgba(13,27,62,0.08)", borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
-  featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
+  specialtyText: { fontSize: 9, fontFamily: "Cairo_600SemiBold", color: C.primary },
+  distRow: { flexDirection: "row", alignItems: "center", gap: 3, justifyContent: "flex-end" },
+  distText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  bookBtn: { borderRadius: 8, overflow: "hidden", marginTop: 2 },
+  bookBtnGrad: {
+    alignItems: "center", justifyContent: "center",
+    paddingVertical: 6,
+  },
+  bookBtnText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
 });
