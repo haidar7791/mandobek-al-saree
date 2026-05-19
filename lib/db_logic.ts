@@ -268,17 +268,6 @@ export const getArtisanById = async (artisanId: string): Promise<ArtisanProfile 
   }
 };
 
-export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
-  try {
-    const q = query(collection(db, "artisans"), where("isPromoted", "==", true));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
-  } catch (err) {
-    console.error("getPromotedArtisans error:", err);
-    return [];
-  }
-};
-
 export const createOrUpdateArtisan = async (
   userId: string,
   data: Omit<ArtisanProfile, "id" | "userId" | "rating" | "reviewCount" | "createdAt">
@@ -548,32 +537,61 @@ export const cancelServiceRequest = async (requestId: string): Promise<void> => 
 
 export const subscribeToServiceRequests = (
   artisanId: string,
-  callback: (requests: ServiceRequest[]) => void
+  callback: (requests: ServiceRequest[]) => void,
+  onError?: (err: Error) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, "serviceRequests"),
     where("artisanId", "==", artisanId),
     orderBy("createdAt", "desc")
   );
-  return onSnapshot(q, (snap) => {
-    const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
-    callback(requests);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
+      callback(requests);
+    },
+    (err) => {
+      console.error("subscribeToServiceRequests error:", err);
+      callback([]);
+      onError?.(err);
+    }
+  );
 };
 
 export const subscribeToClientServiceRequests = (
   clientId: string,
-  callback: (requests: ServiceRequest[]) => void
+  callback: (requests: ServiceRequest[]) => void,
+  onError?: (err: Error) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, "serviceRequests"),
     where("clientId", "==", clientId),
     orderBy("createdAt", "desc")
   );
-  return onSnapshot(q, (snap) => {
-    const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
-    callback(requests);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
+      callback(requests);
+    },
+    (err) => {
+      console.error("subscribeToClientServiceRequests error:", err);
+      callback([]);
+      onError?.(err);
+    }
+  );
+};
+
+export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
+  try {
+    const snap = await getDocs(query(collection(db, "artisans")));
+    const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+    return all.filter(isFeaturedActive);
+  } catch (err) {
+    console.error("getPromotedArtisans error:", err);
+    return [];
+  }
 };
 
 export const subscribeToServiceRequest = (

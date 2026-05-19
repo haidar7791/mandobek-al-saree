@@ -195,6 +195,9 @@ export default function ReservationsScreen() {
       return;
     }
     let unsub: (() => void) | null = null;
+    // Safety: force-clear loading after 8 seconds in case snapshot never fires
+    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+
     (async () => {
       try {
         const profile = await getUserProfile(user.uid);
@@ -202,20 +205,25 @@ export default function ReservationsScreen() {
         const asArtisan = profile?.role === "artisan" && !!artisanRecord;
         setIsArtisan(asArtisan);
 
+        const handleList = (list: ServiceRequest[]) => {
+          setRequests(list);
+          setLoading(false);
+          clearTimeout(safetyTimer);
+        };
+        const handleError = () => {
+          setLoading(false);
+          clearTimeout(safetyTimer);
+        };
+
         if (asArtisan && artisanRecord) {
-          unsub = subscribeToServiceRequests(artisanRecord.id, (list) => {
-            setRequests(list);
-            setLoading(false);
-          });
+          unsub = subscribeToServiceRequests(artisanRecord.id, handleList, handleError);
         } else {
-          unsub = subscribeToClientServiceRequests(user.uid, (list) => {
-            setRequests(list);
-            setLoading(false);
-          });
+          unsub = subscribeToClientServiceRequests(user.uid, handleList, handleError);
         }
       } catch (err) {
         console.error("reservations setup error:", err);
         setLoading(false);
+        clearTimeout(safetyTimer);
       }
     })();
     return () => {

@@ -74,6 +74,23 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   );
 }
 
+function StarRow({ rating }: { rating: number }) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.4;
+  return (
+    <View style={{ flexDirection: "row", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Ionicons
+          key={i}
+          name={i <= full ? "star" : half && i === full + 1 ? "star-half" : "star-outline"}
+          size={12}
+          color="#F59E0B"
+        />
+      ))}
+    </View>
+  );
+}
+
 function FeaturedCard({
   artisan,
   userLocation,
@@ -86,43 +103,52 @@ function FeaturedCard({
       ? calcDistanceKm(userLocation, artisan.location)
       : null;
 
-  const initials = artisan.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  const coverUri =
-    artisan.photoUri || null;
+  const coverUri = artisan.photoUri || null;
 
   return (
     <Pressable
-      style={({ pressed }) => [featStyles.card, pressed && { opacity: 0.93 }]}
+      style={({ pressed }) => [featStyles.card, pressed && { transform: [{ scale: 0.97 }] }]}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
       }}
     >
+      {/* ── Cover image ── */}
       <View style={featStyles.coverWrap}>
         {coverUri ? (
           <Image source={{ uri: coverUri }} style={featStyles.cover} resizeMode="cover" />
         ) : (
-          <LinearGradient colors={[C.primary, "#1E2F60"]} style={featStyles.cover} />
+          <LinearGradient colors={["#162452", "#0D1B3E"]} style={featStyles.cover} />
         )}
+        {/* Dark-to-transparent gradient so text is legible */}
         <LinearGradient
-          colors={["transparent", "rgba(13,27,62,0.88)"]}
+          colors={["transparent", "rgba(10,20,50,0.82)"]}
           style={featStyles.coverOverlay}
         />
+
+        {/* Rating badge — top right */}
         <View style={featStyles.ratingBadge}>
           <Ionicons name="star" size={11} color="#F59E0B" />
           <Text style={featStyles.ratingBadgeText}>
-            {artisan.rating > 0 ? artisan.rating.toFixed(2) : "جديد"}
+            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
           </Text>
+        </View>
+
+        {/* "مميز" tag — top left */}
+        <View style={featStyles.promoTag}>
+          <Ionicons name="rocket" size={10} color={C.primary} />
+          <Text style={featStyles.promoTagText}>مميز</Text>
+        </View>
+
+        {/* Stars row — bottom of cover */}
+        <View style={featStyles.starRow}>
+          <StarRow rating={artisan.rating} />
         </View>
       </View>
 
+      {/* ── Body ── */}
       <View style={featStyles.body}>
+        {/* Name + specialty */}
         <View style={featStyles.nameRow}>
           <View style={featStyles.specialtyBadge}>
             <Text style={featStyles.specialtyText}>{getSpecialtyLabel(artisan.specialty)}</Text>
@@ -130,17 +156,19 @@ function FeaturedCard({
           <Text style={featStyles.name} numberOfLines={1}>{artisan.name}</Text>
         </View>
 
-        {distance !== null && (
-          <View style={featStyles.distRow}>
-            <Feather name="map-pin" size={12} color={C.accent} />
-            <Text style={featStyles.distText}>
-              {distance < 1
-                ? `${Math.round(distance * 1000)} م منك`
-                : `${distance.toFixed(2)} كم منك`}
-            </Text>
-          </View>
-        )}
+        {/* Distance */}
+        <View style={featStyles.distRow}>
+          <Feather name="map-pin" size={12} color={C.accent} />
+          <Text style={featStyles.distText}>
+            {distance === null
+              ? "موقع غير محدد"
+              : distance < 1
+              ? `${Math.round(distance * 1000)} م منك`
+              : `${distance.toFixed(2)} كم منك`}
+          </Text>
+        </View>
 
+        {/* Book button */}
         <Pressable
           style={featStyles.bookBtn}
           onPress={() => {
@@ -154,8 +182,8 @@ function FeaturedCard({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
-            <Text style={featStyles.bookBtnText}>طلب الخدمة الآن</Text>
             <Feather name="arrow-left" size={14} color={C.primary} />
+            <Text style={featStyles.bookBtnText}>طلب الخدمة الآن</Text>
           </LinearGradient>
         </Pressable>
       </View>
@@ -750,54 +778,67 @@ const styles = StyleSheet.create({
 
 const featStyles = StyleSheet.create({
   section: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: C.border,
+    backgroundColor: C.background,
   },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
-    gap: 8, paddingHorizontal: 16, marginBottom: 10,
+    gap: 8, paddingHorizontal: 16, marginBottom: 12,
   },
-  sectionTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text },
+  sectionTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text },
   sectionBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: C.accent, borderRadius: 10,
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 9, paddingVertical: 4,
   },
   sectionBadgeText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
-  scrollRow: { paddingHorizontal: 16, gap: 12 },
+  scrollRow: { paddingHorizontal: 16, gap: 14 },
   card: {
-    width: 200,
-    backgroundColor: C.card, borderRadius: 18,
+    width: 240,
+    backgroundColor: C.card, borderRadius: 20,
     overflow: "hidden",
-    shadowColor: C.shadow, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12, shadowRadius: 12, elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16, shadowRadius: 16, elevation: 8,
   },
-  coverWrap: { width: "100%", height: 130, position: "relative" },
-  cover: { width: "100%", height: "100%" },
+  coverWrap: { width: "100%", height: 160, position: "relative" },
+  cover: { width: "100%", height: "100%", position: "absolute" },
   coverOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
   ratingBadge: {
     position: "absolute", top: 10, right: 10,
     flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(13,27,62,0.75)",
-    borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
+    backgroundColor: "rgba(10,18,45,0.82)",
+    borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5,
+    borderWidth: 1, borderColor: "rgba(245,158,11,0.35)",
   },
-  ratingBadgeText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
-  body: { padding: 12, gap: 8 },
+  ratingBadgeText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
+  promoTag: {
+    position: "absolute", top: 10, left: 10,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: C.accent,
+    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  promoTagText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+  starRow: {
+    position: "absolute", bottom: 10, right: 10,
+  },
+  body: { padding: 13, gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
   name: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   specialtyBadge: {
-    backgroundColor: "rgba(13,27,62,0.08)", borderRadius: 8,
-    paddingHorizontal: 7, paddingVertical: 3,
+    backgroundColor: "rgba(13,27,62,0.09)", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
   specialtyText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.primary },
-  distRow: { flexDirection: "row", alignItems: "center", gap: 4, justifyContent: "flex-end" },
-  distText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  bookBtn: { borderRadius: 10, overflow: "hidden" },
+  distRow: { flexDirection: "row", alignItems: "center", gap: 5, justifyContent: "flex-end" },
+  distText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  bookBtn: { borderRadius: 12, overflow: "hidden", marginTop: 2 },
   bookBtnGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 9, gap: 6,
+    paddingVertical: 10, gap: 7,
   },
   bookBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary },
 });
