@@ -14,9 +14,13 @@ function configureHandler() {
       shouldShowBanner: true,
       shouldShowList: true,
       shouldPlaySound: true,
-      shouldSetBadge: false,
+      shouldSetBadge: true,
     }),
   });
+}
+
+export function configurePushHandler() {
+  configureHandler();
 }
 
 export async function registerForPushNotifications(

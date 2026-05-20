@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "ForUs",
-    "slug": "forus",
+    "slug": "sanad-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "forus",
+    "scheme": "ForUs",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {

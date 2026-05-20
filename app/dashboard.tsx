@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -34,6 +35,8 @@ import {
   GENERAL_SERVICES,
   getSpecialtyLabel,
   isFeaturedActive,
+  subscribeToUserChatLastAts,
+  subscribeToClientServiceRequests,
 } from "../lib/db_logic";
 import { signOut } from "firebase/auth";
 import Colors from "@/constants/colors";
@@ -276,6 +279,15 @@ export default function DashboardScreen() {
   const [userRole, setUserRole] = useState<"client" | "artisan" | "admin">("client");
   const [loading, setLoading] = useState(true);
 
+  const [chatLastAts, setChatLastAts] = useState<string[]>([]);
+  const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
+  const [pendingBookingCount, setPendingBookingCount] = useState(0);
+
+  const unreadMsgCount = useMemo(() => {
+    if (!lastMsgSeen) return 0;
+    return chatLastAts.filter((at) => at && at > lastMsgSeen).length;
+  }, [chatLastAts, lastMsgSeen]);
+
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
@@ -330,6 +342,56 @@ export default function DashboardScreen() {
       }
     });
     return () => sub.remove();
+  }, []);
+
+  // Badge: load last-seen timestamp for messages
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    AsyncStorage.getItem(`@forus:msgSeen:${user.uid}`).then((val) => {
+      if (val) {
+        setLastMsgSeen(val);
+      } else {
+        const now = new Date().toISOString();
+        AsyncStorage.setItem(`@forus:msgSeen:${user.uid}`, now);
+        setLastMsgSeen(now);
+      }
+    });
+  }, []);
+
+  // Badge: subscribe to chat timestamps (no profile lookups — fast)
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsub = subscribeToUserChatLastAts(user.uid, setChatLastAts);
+    return unsub;
+  }, []);
+
+  // Badge: subscribe to active/pending service requests
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsub = subscribeToClientServiceRequests(
+      user.uid,
+      (requests) => {
+        const count = requests.filter((r) =>
+          ["pending", "accepted", "on_the_way", "in_progress"].includes(r.status)
+        ).length;
+        setPendingBookingCount(count);
+      },
+      () => {}
+    );
+    return unsub;
+  }, []);
+
+  const handleMessagesPress = useCallback(async () => {
+    const user = auth.currentUser;
+    if (user) {
+      const now = new Date().toISOString();
+      await AsyncStorage.setItem(`@forus:msgSeen:${user.uid}`, now);
+      setLastMsgSeen(now);
+    }
+    router.push("/messages" as any);
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -410,12 +472,26 @@ export default function DashboardScreen() {
           <Pressable style={styles.headerIconCol} onPress={() => router.push("/reservations" as any)}>
             <View style={styles.headerIconBtn}>
               <Feather name="calendar" size={20} color="#FFF" />
+              {pendingBookingCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {pendingBookingCount > 99 ? "99+" : pendingBookingCount}
+                  </Text>
+                </View>
+              )}
             </View>
             <Text style={styles.headerIconLabel}>الحجوزات</Text>
           </Pressable>
-          <Pressable style={styles.headerIconCol} onPress={() => router.push("/messages" as any)}>
+          <Pressable style={styles.headerIconCol} onPress={handleMessagesPress}>
             <View style={styles.headerIconBtn}>
               <Feather name="message-circle" size={20} color="#FFF" />
+              {unreadMsgCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadMsgCount > 99 ? "99+" : unreadMsgCount}
+                  </Text>
+                </View>
+              )}
             </View>
             <Text style={styles.headerIconLabel}>المراسلات</Text>
           </Pressable>
@@ -746,6 +822,27 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", paddingTop: 60, gap: 12 },
   emptyTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
   emptySubtitle: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "#EF4444",
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#0D1B3E",
+    zIndex: 10,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontFamily: "Cairo_700Bold",
+    color: "#FFF",
+    lineHeight: 11,
+  },
 });
 
 const featStyles = StyleSheet.create({

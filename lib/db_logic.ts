@@ -825,6 +825,20 @@ export const subscribeToUserChats = (
   });
 };
 
+export const subscribeToUserChatLastAts = (
+  userId: string,
+  callback: (lastAts: string[]) => void
+): Unsubscribe => {
+  const q = query(
+    collection(db, "chats"),
+    where("participants", "array-contains", userId)
+  );
+  return onSnapshot(q, (snap) => {
+    const lastAts = snap.docs.map((d) => (d.data().lastAt as string) || "");
+    callback(lastAts);
+  });
+};
+
 export const deleteChat = async (chatId: string): Promise<void> => {
   try {
     const msgsSnap = await getDocs(collection(db, "chats", chatId, "messages"));
