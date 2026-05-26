@@ -3,7 +3,7 @@ modules = ["nodejs-20", "web"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["gh", "eas-cli"]
+packages = ["gh", "eas-cli", "nano"]
 
 [deployment]
 deploymentTarget = "cloudrun"

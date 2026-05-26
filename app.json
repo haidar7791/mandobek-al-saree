@@ -1,33 +1,33 @@
 {
   "expo": {
-    "name": "ForUs",
-    "slug": "sanad-app",
+    "name": "فورس - ForUs",
+    "slug": "forus-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ForUs",
+    "scheme": "forus",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D1B3E"
+      "backgroundColor": "#0D1421"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.forus.app",
+      "bundleIdentifier": "com.haidar.forus",
       "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "ForUs",
-        "CFBundleName": "ForUs"
+        "CFBundleDisplayName": "فورس - ForUs",
+        "CFBundleName": "فورس - ForUs"
       }
     },
     "android": {
-      "package": "com.forus.app",
+      "package": "com.haidar.forus",
       "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#0D1B3E",
+        "backgroundColor": "#0D1421",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
@@ -43,7 +43,7 @@
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
-      "name": "ForUs"
+      "name": "فورس - ForUs"
     },
     "plugins": [
       [
@@ -57,15 +57,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "ForUs needs access to your photos to upload your profile picture.",
-          "cameraPermission": "ForUs needs access to your camera to take your profile picture."
+          "photosPermission": "فورس - ForUs تحتاج إلى الوصول لصورك لرفع صورة الملف الشخصي.",
+          "cameraPermission": "فورس - ForUs تحتاج إلى الكاميرا لالتقاط صورة الملف الشخصي."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "ForUs needs your location to show nearby service providers.",
-          "locationWhenInUsePermission": "ForUs needs your location to show nearby service providers."
+          "locationAlwaysAndWhenInUsePermission": "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين.",
+          "locationWhenInUsePermission": "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين."
         }
       ]
     ],

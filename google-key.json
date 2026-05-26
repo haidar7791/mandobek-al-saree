@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "mandobek-al-saree",
+  "private_key_id": "ea03f751f28927aa84300ddfe563d96b846615a0",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDHLzjjdjWvI3IS\nUCf2jOCSjZ0ZVnV+6ivOf10UERMyNdWKZJcpuK2iDxzjSpTW2I4sw7MXncwvgnWX\nFkzPdsFYgPUS3eGIFBtzNdA+8KafYbihTodHsYcRF3uvx2wY4WSCc4KJ0CMfQhe5\nbiVDXiG0dzWvrmTW+yt++/kSdFbWm0U2jnCj0efkhSAuBYDGJyt+pBdkFDogl/VE\n4MAt8xm/ATHk4ubw9MdNZkDEhq+U8BDauhENYo+iWLaK/x5i6J8HZlMA6/QCEXv+\nEJmNpIHNN3tQAIEYC6pIe/miDt0/f5dJMo4nxsRwP64K4aWMOZIm67gFpzvNxfWR\n2FFBu29DAgMBAAECggEACEToY19OaM5pzLicSskNy+7jJG7tAu9Jn2buADMoYoay\nSrXGl3TvpOMPEPZfW7gISMkHj9BvJ1MdF05Vz5B054pFsJpFVa/pyn5VjJPTEbaf\npjAO+JeLn2TOhPY41sAJLPYnWVLji0dyYOsotm5GHX/FBZZ1UmG6ZRrdiivRLOGZ\nB5DM8NiF7XzgTDfskLuIoaw2FhLSc9qV5IWZtfpfZYyMJREHNYIWpxwELEV65ht4\nlb6nAS7XyZjZTREEgrci3eJRpELZfvRc+W9O1WIJSul2w1mXRakxztrVXBuS6XbO\nLQjdbIthzschCPEzF3ztFx29+1nOce6bxUVF7a23wQKBgQDmMJiE93cE66fCeXq4\n2u68OJ8UEqfkraS6cw6ziG3TnRAvhxYDynbQoKk6k/54DRJoDi9+dkIMdGtTORKW\nEVVX7tBY1arufS8iNrg6KIOQXmH7Y0+SD20xaDZo0EmSF9s64TLE25pZ7xPGH8pm\nkrm+tBCpxV+kPWdTphyZvZa+4wKBgQDdhKTG9Xje33fcwA12Qmw75BirU631qe1I\nuXejPes4/PgS7mwlhHtLANWY3EUX4cLJ8MEd1tc9SpNXnnEoFsU8xogeCUBgFYvY\nnx75EwVHkpnVvg0y+Y/62kCXDkxVNWKNXpC5/tQIHMhayTTe9VDaBUQlU3Ea8x46\nruz1uaQcIQKBgFVoGm7bUnGk7e2eHQaRVJrJd1x/P4P9WW1EW2QJbpZhZCv+NxDZ\nAhSOR7vQRU5Nq1KoUL7fKcptN5T9TAQaEkw581vCi1VJZT+QhfIuLgJWwov/YPqU\ndrMqM2XYQjPOXi0OeUPJJw/PQMr16Kb+MaSsMrKK5N2PWtMSgvIYAeJ5AoGAFVP+\nIYHk/2B4w/Jh2W8PyLxve5908mBIDmZ9FGSTz0rb/8ag9wPIczJDXpJmvKPqA1OA\n5ISY+LfDc/43WurGVtGurWWqoxWv/01iyAyCx59f3GqODshkinyVF3Yy90lKkd33\nBVF5zMYorEUPKCBqhnNXWlisXTHnSTMqcYZMPMECgYBSNNHK5Ya2VL+Xch6H8cxa\nJYSHFN7bvBuQOvU+j7PfwzZF3FgFf375yf5H95A2Ca4jrcujGt4q5I+IPAV4YrsV\ny3MeDLzOVGIgsWwA8b7vnDTwYobc9ben1FgojO0tVpm+kwEdQhbQ0dVkWjc7rOFh\nSplLd7Yq8Pi4e0vYVoczsw==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@mandobek-al-saree.iam.gserviceaccount.com",
+  "client_id": "117969603862471286364",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40mandobek-al-saree.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

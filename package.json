@@ -27,7 +27,7 @@
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "eas": "^0.1.0",
-    "eas-cli": "^19.0.0",
+    "eas-cli": "^19.0.5",
     "esbuild": "^0.28.0",
     "expo": "~54.0.33",
     "expo-blur": "~15.0.8",

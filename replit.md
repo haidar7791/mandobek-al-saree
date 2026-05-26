@@ -1,7 +1,7 @@
-# فورز - ForUs — Home & Car Services App
+# فورس - ForUs — Home & Car Services App
 
 ## Overview
-"فورز - ForUs" is an Arabic RTL mobile app built with **Expo (React Native)** for the Iraqi market. It connects clients with nearby artisans (craftsmen) for home services, car services, and general services.
+"فورس - ForUs" is an Arabic RTL mobile app built with **Expo (React Native)** for the Iraqi market. It connects clients with nearby artisans (craftsmen) for home services, car services, and general services.
 
 ## Tech Stack
 - **Frontend**: React Native (Expo SDK 54), Expo Router (file-based routing)
