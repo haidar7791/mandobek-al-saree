@@ -10,7 +10,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:911663879269:android:0d68e2a57f0665f155a28c",
         "android_client_info": {
-          "package_name": "com.haidar.forus"
+          "package_name": "com.forus.app"
         }
       },
       "oauth_client": [
@@ -37,7 +37,7 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:911663879269:android:3d021bfa2fb43d8555a28c",
+        "mobilesdk_app_id": "1:911663879269:android:53526f2c55ba393755a28c",
         "android_client_info": {
           "package_name": "com.haidar.forus"
         }

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>سياسة الخصوصية — فورس ForUs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+      background: #f4f6fb;
+      color: #1a1a2e;
+      line-height: 1.9;
+      font-size: 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #0D1421 0%, #1a2c5e 100%);
+      color: #fff;
+      padding: 56px 24px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 70% 50%, rgba(196,160,77,0.18) 0%, transparent 70%);
+    }
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      margin-bottom: 18px;
+      position: relative;
+      z-index: 1;
+    }
+    .logo-eagle {
+      font-size: 54px;
+      line-height: 1;
+    }
+    .logo-text {
+      text-align: right;
+    }
+    .logo-text .ar { font-size: 28px; font-weight: 800; color: #C4A04D; letter-spacing: 1px; }
+    .logo-text .en { font-size: 15px; color: rgba(255,255,255,0.7); letter-spacing: 3px; text-transform: uppercase; }
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 8px;
+    }
+    header p.subtitle {
+      color: rgba(255,255,255,0.65);
+      font-size: 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .header-divider {
+      width: 60px;
+      height: 3px;
+      background: #C4A04D;
+      margin: 16px auto 0;
+      border-radius: 2px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Layout ── */
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    /* ── Intro card ── */
+    .intro-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 32px;
+      box-shadow: 0 2px 16px rgba(13,20,33,0.07);
+      border-right: 5px solid #C4A04D;
+    }
+    .intro-card p { color: #444; }
+
+    /* ── Section card ── */
+    .section-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 12px rgba(13,20,33,0.06);
+      transition: box-shadow 0.2s;
+    }
+    .section-card:hover { box-shadow: 0 4px 24px rgba(13,20,33,0.11); }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .section-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0D1421, #1a2c5e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .section-header h2 {
+      font-size: 19px;
+      font-weight: 700;
+      color: #0D1421;
+    }
+
+    p { margin-bottom: 12px; color: #555; }
+    p:last-child { margin-bottom: 0; }
+
+    ul, ol {
+      padding-right: 20px;
+      margin-bottom: 12px;
+      color: #555;
+    }
+    ul li, ol li {
+      margin-bottom: 8px;
+      position: relative;
+    }
+    ul li::marker { color: #C4A04D; }
+    ol li::marker { color: #C4A04D; font-weight: 700; }
+
+    .highlight-box {
+      background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+      border: 1px solid #c5d5f8;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-top: 14px;
+      color: #2c3e7a;
+      font-size: 15px;
+    }
+    .highlight-box strong { color: #0D1421; }
+
+    .warning-box {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 12px;
+      color: #7a5c00;
+      font-size: 14px;
+    }
+
+    .green-box {
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 12px;
+      color: #2e7d32;
+      font-size: 15px;
+    }
+
+    /* ── Data table ── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    .data-table th {
+      background: #0D1421;
+      color: #C4A04D;
+      padding: 11px 14px;
+      text-align: right;
+      font-weight: 700;
+    }
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #eee;
+      color: #555;
+    }
+    .data-table tr:nth-child(even) td { background: #f9fafc; }
+    .data-table tr:last-child td { border-bottom: none; }
+
+    /* ── Last updated badge ── */
+    .meta-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f4f6fb;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 32px;
+    }
+    .meta-bar span { color: #C4A04D; font-weight: 700; }
+
+    /* ── Contact card ── */
+    .contact-card {
+      background: linear-gradient(135deg, #0D1421 0%, #1a2c5e 100%);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      color: #fff;
+      margin-top: 10px;
+    }
+    .contact-card h2 { font-size: 20px; margin-bottom: 8px; }
+    .contact-card p { color: rgba(255,255,255,0.7); margin-bottom: 20px; }
+    .contact-card a {
+      display: inline-block;
+      background: #C4A04D;
+      color: #0D1421;
+      padding: 12px 28px;
+      border-radius: 30px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      transition: opacity 0.2s;
+    }
+    .contact-card a:hover { opacity: 0.88; }
+
+    /* ── Footer ── */
+    footer {
+      background: #0D1421;
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      padding: 24px 20px;
+      font-size: 13px;
+    }
+    footer strong { color: #C4A04D; }
+
+    @media (max-width: 600px) {
+      header { padding: 40px 16px 28px; }
+      .section-card, .intro-card { padding: 20px 18px; }
+      header h1 { font-size: 20px; }
+      .data-table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header>
+  <div class="logo-wrap">
+    <div class="logo-eagle">🦅</div>
+    <div class="logo-text">
+      <div class="ar">فورس</div>
+      <div class="en">ForUs</div>
+    </div>
+  </div>
+  <h1>سياسة الخصوصية</h1>
+  <p class="subtitle">Privacy Policy</p>
+  <div class="header-divider"></div>
+</header>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<main>
+
+  <!-- Meta bar -->
+  <div class="meta-bar">
+    📅 آخر تحديث: <span>مايو 2025</span> &nbsp;|&nbsp; 🌐 تطبيق <span>فورس - ForUs</span> &nbsp;|&nbsp; معرّف الحزمة: <span>com.haidar.forus</span>
+  </div>
+
+  <!-- Intro -->
+  <div class="intro-card">
+    <p>
+      نُرحّب بكم في تطبيق <strong>فورس - ForUs</strong>، المنصة العراقية لربط أصحاب المنازل والسيارات بالحرفيين والمختصين المحليين.
+      إننا في فورس نُدرك أهمية خصوصيتك، ونلتزم التزامًا كاملًا بحماية بياناتك الشخصية ومعاملتها بأعلى درجات السرية والأمان.
+      توضح هذه الوثيقة كيف نجمع المعلومات ونستخدمها ونحمايها، وما هي حقوقك كمستخدم.
+    </p>
+    <div class="green-box">
+      ✅ <strong>التزامنا الأساسي:</strong> لن نبيع بياناتك الشخصية أبدًا، ولن نشاركها مع أي طرف ثالث دون موافقتك الصريحة.
+    </div>
+  </div>
+
+  <!-- 1. Data We Collect -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">📋</div>
+      <h2>١. البيانات التي نجمعها</h2>
+    </div>
+    <p>نجمع فقط البيانات الضرورية لتشغيل الخدمة وتحسين تجربتك:</p>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>نوع البيانات</th>
+          <th>الغرض</th>
+          <th>إلزامية؟</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>الاسم الكامل</td>
+          <td>تعريف المستخدم داخل التطبيق</td>
+          <td>نعم</td>
+        </tr>
+        <tr>
+          <td>رقم الهاتف</td>
+          <td>التواصل مع الحرفيين وتسجيل الدخول</td>
+          <td>نعم</td>
+        </tr>
+        <tr>
+          <td>الموقع الجغرافي (GPS)</td>
+          <td>عرض الحرفيين القريبين منك</td>
+          <td>نعم (أثناء الاستخدام فقط)</td>
+        </tr>
+        <tr>
+          <td>صورة الملف الشخصي</td>
+          <td>تمييز الحساب وبناء الثقة</td>
+          <td>اختيارية</td>
+        </tr>
+        <tr>
+          <td>التخصص والمهنة (للحرفيين)</td>
+          <td>إدراج الحرفي في الفئة المناسبة</td>
+          <td>نعم (للحرفيين)</td>
+        </tr>
+        <tr>
+          <td>رسائل الدردشة</td>
+          <td>التواصل المباشر بين الطرفين</td>
+          <td>عند استخدام خاصية المحادثة</td>
+        </tr>
+        <tr>
+          <td>طلبات الخدمة</td>
+          <td>تتبع الطلبات وحالتها</td>
+          <td>عند تقديم طلب</td>
+        </tr>
+        <tr>
+          <td>رصيد المحفظة الإعلانية</td>
+          <td>إدارة رصيد الإعلانات للحرفيين</td>
+          <td>عند استخدام المحفظة</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 2. How We Use Data -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">🎯</div>
+      <h2>٢. كيف نستخدم بياناتك</h2>
+    </div>
+    <p>نستخدم البيانات التي نجمعها حصريًا للأغراض التالية:</p>
+    <ul>
+      <li>عرض الحرفيين المتاحين بالقرب منك مرتبين حسب المسافة الجغرافية</li>
+      <li>تمكينك من التواصل مع الحرفيين عبر الاتصال أو واتساب أو الدردشة الداخلية</li>
+      <li>إدارة طلبات الخدمة ومتابعة حالتها من البداية حتى الإتمام</li>
+      <li>تشغيل نظام التقييمات والمراجعات لضمان جودة الخدمة</li>
+      <li>إرسال إشعارات تتعلق بطلباتك أو رسائلك فقط</li>
+      <li>تحسين أداء التطبيق وتطوير ميزاته بناءً على أنماط الاستخدام العامة المجهولة الهوية</li>
+    </ul>
+    <div class="highlight-box">
+      <strong>لا نستخدم بياناتك</strong> في الإعلانات الموجّهة من جهات خارجية، ولا في أي أغراض تجارية خارج نطاق تقديم خدمة فورس.
+    </div>
+  </div>
+
+  <!-- 3. Location -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">📍</div>
+      <h2>٣. بيانات الموقع الجغرافي</h2>
+    </div>
+    <p>
+      يستخدم تطبيق فورس موقعك الجغرافي لعرض الحرفيين الأقرب إليك وترتيبهم حسب المسافة.
+      نحن ملتزمون بالمبادئ التالية:
+    </p>
+    <ul>
+      <li>🔐 لا يُجمع موقعك إلا <strong>أثناء استخدامك الفعلي للتطبيق</strong> (لا تتبع في الخلفية)</li>
+      <li>📌 يُستخدم الموقع محليًا لحساب المسافات فقط ولا يُرسل لأطراف خارجية</li>
+      <li>❌ يمكنك رفض إذن الموقع في أي وقت من إعدادات هاتفك</li>
+      <li>🗺️ لا نخزّن تاريخ مساراتك أو حركاتك اليومية</li>
+    </ul>
+    <div class="warning-box">
+      ⚠️ عند رفض إذن الموقع، لن يتمكن التطبيق من عرض الحرفيين القريبين منك، لكن يمكنك تصفح الخدمات يدويًا.
+    </div>
+  </div>
+
+  <!-- 4. Data Storage & Security -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">🔒</div>
+      <h2>٤. تخزين البيانات وأمانها</h2>
+    </div>
+    <p>تُخزَّن بياناتك على منصة <strong>Google Firebase</strong> التي تستوفي أعلى معايير الأمان العالمية:</p>
+    <ul>
+      <li>🔑 تشفير كامل للبيانات أثناء النقل (TLS 1.3) وأثناء التخزين</li>
+      <li>🛡️ قواعد أمان Firestore تمنع أي مستخدم من الوصول لبيانات مستخدم آخر</li>
+      <li>🔐 المصادقة عبر Firebase Authentication مع حماية ضد الاختراق</li>
+      <li>📦 النسخ الاحتياطي التلقائي عبر بنية Google السحابية</li>
+      <li>👁️ لا يصل فريق فورس لرسائلك الخاصة إلا بموافقتك أو بأمر قضائي</li>
+    </ul>
+    <div class="highlight-box">
+      <strong>مشروع Firebase المستخدم:</strong> mandobek-al-saree — مرتبط حصريًا بتطبيق فورس.
+    </div>
+  </div>
+
+  <!-- 5. Third-Party Sharing -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">🚫</div>
+      <h2>٥. مشاركة البيانات مع الأطراف الثالثة</h2>
+    </div>
+    <p><strong>نحن لا نبيع ولا نؤجّر ولا نشارك بياناتك الشخصية مع أي جهة خارجية</strong> باستثناء الحالات التالية المحدودة:</p>
+    <ul>
+      <li>
+        <strong>مزودو الخدمات التقنية الضروريين:</strong> مثل Google Firebase (التخزين والمصادقة)
+        — وهؤلاء ملزمون بسياسات خصوصية صارمة ولا يستخدمون بياناتك لأغراضهم الخاصة
+      </li>
+      <li>
+        <strong>الحرفي الذي تتواصل معه:</strong> يرى اسمك ورقم هاتفك فقط عند طلب خدمته
+      </li>
+      <li>
+        <strong>الالتزامات القانونية:</strong> إذا طُلب ذلك بموجب أمر قضائي رسمي
+      </li>
+    </ul>
+    <div class="green-box">
+      ✅ <strong>لا نشارك بياناتك</strong> مع شركات الإعلانات، المسوّقين، أو أي جهة تجارية خارجية مهما كانت.
+    </div>
+  </div>
+
+  <!-- 6. Push Notifications -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">🔔</div>
+      <h2>٦. الإشعارات الفورية</h2>
+    </div>
+    <p>يستخدم التطبيق الإشعارات الفورية لإعلامك بالأحداث المتعلقة بك مباشرة:</p>
+    <ul>
+      <li>📩 رسالة جديدة من حرفي أو عميل</li>
+      <li>📋 تحديث حالة طلب خدمتك</li>
+      <li>💰 الموافقة على طلب إيداع أو سحب من المحفظة</li>
+    </ul>
+    <p>لا نرسل إشعارات تسويقية أو إعلانية من جهات خارجية. يمكنك إيقاف الإشعارات في أي وقت من إعدادات هاتفك.</p>
+    <p>رمز الإشعارات (Expo Push Token) لا يُشارك مع أي طرف ثالث.</p>
+  </div>
+
+  <!-- 7. Children's Privacy -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">👶</div>
+      <h2>٧. خصوصية الأطفال</h2>
+    </div>
+    <p>
+      تطبيق فورس مخصص للمستخدمين الذين تجاوزوا سن <strong>18 عامًا</strong>.
+      لا نجمع بيانات من الأطفال عن قصد. إذا اكتشفنا أن مستخدمًا دون السن القانوني قد سجّل حسابًا،
+      سنقوم فورًا بحذف حسابه وجميع بياناته.
+    </p>
+  </div>
+
+  <!-- 8. User Rights -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">⚖️</div>
+      <h2>٨. حقوقك كمستخدم</h2>
+    </div>
+    <p>نضمن لك كامل الحقوق التالية في أي وقت:</p>
+    <ol>
+      <li><strong>الاطلاع:</strong> يمكنك طلب نسخة كاملة من بياناتك المخزّنة لدينا</li>
+      <li><strong>التصحيح:</strong> يمكنك تعديل بياناتك من خلال صفحة الملف الشخصي مباشرة</li>
+      <li><strong>الحذف:</strong> يمكنك طلب حذف حسابك وجميع بياناتك نهائيًا</li>
+      <li><strong>التقييد:</strong> يمكنك إيقاف تفعيل حسابك مؤقتًا دون حذفه</li>
+      <li><strong>الاعتراض:</strong> يمكنك الاعتراض على أي معالجة لبياناتك لا تُعدّ ضرورية للخدمة</li>
+      <li><strong>النقل:</strong> يمكنك طلب بياناتك بصيغة قابلة للقراءة الآلية</li>
+    </ol>
+    <p style="margin-top:12px;">لممارسة أي من هذه الحقوق، تواصل معنا عبر معلومات الاتصال أدناه.</p>
+  </div>
+
+  <!-- 9. Wallet & Payments -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">💳</div>
+      <h2>٩. المحفظة والمدفوعات</h2>
+    </div>
+    <p>
+      المحفظة في تطبيق فورس مخصصة حصرًا لرصيد الإعلانات للحرفيين.
+      جميع طلبات الإيداع والسحب تخضع للمراجعة اليدوية من قِبل الإدارة قبل التنفيذ.
+    </p>
+    <ul>
+      <li>لا يتضمن التطبيق بوابات دفع إلكتروني مباشرة في الوقت الحالي</li>
+      <li>لا تُخزَّن أرقام البطاقات البنكية أو أي بيانات مالية حساسة داخل التطبيق</li>
+      <li>سجلات المعاملات محمية ولا يطّلع عليها إلا صاحب الحساب والإدارة</li>
+    </ul>
+  </div>
+
+  <!-- 10. Policy Updates -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">📝</div>
+      <h2>١٠. تحديثات هذه السياسة</h2>
+    </div>
+    <p>
+      قد نُحدّث سياسة الخصوصية هذه بشكل دوري لتعكس تغييرات في التطبيق أو المتطلبات القانونية.
+      سنُخطرك بأي تغييرات جوهرية عبر:
+    </p>
+    <ul>
+      <li>إشعار داخل التطبيق عند تسجيل الدخول</li>
+      <li>تحديث تاريخ "آخر تعديل" في أعلى هذه الصفحة</li>
+    </ul>
+    <p>استمرارك في استخدام التطبيق بعد نشر التعديلات يعني موافقتك على السياسة المحدّثة.</p>
+  </div>
+
+  <!-- Contact -->
+  <div class="contact-card">
+    <h2>📬 تواصل معنا</h2>
+    <p>لأي استفسار حول سياسة الخصوصية أو لممارسة حقوقك، نحن هنا لمساعدتك</p>
+    <p style="color:rgba(255,255,255,0.55); font-size:14px; margin-bottom: 20px;">
+      تطبيق فورس — العراق<br/>
+      com.haidar.forus
+    </p>
+    <a href="mailto:support@forus.app">📧 support@forus.app</a>
+  </div>
+
+</main>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer>
+  <p>© 2025 <strong>فورس - ForUs</strong>. جميع الحقوق محفوظة.</p>
+  <p style="margin-top:6px; font-size:12px;">هذه الوثيقة سارية المفعول اعتبارًا من مايو 2025</p>
+</footer>
+
+</body>
+</html>
