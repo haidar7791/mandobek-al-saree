@@ -303,13 +303,12 @@ export const subscribeToArtisans = (
   });
 };
 
-// ─── Reviews ──────────────────────────────────────────────────────────────────
+// ─── Reviews (subcollection: artisans/{artisanId}/reviews) ────────────────────
 
 export const getReviews = async (artisanId: string): Promise<Review[]> => {
   try {
     const q = query(
-      collection(db, "reviews"),
-      where("artisanId", "==", artisanId),
+      collection(db, "artisans", artisanId, "reviews"),
       orderBy("createdAt", "desc")
     );
     const snap = await getDocs(q);
@@ -320,22 +319,43 @@ export const getReviews = async (artisanId: string): Promise<Review[]> => {
   }
 };
 
+export const subscribeToReviews = (
+  artisanId: string,
+  callback: (reviews: Review[]) => void
+): Unsubscribe => {
+  const q = query(
+    collection(db, "artisans", artisanId, "reviews"),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Review)));
+    },
+    (err) => {
+      console.error("subscribeToReviews error:", err);
+    }
+  );
+};
+
 export const addReview = async (
   review: Omit<Review, "id" | "createdAt">
 ): Promise<void> => {
-  const docRef = await addDoc(collection(db, "reviews"), {
+  await addDoc(collection(db, "artisans", review.artisanId, "reviews"), {
     ...review,
     createdAt: new Date().toISOString(),
   });
 
-  const reviews = await getReviews(review.artisanId);
-  const allRatings = reviews.map((r) => r.rating);
-  allRatings.push(review.rating);
-  const avg = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+  // Recalculate average from all reviews now in the subcollection
+  const allReviews = await getReviews(review.artisanId);
+  const avg =
+    allReviews.length > 0
+      ? allReviews.reduce((a, r) => a + r.rating, 0) / allReviews.length
+      : review.rating;
 
   await updateDoc(doc(db, "artisans", review.artisanId), {
     rating: Math.round(avg * 10) / 10,
-    reviewCount: allRatings.length,
+    reviewCount: allReviews.length,
   });
 };
 
@@ -553,7 +573,6 @@ export const subscribeToServiceRequests = (
     },
     (err) => {
       console.error("subscribeToServiceRequests error:", err);
-      callback([]);
       onError?.(err);
     }
   );
@@ -577,7 +596,6 @@ export const subscribeToClientServiceRequests = (
     },
     (err) => {
       console.error("subscribeToClientServiceRequests error:", err);
-      callback([]);
       onError?.(err);
     }
   );

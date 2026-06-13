@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   getArtisanById,
-  getReviews,
+  subscribeToReviews,
   addReview,
   createServiceRequest,
   getUserProfile,
@@ -124,12 +124,8 @@ export default function ArtisanProfileScreen() {
         setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
       }
 
-      const [artisanData, reviewData] = await Promise.all([
-        getArtisanById(artisanId),
-        getReviews(artisanId),
-      ]);
+      const artisanData = await getArtisanById(artisanId);
       setArtisan(artisanData);
-      setReviews(reviewData);
       if (artisanData?.userId) {
         const artisanProfile = await getUserProfile(artisanData.userId);
         setPortfolioImages(artisanProfile?.portfolio_images || []);
@@ -142,6 +138,20 @@ export default function ArtisanProfileScreen() {
   }, [artisanId]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  // Real-time reviews subscription — independent from loadData
+  useEffect(() => {
+    if (!artisanId) return;
+    const unsub = subscribeToReviews(artisanId, setReviews);
+    return unsub;
+  }, [artisanId]);
+
+  // Computed rating/count from live reviews state
+  const computedRating = useMemo(() => {
+    if (reviews.length === 0) return 0;
+    return Math.round(reviews.reduce((a, r) => a + r.rating, 0) / reviews.length * 10) / 10;
+  }, [reviews]);
+  const computedCount = reviews.length;
 
   const handleCall = () => {
     if (!artisan?.phone) return;
@@ -294,13 +304,13 @@ export default function ArtisanProfileScreen() {
           <View style={styles.heroStats}>
             <View style={styles.statItem}>
               <Text style={styles.statVal}>
-                {artisan.rating > 0 ? artisan.rating.toFixed(1) : "-"}
+                {computedRating > 0 ? computedRating.toFixed(1) : "-"}
               </Text>
               <Text style={styles.statLabel}>التقييم</Text>
             </View>
             <View style={styles.statDiv} />
             <View style={styles.statItem}>
-              <Text style={styles.statVal}>{artisan.reviewCount}</Text>
+              <Text style={styles.statVal}>{computedCount}</Text>
               <Text style={styles.statLabel}>تقييم</Text>
             </View>
             <View style={styles.statDiv} />
@@ -394,12 +404,12 @@ export default function ArtisanProfileScreen() {
             <Text style={styles.sectionTitle}>التقييمات والآراء</Text>
           </View>
 
-          {artisan.reviewCount > 0 && (
+          {computedCount > 0 && (
             <View style={styles.ratingOverview}>
-              <StarDisplay rating={artisan.rating} size={20} />
-              <Text style={styles.ratingBig}>{artisan.rating.toFixed(1)}</Text>
+              <StarDisplay rating={computedRating} size={20} />
+              <Text style={styles.ratingBig}>{computedRating.toFixed(1)}</Text>
               <Text style={styles.ratingOf}>/ 5</Text>
-              <Text style={styles.ratingCount}>({artisan.reviewCount} تقييم)</Text>
+              <Text style={styles.ratingCount}>({computedCount} تقييم)</Text>
             </View>
           )}
 

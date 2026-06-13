@@ -194,23 +194,34 @@ export default function ReservationsScreen() {
       router.replace("/login");
       return;
     }
+
     let unsub: (() => void) | null = null;
-    // Safety: force-clear loading after 8 seconds in case snapshot never fires
-    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+    let mounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 8000);
 
     (async () => {
       try {
-        const profile = await getUserProfile(user.uid);
-        const artisanRecord = await getArtisanByUserId(user.uid);
+        // Fetch in parallel to reduce wait time
+        const [profile, artisanRecord] = await Promise.all([
+          getUserProfile(user.uid),
+          getArtisanByUserId(user.uid),
+        ]);
+
+        if (!mounted) return; // Component unmounted during async fetch — abort
+
         const asArtisan = profile?.role === "artisan" && !!artisanRecord;
         setIsArtisan(asArtisan);
 
         const handleList = (list: ServiceRequest[]) => {
+          if (!mounted) return;
           setRequests(list);
           setLoading(false);
           clearTimeout(safetyTimer);
         };
         const handleError = () => {
+          if (!mounted) return;
           setLoading(false);
           clearTimeout(safetyTimer);
         };
@@ -222,11 +233,16 @@ export default function ReservationsScreen() {
         }
       } catch (err) {
         console.error("reservations setup error:", err);
-        setLoading(false);
-        clearTimeout(safetyTimer);
+        if (mounted) {
+          setLoading(false);
+          clearTimeout(safetyTimer);
+        }
       }
     })();
+
     return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
       if (unsub) unsub();
     };
   }, []);
