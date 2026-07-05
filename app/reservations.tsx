@@ -268,9 +268,17 @@ export default function ReservationsScreen() {
 
   const handleAccept = async (req: ServiceRequest) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Optimistic update: reflect the new status instantly, before Firestore confirms
+    setRequests((prev) =>
+      prev.map((r) => (r.id === req.id ? { ...r, status: "accepted" } : r))
+    );
     try {
       await acceptServiceRequest(req.id);
     } catch {
+      // Revert on failure
+      setRequests((prev) =>
+        prev.map((r) => (r.id === req.id ? { ...r, status: "pending" } : r))
+      );
       Alert.alert("خطأ", "تعذّر قبول الطلب");
     }
   };
@@ -283,9 +291,16 @@ export default function ReservationsScreen() {
         style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          // Optimistic update: reflect the new status instantly, before Firestore confirms
+          setRequests((prev) =>
+            prev.map((r) => (r.id === req.id ? { ...r, status: "rejected" } : r))
+          );
           try {
             await rejectServiceRequest(req.id);
           } catch {
+            setRequests((prev) =>
+              prev.map((r) => (r.id === req.id ? { ...r, status: "pending" } : r))
+            );
             Alert.alert("خطأ", "تعذّر رفض الطلب");
           }
         },
