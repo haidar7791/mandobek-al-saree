@@ -74,5 +74,5 @@ if (Platform.OS === "web") {
 const storage = getStorage(app);
 const rtdb = getDatabase(app);
 
-export { app, auth, db, storage, rtdb };
+export { app, auth, db, storage, rtdb, firebaseConfig };
 export default app;

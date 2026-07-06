@@ -40,6 +40,7 @@ import {
   getCategoryForSpecialty,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import PhoneVerificationModal from "@/components/PhoneVerificationModal";
 
 const C = Colors.light;
 const SCREEN_W = Dimensions.get("window").width;
@@ -85,10 +86,13 @@ function InputField({
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const loadedPhoneRef = React.useRef("");
   const [currentUser, setCurrentUser] = useState("");
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [showPhoneVerifyModal, setShowPhoneVerifyModal] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -124,6 +128,8 @@ export default function ProfileScreen() {
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
+          loadedPhoneRef.current = profile.phone || "";
+          setIsPhoneVerified(profile.isPhoneVerified === true);
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
@@ -250,13 +256,20 @@ export default function ProfileScreen() {
     try {
       const userId = auth.currentUser?.uid;
       if (!userId) throw new Error("not authenticated");
+      const phoneChanged = phone.trim() !== loadedPhoneRef.current.trim();
+      const nextIsPhoneVerified = phoneChanged ? false : isPhoneVerified;
       await setUserProfile(userId, {
         name: name.trim(),
         phone: phone.trim(),
+        isPhoneVerified: nextIsPhoneVerified,
         photoUri,
         specialty: specialty || undefined,
         bio: professionalBio.trim(),
       });
+      if (phoneChanged) {
+        setIsPhoneVerified(false);
+        loadedPhoneRef.current = phone.trim();
+      }
 
       // Sync artisan record so the user appears in dashboard search
       if (role === "artisan" && specialty) {
@@ -388,6 +401,21 @@ export default function ProfileScreen() {
               icon={<Feather name="phone" size={17} color={C.textSecondary} />}
               keyboardType="phone-pad"
             />
+
+            {isPhoneVerified ? (
+              <View style={styles.phoneVerifiedRow}>
+                <Feather name="check-circle" size={15} color="#16A34A" />
+                <Text style={styles.phoneVerifiedText}>رقم الهاتف مؤكد</Text>
+              </View>
+            ) : (
+              <Pressable
+                style={styles.verifyPhoneBtn}
+                onPress={() => setShowPhoneVerifyModal(true)}
+              >
+                <Feather name="shield" size={15} color={C.accent} />
+                <Text style={styles.verifyPhoneBtnText}>تأكيد رقم الهاتف الآن</Text>
+              </Pressable>
+            )}
 
             {/* Specialty Dropdown (always shown) */}
             <View style={styles.fieldWrap}>
@@ -621,6 +649,19 @@ export default function ProfileScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* ─── Phone Verification (OTP) Modal ─── */}
+      <PhoneVerificationModal
+        visible={showPhoneVerifyModal}
+        onClose={() => setShowPhoneVerifyModal(false)}
+        userId={uid}
+        initialPhone={phone}
+        onVerified={(verifiedPhone) => {
+          setPhone(verifiedPhone);
+          loadedPhoneRef.current = verifiedPhone;
+          setIsPhoneVerified(true);
+        }}
+      />
     </View>
   );
 }
@@ -752,6 +793,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   fieldWrap: { gap: 6 },
+  phoneVerifiedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: -6,
+  },
+  phoneVerifiedText: {
+    fontSize: 12.5,
+    fontFamily: "Cairo_600SemiBold",
+    color: "#16A34A",
+  },
+  verifyPhoneBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: -6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.accent,
+  },
+  verifyPhoneBtnText: {
+    fontSize: 13,
+    fontFamily: "Cairo_700Bold",
+    color: C.accent,
+  },
   fieldLabel: {
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
