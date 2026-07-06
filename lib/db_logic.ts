@@ -971,12 +971,13 @@ export const rejectWalletRequest = async (reqId: string): Promise<void> => {
 export interface UserProfile {
   name: string;
   phone: string;
+  isPhoneVerified?: boolean;
   photoUri: string | null;
   role: "client" | "artisan" | "admin";
   location?: GeoLocation | null;
   specialty?: string;
-  professionalBio?: string;
-  portfolio_images?: string[];
+  bio?: string;
+  portfolio?: string[];
   pushToken?: string | null;
   createdAt?: any;
   email?: string;
@@ -1053,10 +1054,10 @@ export const addPortfolioImage = async (
 ): Promise<void> => {
   const userRef = doc(db, "users", userId);
   try {
-    await updateDoc(userRef, { portfolio_images: arrayUnion(imageUrl) });
+    await updateDoc(userRef, { portfolio: arrayUnion(imageUrl) });
   } catch (err: any) {
     if (err?.code === "not-found") {
-      await setDoc(userRef, { portfolio_images: [imageUrl] }, { merge: true });
+      await setDoc(userRef, { portfolio: [imageUrl] }, { merge: true });
     } else {
       throw err;
     }
@@ -1068,7 +1069,7 @@ export const removePortfolioImage = async (
   imageUrl: string
 ): Promise<void> => {
   await updateDoc(doc(db, "users", userId), {
-    portfolio_images: arrayRemove(imageUrl),
+    portfolio: arrayRemove(imageUrl),
   });
   try {
     const storageRef = ref(storage, imageUrl);

@@ -128,7 +128,7 @@ export default function ArtisanProfileScreen() {
       setArtisan(artisanData);
       if (artisanData?.userId) {
         const artisanProfile = await getUserProfile(artisanData.userId);
-        setPortfolioImages(artisanProfile?.portfolio_images || []);
+        setPortfolioImages(artisanProfile?.portfolio || []);
       }
     } catch (err) {
       console.error("loadData error:", err);

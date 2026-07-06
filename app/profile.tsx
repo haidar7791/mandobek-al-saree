@@ -127,8 +127,8 @@ export default function ProfileScreen() {
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
-          setProfessionalBio(profile.professionalBio || "");
-          setPortfolioImages(profile.portfolio_images || []);
+          setProfessionalBio(profile.bio || "");
+          setPortfolioImages(profile.portfolio || []);
         } else {
           setName(displayId);
         }
@@ -255,7 +255,7 @@ export default function ProfileScreen() {
         phone: phone.trim(),
         photoUri,
         specialty: specialty || undefined,
-        professionalBio: professionalBio.trim(),
+        bio: professionalBio.trim(),
       });
 
       // Sync artisan record so the user appears in dashboard search

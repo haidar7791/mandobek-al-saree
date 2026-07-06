@@ -20,9 +20,8 @@ const MIN_PORTFOLIO_IMAGES = 3;
  * which fields still need to be completed, so the UI can gently nudge the user
  * instead of blocking navigation.
  *
- * Field mapping note: the app's existing schema uses `phone` / `photoUri` /
- * `professionalBio` / `portfolio_images`. `isPhoneVerified` is a new optional
- * field (defaults to unverified when absent) layered on top of the existing `phone`.
+ * Fields checked (matching the real Firestore schema in `users/{userId}`):
+ * `phone` + `isPhoneVerified`, `photoUri`, `bio` (>=10 chars), `portfolio` (array, >=3 images).
  */
 export function useProfileCheck(userId: string | null | undefined): ProfileCheckResult {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -54,13 +53,13 @@ export function useProfileCheck(userId: string | null | undefined): ProfileCheck
   const missingFields: MissingProfileField[] = [];
 
   if (profile) {
-    const isPhoneVerified = (profile as any).isPhoneVerified === true;
+    const isPhoneVerified = profile.isPhoneVerified === true;
     if (!profile.phone || !isPhoneVerified) missingFields.push("phone");
     if (!profile.photoUri) missingFields.push("photo");
-    if (!profile.professionalBio || profile.professionalBio.trim().length < MIN_BIO_LENGTH) {
+    if (!profile.bio || profile.bio.trim().length < MIN_BIO_LENGTH) {
       missingFields.push("bio");
     }
-    if (!profile.portfolio_images || profile.portfolio_images.length < MIN_PORTFOLIO_IMAGES) {
+    if (!profile.portfolio || profile.portfolio.length < MIN_PORTFOLIO_IMAGES) {
       missingFields.push("portfolio");
     }
   }
