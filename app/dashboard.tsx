@@ -46,7 +46,6 @@ import {
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
-import ProfileAlertBanner from "@/components/ProfileAlertBanner";
 
 const C = Colors.light;
 
@@ -286,7 +285,7 @@ export default function DashboardScreen() {
   const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
   const [pendingBookingCount, setPendingBookingCount] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
-  const { profile: liveProfile, missingFields, isComplete } = useProfileCheck(userId);
+  const { profile: liveProfile, isPhoneOk, completionPercent } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
     if (!lastMsgSeen) return 0;
@@ -461,6 +460,13 @@ export default function DashboardScreen() {
               {userLocation ? "موقعك الحالي" : "الموقع غير متاح"}
             </Text>
           </View>
+          {!isPhoneOk && (
+            <View style={styles.phoneAlertWrap} pointerEvents="none">
+              <Text style={styles.phoneAlertText} numberOfLines={1}>
+                ⚠️ يرجى إضافة رقم هاتفك لتفعيل حسابك
+              </Text>
+            </View>
+          )}
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>ForUs</Text>
           </View>
@@ -517,7 +523,7 @@ export default function DashboardScreen() {
             <ProfileAvatar
               photoUri={liveProfile?.photoUri}
               name={userName}
-              isComplete={isComplete}
+              percent={completionPercent}
               size={36}
             />
             <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
@@ -541,8 +547,6 @@ export default function DashboardScreen() {
           )}
         </View>
       </LinearGradient>
-
-      {userRole === "artisan" && <ProfileAlertBanner missingFields={missingFields} />}
 
       {/* ── أفضل مقدمي الخدمة — directly under search bar ── */}
       {promotedArtisans.length > 0 && (
@@ -695,6 +699,13 @@ const styles = StyleSheet.create({
   listWrapper: { flex: 1, minHeight: 0 },
   headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
   headerTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  phoneAlertWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  phoneAlertText: {
+    fontSize: 10.5,
+    fontFamily: "Cairo_600SemiBold",
+    color: "#FCD34D",
+    textAlign: "center",
+  },
   logoMark: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.2)",

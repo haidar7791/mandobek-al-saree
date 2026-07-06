@@ -10,6 +10,8 @@ export interface ProfileCheckResult {
   missingFields: MissingProfileField[];
   isComplete: boolean;
   loading: boolean;
+  completionPercent: number;
+  isPhoneOk: boolean;
 }
 
 const MIN_BIO_LENGTH = 10;
@@ -51,17 +53,25 @@ export function useProfileCheck(userId: string | null | undefined): ProfileCheck
   }, [userId]);
 
   const missingFields: MissingProfileField[] = [];
+  let completionPercent = 0;
+  let isPhoneOk = false;
 
   if (profile) {
-    const isPhoneVerified = profile.isPhoneVerified === true;
-    if (!profile.phone || !isPhoneVerified) missingFields.push("phone");
-    if (!profile.photoUri) missingFields.push("photo");
-    if (!profile.bio || profile.bio.trim().length < MIN_BIO_LENGTH) {
-      missingFields.push("bio");
-    }
-    if (!profile.portfolio || profile.portfolio.length < MIN_PORTFOLIO_IMAGES) {
-      missingFields.push("portfolio");
-    }
+    isPhoneOk = !!profile.phone && profile.isPhoneVerified === true;
+    const isPhotoOk = !!profile.photoUri;
+    const isBioOk = !!profile.bio && profile.bio.trim().length >= MIN_BIO_LENGTH;
+    const isPortfolioOk = !!profile.portfolio && profile.portfolio.length >= MIN_PORTFOLIO_IMAGES;
+
+    if (!isPhoneOk) missingFields.push("phone");
+    if (!isPhotoOk) missingFields.push("photo");
+    if (!isBioOk) missingFields.push("bio");
+    if (!isPortfolioOk) missingFields.push("portfolio");
+
+    completionPercent =
+      (isPhoneOk ? 25 : 0) +
+      (isPhotoOk ? 25 : 0) +
+      (isBioOk ? 25 : 0) +
+      (isPortfolioOk ? 25 : 0);
   }
 
   return {
@@ -69,5 +79,7 @@ export function useProfileCheck(userId: string | null | undefined): ProfileCheck
     missingFields,
     isComplete: profile !== null && missingFields.length === 0,
     loading,
+    completionPercent,
+    isPhoneOk,
   };
 }
