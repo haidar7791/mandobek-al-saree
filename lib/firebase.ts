@@ -9,8 +9,14 @@ import {
   indexedDBLocalPersistence,
   type Auth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getDatabase } from "firebase/database";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 
@@ -43,8 +49,30 @@ if (Platform.OS === "web") {
   }
 }
 
-const db = getFirestore(app);
-const storage = getStorage(app);
+// Firestore persistent local cache: caches artisan profiles / static data on-device
+// to cut down repeated reads and speed up cold starts.
+// IndexedDB-backed persistence (persistentLocalCache) only exists in browser environments;
+// on native (iOS/Android via Expo Go / Hermes) there's no IndexedDB, so we fall back to the
+// default in-memory Firestore cache there.
+let db: ReturnType<typeof getFirestore>;
+if (Platform.OS === "web") {
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    // initializeFirestore throws if Firestore was already initialized for this app
+    // (e.g. Fast Refresh) — fall back to the existing instance.
+    db = getFirestore(app);
+  }
+} else {
+  db = getFirestore(app);
+}
 
-export { app, auth, db, storage };
+const storage = getStorage(app);
+const rtdb = getDatabase(app);
+
+export { app, auth, db, storage, rtdb };
 export default app;

@@ -44,6 +44,9 @@ import {
   registerForPushNotifications,
   addNotificationTapListener,
 } from "../lib/push_notifications";
+import { useProfileCheck } from "@/hooks/useProfileCheck";
+import ProfileAvatar from "@/components/ProfileAvatar";
+import ProfileAlertBanner from "@/components/ProfileAlertBanner";
 
 const C = Colors.light;
 
@@ -282,6 +285,8 @@ export default function DashboardScreen() {
   const [chatLastAts, setChatLastAts] = useState<string[]>([]);
   const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
   const [pendingBookingCount, setPendingBookingCount] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  const { profile: liveProfile, missingFields, isComplete } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
     if (!lastMsgSeen) return 0;
@@ -307,6 +312,7 @@ export default function DashboardScreen() {
         setUserRole(profile.role || "client");
         if (profile.location) setUserLocation(profile.location);
       }
+      setUserId(user.uid);
 
       setArtisans(allArtisans);
       setPromotedArtisans(promoted);
@@ -507,12 +513,15 @@ export default function DashboardScreen() {
             </View>
             <Text style={styles.headerIconLabel}>المحفظة</Text>
           </Pressable>
-          <Pressable style={styles.headerIconCol} onPress={() => router.push("/profile" as any)}>
-            <View style={styles.headerIconBtn}>
-              <Feather name="user" size={20} color="#FFF" />
-            </View>
+          <View style={styles.headerIconCol}>
+            <ProfileAvatar
+              photoUri={liveProfile?.photoUri}
+              name={userName}
+              isComplete={isComplete}
+              size={36}
+            />
             <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
-          </Pressable>
+          </View>
         </View>
 
         <View style={styles.searchBar}>
@@ -532,6 +541,8 @@ export default function DashboardScreen() {
           )}
         </View>
       </LinearGradient>
+
+      {userRole === "artisan" && <ProfileAlertBanner missingFields={missingFields} />}
 
       {/* ── أفضل مقدمي الخدمة — directly under search bar ── */}
       {promotedArtisans.length > 0 && (

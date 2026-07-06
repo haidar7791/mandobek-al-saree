@@ -10,6 +10,8 @@ import { I18nManager } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { configurePushHandler } from "@/lib/push_notifications";
+import { NetworkProvider } from "@/lib/network";
+import { setupPresence } from "@/lib/presence";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -62,11 +64,23 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    let presenceCleanup: (() => void) | null = null;
     const unsub = onAuthStateChanged(auth, (user) => {
       setIsLoggedIn(!!user);
       setAuthChecked(true);
+
+      if (presenceCleanup) {
+        presenceCleanup();
+        presenceCleanup = null;
+      }
+      if (user) {
+        presenceCleanup = setupPresence(user.uid);
+      }
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (presenceCleanup) presenceCleanup();
+    };
   }, []);
 
   useEffect(() => {
@@ -85,7 +99,9 @@ export default function RootLayout() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <RootLayoutNav />
+          <NetworkProvider>
+            <RootLayoutNav />
+          </NetworkProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>
     </ErrorBoundary>

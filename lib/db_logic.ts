@@ -341,10 +341,17 @@ export const subscribeToReviews = (
 export const addReview = async (
   review: Omit<Review, "id" | "createdAt">
 ): Promise<void> => {
-  await addDoc(collection(db, "artisans", review.artisanId, "reviews"), {
-    ...review,
-    createdAt: new Date().toISOString(),
-  });
+  // One review per client per artisan: deterministic doc ID prevents duplicates.
+  // Re-submitting an existing review updates it in place instead of creating a new one.
+  const reviewId = `${review.clientId}_${review.artisanId}`;
+  await setDoc(
+    doc(db, "artisans", review.artisanId, "reviews", reviewId),
+    {
+      ...review,
+      createdAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 
   // Recalculate average from all reviews now in the subcollection
   const allReviews = await getReviews(review.artisanId);

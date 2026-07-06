@@ -35,9 +35,21 @@ service cloud.firestore {
       allow update: if isSignedIn()
                     && resource.data.userId == request.auth.uid;
       allow delete: if isAdmin();
+
+      // ── التقييمات (subcollection — معرف المستند: clientId_artisanId لمنع التكرار) ──
+      match /reviews/{reviewId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+                      && request.resource.data.clientId == request.auth.uid
+                      && reviewId == request.resource.data.clientId + "_" + request.resource.data.artisanId;
+        allow update: if isSignedIn()
+                      && resource.data.clientId == request.auth.uid
+                      && request.resource.data.clientId == request.auth.uid;
+        allow delete: if isAdmin();
+      }
     }
 
-    // ── التقييمات ──
+    // ── التقييمات (نمط قديم — يُبقى للتوافق الرجعي إن وُجدت مستندات سابقة) ──
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
