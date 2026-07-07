@@ -1,2 +1,1 @@
-- [Firestore persistent cache on React Native](firestore-rn-persistence.md) — persistentLocalCache/IndexedDB is web-only; native falls back to default in-memory cache.
-- [Reviews: one-per-client-per-artisan](reviews-dedup-scheme.md) — deterministic doc ID `${clientId}_${artisanId}` + setDoc merge:true prevents duplicate reviews; rules must match on subcollection, not old top-level path.
+- [EAS Build lockfile issue](eas-lockfile.md) — package-lock.json generated on Replit has Replit-only resolved URLs; never commit it
