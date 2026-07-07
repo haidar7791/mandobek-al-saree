@@ -1,59 +1,49 @@
-# فورس - ForUs — Home & Car Services App
+# Mandobek Al-Saree
 
-## Overview
-"فورس - ForUs" is an Arabic RTL mobile app built with **Expo (React Native)** for the Iraqi market. It connects clients with nearby artisans (craftsmen) for home services, car services, and general services.
+A React Native / Expo mobile marketplace app with an Express backend. The app connects service artisans with customers — supporting orders, chat, wallet, admin dashboard, and push notifications.
 
-## Tech Stack
-- **Frontend**: React Native (Expo SDK 54), Expo Router (file-based routing)
-- **Backend**: Node.js Express server (port 5000) — serves landing page and API
-- **Database**: Firebase Firestore (real-time DB for all app data)
-- **Auth**: Firebase Authentication
-- **Styling**: Cairo font (Arabic), LinearGradient, Reanimated animations
-- **Location**: expo-location (GPS for nearest artisan discovery)
+## Stack
 
-## App Structure
+- **Frontend**: React Native + Expo (expo-router), targets iOS / Android / Web
+- **Backend**: Express 5 (TypeScript, `tsx`)  
+- **Database**: PostgreSQL via Drizzle ORM (`shared/schema.ts`)
+- **Auth**: Firebase (phone verification + reCAPTCHA)
+- **Real-time**: WebSockets (`ws`)
+
+## Running on Replit
+
+Two workflows run in parallel:
+
+| Workflow | Command | Port |
+|---|---|---|
+| Start Backend | `npm run server:dev` | 5000 |
+| Start Frontend | `npm run expo:dev` | 8081 |
+
+The backend serves the Express API on port 5000.  
+The Expo Metro bundler runs on port 8081 — scan the QR code with **Expo Go** on a device, or press `w` to open the web preview.
+
+## Environment
+
+- `DATABASE_URL` — auto-injected by Replit (PostgreSQL, runtime-managed)
+- Firebase config — public keys set as `EXPO_PUBLIC_FIREBASE_*` in `.replit` `[userenv.shared]`
+- `SESSION_SECRET` — set as a Replit Secret
+
+## Database
+
+Schema lives in `shared/schema.ts`. Apply changes with:
+
 ```
-app/
-  index.tsx          — Welcome/landing screen with سند branding
-  login.tsx          — Login (email or phone → @sanad.app)
-  register.tsx       — Register with role selection (زبون/حرفي) + specialty + GPS
-  dashboard.tsx      — Main screen: category tabs + artisan cards sorted by distance
-  artisan-profile.tsx — Artisan detail: call, WhatsApp, chat, ratings, service booking
-  chat.tsx           — In-app real-time messaging (Firebase)
-  wallet.tsx         — Wallet: deposit/withdrawal for ad credits (admin-approved)
-  profile.tsx        — User profile management
-  admin-dashboard.tsx — Admin: approve/reject wallet requests
-  admin.tsx          — Admin access screen
-lib/
-  firebase.ts        — Firebase config (mandobek-al-saree Firebase project)
-  db_logic.ts        — All Firestore operations (artisans, reviews, service requests, chat, wallet)
-  query-client.ts    — React Query client
-server/
-  index.ts           — Express server entry
-  routes.ts          — API routes
+npm run db:push
 ```
 
-## Key Firebase Collections
-- `users` — user profiles (name, phone, photoUri, role: client|artisan|admin, location, specialty)
-- `artisans` — artisan profiles (specialty, category, location, rating, reviewCount, isAvailable)
-- `reviews` — artisan reviews (rating 1-5, comment, clientId, artisanId)
-- `serviceRequests` — service requests from clients to artisans (no financial deductions)
-- `chats/{chatId}/messages` — in-app chat messages
-- `wallets` — user wallet balances (for ad credits only)
-- `walletRequests` — deposit/withdrawal requests (admin-approved by حيدر العسكري)
+## Project structure
 
-## Service Categories
-- **خدمات المنزل**: سباك، كهربائي، نجار، دهّان، بنّاء، سيراميك، حداد، فيتر مكيفات
-- **خدمات السيارات**: ميكانيكي، كهرباء سيارات، كاوتش، تصليح بودي، مكيف سيارة
-- **خدمات عامة**: تنظيف منازل، نقل عفش، مكافحة حشرات، مولدات كهرباء، دشات وأنظمة
+```
+app/          Expo Router screens (login, dashboard, chat, wallet, …)
+components/   Shared React Native components
+server/       Express backend (index.ts, routes.ts, storage.ts)
+shared/       Drizzle schema + shared types
+assets/       Images and fonts
+```
 
-## Workflows
-- **Start Backend**: `npm run server:dev` (port 5000)
-- **Start Frontend**: `npm run expo:dev` (port 8081)
-
-## Business Rules
-- No unique codes, no insurance deductions — service requests are free
-- Wallet is ONLY for ad payment credits
-- All wallet top-ups require admin approval (حيدر العسكري)
-- Artisans sorted by GPS distance on dashboard
-- RTL (Arabic) layout enforced globally via I18nManager.forceRTL(true)
+## User preferences
