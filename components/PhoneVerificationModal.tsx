@@ -18,8 +18,7 @@ import {
   unlink,
   type ConfirmationResult,
 } from "firebase/auth";
-import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
-import { auth, firebaseConfig } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { setUserProfile } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
@@ -70,7 +69,6 @@ export default function PhoneVerificationModal({
   initialPhone = "",
   onVerified,
 }: PhoneVerificationModalProps) {
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
   const webRecaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
 
   const [step, setStep] = useState<"input" | "code">("input");
@@ -115,7 +113,7 @@ export default function PhoneVerificationModal({
         // no previously linked phone provider — safe to ignore
       }
 
-      let appVerifier: any;
+      let appVerifier: RecaptchaVerifier | undefined;
       if (Platform.OS === "web") {
         if (!webRecaptchaVerifier.current) {
           webRecaptchaVerifier.current = new RecaptchaVerifier(
@@ -125,13 +123,11 @@ export default function PhoneVerificationModal({
           );
         }
         appVerifier = webRecaptchaVerifier.current;
-      } else {
-        appVerifier = recaptchaVerifier.current;
       }
+      // On native (iOS/Android), Firebase JS SDK handles verification
+      // automatically via APNs / Play Integrity — no explicit verifier needed.
 
-      if (!appVerifier) throw new Error("recaptcha-not-ready");
-
-      const result = await linkWithPhoneNumber(user, e164, appVerifier);
+      const result = await linkWithPhoneNumber(user, e164, appVerifier as any);
       setConfirmationResult(result);
       setPendingE164(e164);
       setStep("code");
@@ -262,14 +258,8 @@ export default function PhoneVerificationModal({
         </View>
       </View>
 
-      {Platform.OS === "web" ? (
+      {Platform.OS === "web" && (
         <View nativeID="recaptcha-container-modal" />
-      ) : (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifier}
-          firebaseConfig={firebaseConfig}
-          attemptInvisibleVerification
-        />
       )}
     </Modal>
   );
