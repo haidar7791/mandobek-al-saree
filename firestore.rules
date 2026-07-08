@@ -58,17 +58,20 @@ service cloud.firestore {
     }
 
     // ── طلبات الخدمة ──
+    // ملاحظة: artisanId هو معرّف مستند الحرفي في مجموعة artisans (وليس uid الخاص بالمصادقة).
+    // معرّف المصادقة (auth.uid) الخاص بالحرفي مخزّن في حقل artisanUserId — يجب دائماً
+    // مقارنة request.auth.uid بـ artisanUserId، وليس بـ artisanId.
     match /serviceRequests/{requestId} {
       allow read: if isSignedIn() && (
                     resource.data.clientId == request.auth.uid
-                    || resource.data.artisanId == request.auth.uid
+                    || resource.data.artisanUserId == request.auth.uid
                     || isAdmin()
                   );
       allow create: if isSignedIn()
                     && request.resource.data.clientId == request.auth.uid;
       allow update: if isSignedIn() && (
                       resource.data.clientId == request.auth.uid
-                      || resource.data.artisanId == request.auth.uid
+                      || resource.data.artisanUserId == request.auth.uid
                       || isAdmin()
                     );
       allow delete: if isAdmin();
@@ -85,6 +88,10 @@ service cloud.firestore {
         allow create: if isSignedIn()
                       && request.resource.data.senderId == request.auth.uid
                       && request.auth.uid in chatId.split("_");
+        allow update: if isSignedIn()
+                      && request.auth.uid in chatId.split("_")
+                      && resource.data.senderId != request.auth.uid
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]);
       }
     }
 

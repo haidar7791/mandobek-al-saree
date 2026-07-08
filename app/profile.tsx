@@ -36,6 +36,8 @@ import {
   addPortfolioImage,
   removePortfolioImage,
   uploadPortfolioImage,
+  uploadProfilePhoto,
+  updateArtisanPhotoIfExists,
   createOrUpdateArtisan,
   getCategoryForSpecialty,
 } from "@/lib/db_logic";
@@ -104,6 +106,7 @@ export default function ProfileScreen() {
 
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
 
@@ -159,8 +162,7 @@ export default function ProfileScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await handleSaveNewPhoto(result.assets[0].uri);
     }
   };
 
@@ -176,8 +178,33 @@ export default function ProfileScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await handleSaveNewPhoto(result.assets[0].uri);
+    }
+  };
+
+  // Profile photo is uploaded and persisted immediately upon selection,
+  // matching the immediate-save behaviour of portfolio images — the user
+  // should not have to press "Save Changes" for it to take effect.
+  const handleSaveNewPhoto = async (localUri: string) => {
+    const previousPhotoUri = photoUri;
+    setPhotoUri(localUri); // optimistic local preview
+    setUploadingPhoto(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const userId = auth.currentUser?.uid;
+      if (!userId) throw new Error("not authenticated");
+      const downloadUrl = await uploadProfilePhoto(userId, localUri);
+      setPhotoUri(downloadUrl);
+      await setUserProfile(userId, { photoUri: downloadUrl });
+      if (role === "artisan") {
+        await updateArtisanPhotoIfExists(userId, downloadUrl);
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      setPhotoUri(previousPhotoUri);
+      Alert.alert("خطأ", "تعذّر حفظ الصورة الشخصية، حاول مرة أخرى");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -257,18 +284,26 @@ export default function ProfileScreen() {
       const userId = auth.currentUser?.uid;
       if (!userId) throw new Error("not authenticated");
       const phoneChanged = phone.trim() !== loadedPhoneRef.current.trim();
-      const nextIsPhoneVerified = phoneChanged ? false : isPhoneVerified;
+      // Do not persist an unverified phone number: if the user typed a new
+      // number but hasn't confirmed the SMS code yet, keep saving the
+      // previously-verified phone (or none) until PhoneVerificationModal's
+      // onVerified callback writes the new number + isPhoneVerified:true.
+      // Photo is already uploaded + persisted immediately on selection
+      // (see handleSaveNewPhoto) — don't re-write it here, since photoUri
+      // could still be a local file:// URI if a Save is tapped mid-upload.
+      const persistedPhone = phoneChanged ? loadedPhoneRef.current.trim() : phone.trim();
       await setUserProfile(userId, {
         name: name.trim(),
-        phone: phone.trim(),
-        isPhoneVerified: nextIsPhoneVerified,
-        photoUri,
+        phone: persistedPhone,
+        isPhoneVerified,
         specialty: specialty || undefined,
         bio: professionalBio.trim(),
       });
       if (phoneChanged) {
-        setIsPhoneVerified(false);
-        loadedPhoneRef.current = phone.trim();
+        Alert.alert(
+          "تنبيه",
+          "لن يتم حفظ رقم الهاتف الجديد إلا بعد تأكيده عبر رمز التحقق المُرسل بالرسائل النصية."
+        );
       }
 
       // Sync artisan record so the user appears in dashboard search
@@ -276,8 +311,8 @@ export default function ProfileScreen() {
         const profile = await getUserProfile(userId);
         await createOrUpdateArtisan(userId, {
           name: name.trim(),
-          phone: phone.trim(),
-          photoUri,
+          phone: persistedPhone,
+          photoUri: profile?.photoUri ?? photoUri,
           specialty,
           category: getCategoryForSpecialty(specialty),
           location: profile?.location ?? null,

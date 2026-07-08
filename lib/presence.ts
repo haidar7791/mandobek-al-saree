@@ -43,6 +43,29 @@ export function setupPresence(userId: string): () => void {
   };
 }
 
+/**
+ * Subscribe to another user's presence in real-time.
+ * Calls back with { state, lastChanged } or null if no data.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToPresence(
+  userId: string,
+  callback: (presence: { state: "online" | "offline"; lastChanged: any } | null) => void
+): () => void {
+  const userStatusRef = ref(rtdb, `presence/${userId}`);
+  const unsub = onValue(userStatusRef, (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+    } else {
+      callback(snap.val() as { state: "online" | "offline"; lastChanged: any });
+    }
+  });
+  return () => {
+    unsub();
+    off(userStatusRef);
+  };
+}
+
 /** Explicitly mark the current user offline (e.g. on manual sign-out). */
 export async function markOffline(userId: string): Promise<void> {
   try {

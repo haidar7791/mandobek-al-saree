@@ -21,6 +21,9 @@ import {
 import { auth } from "@/lib/firebase";
 import { setUserProfile } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import RecaptchaWebViewVerifier, {
+  type RecaptchaWebViewVerifierHandle,
+} from "@/components/RecaptchaWebViewVerifier";
 
 const C = Colors.light;
 
@@ -32,10 +35,11 @@ interface PhoneVerificationModalProps {
   onVerified: (phone: string) => void;
 }
 
-/** Normalizes an Iraqi phone number (local "07XXXXXXXXX" or already E.164) to +964XXXXXXXXXX. */
+/** Normalizes an Iraqi phone number (local "07XXXXXXXXX", "00964...", "964...", or already E.164) to +964XXXXXXXXXX. */
 function toE164Iraq(input: string): string | null {
   const digits = input.replace(/[^\d+]/g, "");
   if (digits.startsWith("+964") && digits.length === 14) return digits;
+  if (digits.startsWith("00964") && digits.length === 15) return `+${digits.slice(2)}`;
   if (digits.startsWith("964") && digits.length === 13) return `+${digits}`;
   if (digits.startsWith("0") && digits.length === 11) return `+964${digits.slice(1)}`;
   if (digits.length === 10 && digits.startsWith("7")) return `+964${digits}`;
@@ -45,7 +49,7 @@ function toE164Iraq(input: string): string | null {
 function mapAuthError(code: string): string {
   switch (code) {
     case "auth/invalid-phone-number":
-      return "رقم الهاتف غير صالح، تأكد من الصيغة (07xxxxxxxxx)";
+      return "يرجى إدخال رقم هاتف صحيح، مثال: 009647701234567";
     case "auth/too-many-requests":
       return "تم إرسال عدد كبير من الطلبات، حاول لاحقاً";
     case "auth/credential-already-in-use":
@@ -70,6 +74,7 @@ export default function PhoneVerificationModal({
   onVerified,
 }: PhoneVerificationModalProps) {
   const webRecaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
+  const nativeRecaptchaVerifier = useRef<RecaptchaWebViewVerifierHandle>(null);
 
   const [step, setStep] = useState<"input" | "code">("input");
   const [phoneInput, setPhoneInput] = useState(initialPhone);
@@ -98,7 +103,7 @@ export default function PhoneVerificationModal({
     setError("");
     const e164 = toE164Iraq(phoneInput);
     if (!e164) {
-      setError("يرجى إدخال رقم هاتف عراقي صحيح، مثال: 07701234567");
+      setError("يرجى إدخال رقم هاتف صحيح، مثال: 009647701234567");
       return;
     }
 
@@ -113,7 +118,7 @@ export default function PhoneVerificationModal({
         // no previously linked phone provider — safe to ignore
       }
 
-      let appVerifier: RecaptchaVerifier | undefined;
+      let appVerifier: any;
       if (Platform.OS === "web") {
         if (!webRecaptchaVerifier.current) {
           webRecaptchaVerifier.current = new RecaptchaVerifier(
@@ -123,11 +128,23 @@ export default function PhoneVerificationModal({
           );
         }
         appVerifier = webRecaptchaVerifier.current;
+      } else {
+        // Firebase JS SDK (unlike @react-native-firebase) has no silent
+        // native phone-auth path — it always requires a real
+        // ApplicationVerifier. RecaptchaWebViewVerifier runs an invisible
+        // Google reCAPTCHA challenge inside a WebView and hands back a
+        // one-time token wrapped in the shape Firebase expects.
+        if (!nativeRecaptchaVerifier.current) {
+          throw new Error("recaptcha-not-ready");
+        }
+        const verifierRef = nativeRecaptchaVerifier.current;
+        appVerifier = {
+          type: "recaptcha",
+          verify: () => verifierRef.verify(),
+        };
       }
-      // On native (iOS/Android), Firebase JS SDK handles verification
-      // automatically via APNs / Play Integrity — no explicit verifier needed.
 
-      const result = await linkWithPhoneNumber(user, e164, appVerifier as any);
+      const result = await linkWithPhoneNumber(user, e164, appVerifier);
       setConfirmationResult(result);
       setPendingE164(e164);
       setStep("code");
@@ -258,8 +275,10 @@ export default function PhoneVerificationModal({
         </View>
       </View>
 
-      {Platform.OS === "web" && (
+      {Platform.OS === "web" ? (
         <View nativeID="recaptcha-container-modal" />
+      ) : (
+        visible && <RecaptchaWebViewVerifier ref={nativeRecaptchaVerifier} />
       )}
     </Modal>
   );

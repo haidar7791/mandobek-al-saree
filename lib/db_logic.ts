@@ -16,6 +16,7 @@ import {
   deleteDoc,
   arrayUnion,
   arrayRemove,
+  writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
@@ -285,6 +286,18 @@ export const createOrUpdateArtisan = async (
     createdAt: new Date().toISOString(),
   });
   return docRef.id;
+};
+
+// Lightweight sync used when only the photo changes (e.g. immediate profile-photo
+// save) — avoids requiring the full ArtisanProfile payload that createOrUpdateArtisan needs.
+export const updateArtisanPhotoIfExists = async (
+  userId: string,
+  photoUri: string
+): Promise<void> => {
+  const existing = await getArtisanByUserId(userId);
+  if (existing) {
+    await updateDoc(doc(db, "artisans", existing.id), { photoUri });
+  }
 };
 
 export const subscribeToArtisans = (
@@ -720,6 +733,10 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   createdAt: string;
+  read?: boolean;
+  type?: "text" | "image" | "audio";
+  mediaUrl?: string;
+  duration?: number;
 }
 
 export interface ChatSummary {
@@ -799,20 +816,28 @@ export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
     );
     const snap = await getDocs(q);
     const summaries = await Promise.all(
-      snap.docs.map(async (d) => {
-        const data = d.data();
-        const participants: string[] = data.participants || [];
-        const otherUid = participants.find((u) => u !== userId) || "";
-        const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
-        return {
-          chatId: d.id,
-          otherUserId: otherUid,
-          otherName: otherProfile?.name || "مستخدم فورس",
-          otherPhotoUri: otherProfile?.photoUri || null,
-          lastMessage: data.lastMessage || "",
-          lastAt: data.lastAt || "",
-        } as ChatSummary;
-      })
+      snap.docs
+        .filter((d) => {
+          const data = d.data();
+          if (data.isSupport === true) return false;
+          const participants: string[] = data.participants || [];
+          if (participants.includes(ADMIN_UID)) return false;
+          return true;
+        })
+        .map(async (d) => {
+          const data = d.data();
+          const participants: string[] = data.participants || [];
+          const otherUid = participants.find((u) => u !== userId) || "";
+          const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+          return {
+            chatId: d.id,
+            otherUserId: otherUid,
+            otherName: otherProfile?.name || "مستخدم فورس",
+            otherPhotoUri: otherProfile?.photoUri || null,
+            lastMessage: data.lastMessage || "",
+            lastAt: data.lastAt || "",
+          } as ChatSummary;
+        })
     );
     return summaries.sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1));
   } catch (err) {
@@ -831,23 +856,122 @@ export const subscribeToUserChats = (
   );
   return onSnapshot(q, async (snap) => {
     const summaries = await Promise.all(
-      snap.docs.map(async (d) => {
-        const data = d.data();
-        const participants: string[] = data.participants || [];
-        const otherUid = participants.find((u) => u !== userId) || "";
-        const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
-        return {
-          chatId: d.id,
-          otherUserId: otherUid,
-          otherName: otherProfile?.name || "مستخدم فورس",
-          otherPhotoUri: otherProfile?.photoUri || null,
-          lastMessage: data.lastMessage || "",
-          lastAt: data.lastAt || "",
-        } as ChatSummary;
-      })
+      snap.docs
+        .filter((d) => {
+          const data = d.data();
+          if (data.isSupport === true) return false;
+          const participants: string[] = data.participants || [];
+          if (participants.includes(ADMIN_UID)) return false;
+          return true;
+        })
+        .map(async (d) => {
+          const data = d.data();
+          const participants: string[] = data.participants || [];
+          const otherUid = participants.find((u) => u !== userId) || "";
+          const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+          return {
+            chatId: d.id,
+            otherUserId: otherUid,
+            otherName: otherProfile?.name || "مستخدم فورس",
+            otherPhotoUri: otherProfile?.photoUri || null,
+            lastMessage: data.lastMessage || "",
+            lastAt: data.lastAt || "",
+          } as ChatSummary;
+        })
     );
     callback(summaries.sort((a, b) => (b.lastAt > a.lastAt ? 1 : -1)));
   });
+};
+
+/**
+ * Mark all unread messages (sent by others) as read in a chat.
+ * Uses writeBatch, capped at 400 per batch.
+ */
+export const markMessagesRead = async (chatId: string, readerId: string): Promise<void> => {
+  try {
+    const q = query(
+      collection(db, "chats", chatId, "messages"),
+      where("senderId", "!=", readerId)
+    );
+    const snap = await getDocs(q);
+    const unread = snap.docs.filter((d) => d.data().read !== true);
+    if (unread.length === 0) return;
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < unread.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      unread.slice(i, i + BATCH_SIZE).forEach((d) => {
+        batch.update(d.ref, { read: true });
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.error("markMessagesRead error:", err);
+  }
+};
+
+/**
+ * Upload a media file (image or audio) to Storage and send a message.
+ */
+export const sendMediaMessage = async (
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  type: "image" | "audio",
+  localUri: string,
+  duration?: number
+): Promise<void> => {
+  const timestamp = Date.now();
+  const ext = type === "audio" ? ".m4a" : ".jpg";
+  const filename = `${timestamp}${ext}`;
+  const path = `chatMedia/${chatId}/${filename}`;
+  const storageRef = ref(storage, path);
+
+  const blob = await uriToBlob(localUri);
+  const contentType = type === "audio" ? "audio/mp4" : "image/jpeg";
+  await uploadBytes(storageRef, blob, { contentType });
+  const mediaUrl = await getDownloadURL(storageRef);
+
+  const msgData: Record<string, any> = {
+    chatId,
+    senderId,
+    senderName,
+    text: type === "image" ? "📷 صورة" : "🎤 رسالة صوتية",
+    type,
+    mediaUrl,
+    createdAt: new Date().toISOString(),
+  };
+  if (type === "audio" && duration !== undefined) {
+    msgData.duration = duration;
+  }
+
+  await addDoc(collection(db, "chats", chatId, "messages"), msgData);
+  await setDoc(
+    doc(db, "chats", chatId),
+    {
+      participants: chatId.split("_"),
+      lastMessage: msgData.text,
+      lastAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+
+  // Notify recipient
+  try {
+    const otherUid = chatId.split("_").find((u) => u !== senderId);
+    if (otherUid) {
+      const profile = await getUserProfile(otherUid);
+      if (profile?.pushToken) {
+        await sendExpoPush(
+          profile.pushToken,
+          `رسالة جديدة من ${senderName}`,
+          msgData.text,
+          { type: "chat", chatId, senderId, senderName }
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on sendMediaMessage failed:", err);
+  }
 };
 
 export const subscribeToUserChatLastAts = (
@@ -1030,6 +1154,23 @@ async function uriToBlob(uri: string): Promise<Blob> {
     });
   }
 }
+
+export const uploadProfilePhoto = async (
+  userId: string,
+  localUri: string
+): Promise<string> => {
+  try {
+    const blob = await uriToBlob(localUri);
+    const path = `avatars/${userId}/${Date.now()}.jpg`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+    const url = await getDownloadURL(storageRef);
+    return url;
+  } catch (err: any) {
+    console.error("uploadProfilePhoto failed:", err?.code, err?.message, err);
+    throw new Error(err?.message || "upload failed");
+  }
+};
 
 export const uploadPortfolioImage = async (
   userId: string,

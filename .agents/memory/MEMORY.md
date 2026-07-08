@@ -1,1 +1,3 @@
 - [EAS Build lockfile issue](eas-lockfile.md) — package-lock.json generated on Replit has Replit-only resolved URLs; never commit it
+- [babel-preset-expo missing](babel-preset-expo-missing.md) — Metro 500s after fresh install; force top-level install if npm doesn't hoist it
+- [expo-firebase-recaptcha breaks Android build](expo-firebase-recaptcha-gradle.md) — always drags in expo-firebase-core; use a custom WebView reCAPTCHA instead
