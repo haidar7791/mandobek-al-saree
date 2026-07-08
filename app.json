@@ -2,7 +2,7 @@
   "expo": {
     "name": "فورس - ForUs",
     "slug": "sanad-app",
-    "version": "6",
+    "version": "7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "forus",
@@ -25,7 +25,7 @@
     "android": {
       "package": "com.haidar.forus",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#0D1421",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
