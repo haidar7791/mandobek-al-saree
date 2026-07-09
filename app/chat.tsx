@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -25,11 +26,16 @@ import {
   sendMediaMessage,
   subscribeToMessages,
   markMessagesRead,
+  deleteMessageForEveryone,
   getUserProfile,
   type ChatMessage,
 } from "../lib/db_logic";
 import { subscribeToPresence } from "../lib/presence";
 import Colors from "@/constants/colors";
+
+type PendingMedia =
+  | { type: "image"; uri: string }
+  | { type: "audio"; uri: string; duration: number };
 
 const C = Colors.light;
 
@@ -46,6 +52,8 @@ export default function ChatScreen() {
 
   // Media upload state
   const [uploading, setUploading] = useState(false);
+  // Media selected/recorded but not yet sent — shown as a preview above the input bar.
+  const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null);
 
   // Audio recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -55,6 +63,9 @@ export default function ChatScreen() {
   // Audio playback — track which messageId is playing
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Full-screen image viewer
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -80,6 +91,21 @@ export default function ChatScreen() {
     });
     return unsub;
   }, [chatId]);
+
+  // If the message currently playing gets deleted (or loses its media) from
+  // under us, stop playback instead of leaving audio running with no controls.
+  useEffect(() => {
+    if (!playingId) return;
+    const playingMsg = messages.find((m) => m.id === playingId);
+    if (!playingMsg || playingMsg.deleted || !playingMsg.mediaUrl) {
+      if (soundRef.current) {
+        soundRef.current.stopAsync().catch(() => {});
+        soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
+      }
+      setPlayingId(null);
+    }
+  }, [messages, playingId]);
 
   // Subscribe to other user's presence
   useEffect(() => {
@@ -117,7 +143,36 @@ export default function ChatScreen() {
 
   const handleSend = async () => {
     const user = auth.currentUser;
-    if (!user || !chatId || !text.trim()) return;
+    if (!user || !chatId || uploading) return;
+
+    // If there's a pending media item (image/audio picked but not yet sent),
+    // upload+send that; the text box is otherwise reserved for text messages.
+    if (pendingMedia) {
+      setUploading(true);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (pendingMedia.type === "image") {
+          await sendMediaMessage(chatId, user.uid, senderName, "image", pendingMedia.uri);
+        } else {
+          await sendMediaMessage(
+            chatId,
+            user.uid,
+            senderName,
+            "audio",
+            pendingMedia.uri,
+            pendingMedia.duration
+          );
+        }
+        setPendingMedia(null);
+      } catch (err) {
+        Alert.alert("خطأ", "تعذّر إرسال الوسائط، حاول مرة أخرى");
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
+    if (!text.trim()) return;
     const msg = text.trim();
     setText("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -125,8 +180,6 @@ export default function ChatScreen() {
   };
 
   const handlePickImage = async () => {
-    const user = auth.currentUser;
-    if (!user || !chatId) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
@@ -134,15 +187,12 @@ export default function ChatScreen() {
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    setUploading(true);
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await sendMediaMessage(chatId, user.uid, senderName, "image", asset.uri);
-    } catch (err) {
-      Alert.alert("خطأ", "تعذّر إرسال الصورة، حاول مرة أخرى");
-    } finally {
-      setUploading(false);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingMedia({ type: "image", uri: asset.uri });
+  };
+
+  const handleCancelPendingMedia = () => {
+    setPendingMedia(null);
   };
 
   const handleStartRecording = async () => {
@@ -170,8 +220,7 @@ export default function ChatScreen() {
   };
 
   const handleStopRecording = async () => {
-    const user = auth.currentUser;
-    if (!recording || !user || !chatId) return;
+    if (!recording) return;
     try {
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
@@ -181,13 +230,10 @@ export default function ChatScreen() {
       if (!uri) return;
       const duration = Math.round((Date.now() - recordingStartTime.current) / 1000);
       if (duration < 1) return; // too short, discard
-      setUploading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await sendMediaMessage(chatId, user.uid, senderName, "audio", uri, duration);
+      setPendingMedia({ type: "audio", uri, duration });
     } catch (err) {
-      Alert.alert("خطأ", "تعذّر إرسال الرسالة الصوتية");
-    } finally {
-      setUploading(false);
+      Alert.alert("خطأ", "تعذّر إنهاء التسجيل");
     }
   };
 
@@ -236,6 +282,42 @@ export default function ChatScreen() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  const handleDeleteMessage = (item: ChatMessage) => {
+    if (!chatId) return;
+    Alert.alert(
+      "حذف الرسالة",
+      "هل تريد حذف هذه الرسالة للجميع؟ لا يمكن التراجع عن هذا الإجراء.",
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف الرسالة للجميع",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMessageForEveryone(chatId, item.id);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            } catch {
+              Alert.alert("خطأ", "تعذّر حذف الرسالة");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLongPressMessage = (item: ChatMessage) => {
+    if (item.senderId !== currentUid || item.deleted) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("خيارات الرسالة", undefined, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف الرسالة للجميع",
+        style: "destructive",
+        onPress: () => handleDeleteMessage(item),
+      },
+    ]);
+  };
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isMine = item.senderId === currentUid;
     const time = new Date(item.createdAt).toLocaleTimeString("ar-IQ", {
@@ -257,14 +339,34 @@ export default function ChatScreen() {
     ) : null;
 
     let bubbleContent: React.ReactNode;
-    if (item.type === "image" && item.mediaUrl) {
+    if (item.deleted) {
+      bubbleContent = (
+        <View style={styles.deletedRow}>
+          <Feather
+            name="slash"
+            size={13}
+            color={isMine ? "rgba(255,255,255,0.6)" : C.textMuted}
+          />
+          <Text
+            style={[
+              styles.deletedText,
+              isMine ? { color: "rgba(255,255,255,0.6)" } : { color: C.textMuted },
+            ]}
+          >
+            {item.text}
+          </Text>
+        </View>
+      );
+    } else if (item.type === "image" && item.mediaUrl) {
       bubbleContent = (
         <View>
-          <Image
-            source={{ uri: item.mediaUrl }}
-            style={styles.imageBubble}
-            contentFit="cover"
-          />
+          <Pressable onPress={() => setViewerUri(item.mediaUrl!)}>
+            <Image
+              source={{ uri: item.mediaUrl }}
+              style={styles.imageBubble}
+              contentFit="cover"
+            />
+          </Pressable>
           <View style={styles.mediaFooter}>
             <View style={styles.readIndicatorRow}>
               {readIndicator}
@@ -318,9 +420,13 @@ export default function ChatScreen() {
 
     return (
       <View style={[styles.msgRow, isMine ? styles.msgRowMine : styles.msgRowTheirs]}>
-        <View style={[styles.msgBubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}>
+        <Pressable
+          onLongPress={() => handleLongPressMessage(item)}
+          delayLongPress={350}
+          style={[styles.msgBubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}
+        >
           {bubbleContent}
-        </View>
+        </Pressable>
       </View>
     );
   };
@@ -375,35 +481,49 @@ export default function ChatScreen() {
         }
       />
 
+      {pendingMedia && (
+        <View style={styles.pendingBar}>
+          {pendingMedia.type === "image" ? (
+            <Image source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} contentFit="cover" />
+          ) : (
+            <View style={styles.pendingAudioPreview}>
+              <Feather name="mic" size={16} color={C.accent} />
+              <Text style={styles.pendingAudioText}>
+                رسالة صوتية · {formatDuration(pendingMedia.duration)}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.pendingLabel}>
+            {pendingMedia.type === "image" ? "جاهزة للإرسال" : "جاهزة للإرسال"}
+          </Text>
+          <Pressable style={styles.pendingCancelBtn} onPress={handleCancelPendingMedia} disabled={uploading}>
+            <Feather name="x" size={16} color={C.textMuted} />
+          </Pressable>
+        </View>
+      )}
+
       <View style={[styles.inputBar, { paddingBottom: bottomPad + 8 }]}>
+        {/* Media icons (image / voice) — left side of the bar */}
         {uploading ? (
           <ActivityIndicator size="small" color={C.accent} style={styles.uploadSpinner} />
         ) : (
           <>
-            {/* Voice note button */}
             <Pressable
               style={[styles.mediaBtn, isRecording && styles.mediaBtnActive]}
               onPress={isRecording ? handleStopRecording : handleStartRecording}
+              disabled={!!pendingMedia}
             >
               <Feather name="mic" size={18} color={isRecording ? "#ef4444" : C.textMuted} />
             </Pressable>
-            {/* Image picker button */}
-            <Pressable style={styles.mediaBtn} onPress={handlePickImage}>
+            <Pressable
+              style={styles.mediaBtn}
+              onPress={handlePickImage}
+              disabled={!!pendingMedia || isRecording}
+            >
               <Feather name="image" size={18} color={C.textMuted} />
             </Pressable>
           </>
         )}
-
-        {/* Send button */}
-        <Pressable
-          style={[styles.sendBtn, !text.trim() && { opacity: 0.5 }]}
-          onPress={handleSend}
-          disabled={!text.trim()}
-        >
-          <LinearGradient colors={[C.accent, C.accentLight]} style={styles.sendBtnGrad}>
-            <Feather name="send" size={18} color={C.primary} />
-          </LinearGradient>
-        </Pressable>
 
         <TextInput
           style={styles.textInput}
@@ -416,9 +536,47 @@ export default function ChatScreen() {
           maxLength={500}
           onSubmitEditing={handleSend}
           returnKeyType="send"
-          editable={!isRecording}
+          editable={!isRecording && !pendingMedia}
         />
+
+        {/* Send button — rightmost, next to the text input */}
+        <Pressable
+          style={[
+            styles.sendBtn,
+            (uploading || (!text.trim() && !pendingMedia)) && { opacity: 0.5 },
+          ]}
+          onPress={handleSend}
+          disabled={uploading || (!text.trim() && !pendingMedia)}
+        >
+          <LinearGradient colors={[C.accent, C.accentLight]} style={styles.sendBtnGrad}>
+            <Feather name="send" size={18} color={C.primary} />
+          </LinearGradient>
+        </Pressable>
       </View>
+
+      {/* Full-screen image viewer */}
+      <Modal
+        visible={!!viewerUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerUri(null)}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable
+            style={styles.viewerCloseBtn}
+            onPress={() => setViewerUri(null)}
+          >
+            <Feather name="x" size={26} color="#FFF" />
+          </Pressable>
+          {viewerUri && (
+            <Image
+              source={{ uri: viewerUri }}
+              style={styles.viewerImage}
+              contentFit="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -500,4 +658,55 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#ef4444",
   },
   uploadSpinner: { width: 38, height: 38, justifyContent: "center", alignItems: "center" },
+  deletedRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  deletedText: { fontSize: 13, fontFamily: "Cairo_400Regular", fontStyle: "italic" },
+  pendingBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: C.card,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  pendingThumb: { width: 48, height: 48, borderRadius: 8 },
+  pendingAudioPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: C.inputBg,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  pendingAudioText: { fontSize: 12.5, fontFamily: "Cairo_600SemiBold", color: C.text },
+  pendingLabel: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  pendingCancelBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.inputBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerCloseBtn: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  viewerImage: { width: "100%", height: "80%" },
 });

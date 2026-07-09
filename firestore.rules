@@ -90,8 +90,19 @@ service cloud.firestore {
                       && request.auth.uid in chatId.split("_");
         allow update: if isSignedIn()
                       && request.auth.uid in chatId.split("_")
-                      && resource.data.senderId != request.auth.uid
-                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]);
+                      && (
+                        (resource.data.senderId != request.auth.uid
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]))
+                        || (resource.data.senderId == request.auth.uid
+                          // "Delete for everyone" only: the sender may replace their own
+                          // message with the fixed placeholder, not edit arbitrary content.
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deleted", "text", "type", "mediaUrl", "duration"])
+                          && request.resource.data.deleted == true
+                          && request.resource.data.type == "text"
+                          && request.resource.data.text == "تم حذف هذه الرسالة"
+                          && !("mediaUrl" in request.resource.data)
+                          && !("duration" in request.resource.data))
+                      );
       }
     }
 

@@ -17,6 +17,7 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
+  deleteField,
   type Unsubscribe,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
@@ -737,7 +738,10 @@ export interface ChatMessage {
   type?: "text" | "image" | "audio";
   mediaUrl?: string;
   duration?: number;
+  deleted?: boolean;
 }
+
+export const DELETED_MESSAGE_TEXT = "تم حذف هذه الرسالة";
 
 export interface ChatSummary {
   chatId: string;
@@ -907,6 +911,24 @@ export const markMessagesRead = async (chatId: string, readerId: string): Promis
   } catch (err) {
     console.error("markMessagesRead error:", err);
   }
+};
+
+/**
+ * "Delete for everyone": replaces the message's content with a placeholder
+ * so both participants see the change live via onSnapshot. Only the
+ * original sender may do this (enforced by firestore.rules).
+ */
+export const deleteMessageForEveryone = async (
+  chatId: string,
+  messageId: string
+): Promise<void> => {
+  await updateDoc(doc(db, "chats", chatId, "messages", messageId), {
+    deleted: true,
+    text: DELETED_MESSAGE_TEXT,
+    type: "text",
+    mediaUrl: deleteField(),
+    duration: deleteField(),
+  });
 };
 
 /**
