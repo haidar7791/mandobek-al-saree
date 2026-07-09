@@ -23,8 +23,10 @@ const MIN_PORTFOLIO_IMAGES = 3;
  * instead of blocking navigation.
  *
  * Fields checked (matching the real Firestore schema in `users/{userId}`):
- * `phone` + `isPhoneVerified`, `photoUri`, `bio` (>=10 chars), `portfolio` (array, >=3 images).
+ * `phone` (valid Iraqi format, no SMS verification required), `photoUri`,
+ * `bio` (>=10 chars), `portfolio` (array, >=3 images).
  */
+const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 export function useProfileCheck(userId: string | null | undefined): ProfileCheckResult {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export function useProfileCheck(userId: string | null | undefined): ProfileCheck
   let isPhoneOk = false;
 
   if (profile) {
-    isPhoneOk = !!profile.phone && profile.isPhoneVerified === true;
+    isPhoneOk = IRAQI_PHONE_REGEX.test((profile.phone || "").trim());
     const isPhotoOk = !!profile.photoUri;
     const isBioOk = !!profile.bio && profile.bio.trim().length >= MIN_BIO_LENGTH;
     const isPortfolioOk = !!profile.portfolio && profile.portfolio.length >= MIN_PORTFOLIO_IMAGES;
