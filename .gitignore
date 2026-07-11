@@ -28,6 +28,11 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# service account / admin credentials — never commit
+*firebase-adminsdk*.json
+google-service-account.json
+attached_assets/*firebase-adminsdk*.json
+
 # macOS
 .DS_Store
 *.pem
