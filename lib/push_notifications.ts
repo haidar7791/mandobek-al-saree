@@ -1,10 +1,31 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import * as TaskManager from "expo-task-manager";
 import Constants from "expo-constants";
 import { setUserPushToken } from "./db_logic";
 
 let configured = false;
+
+// Background task: lets Android deliver/process remote pushes while the app is
+// backgrounded or fully killed (swiped away). Registering it is what makes the
+// system show the notification (and keep the data payload available for the
+// tap handler) even when no JS is running — the same mechanism WhatsApp relies
+// on for its background push delivery on Android.
+export const BACKGROUND_NOTIFICATION_TASK = "BACKGROUND_NOTIFICATION_TASK";
+
+if (!TaskManager.isTaskDefined(BACKGROUND_NOTIFICATION_TASK)) {
+  TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+    if (error) {
+      console.error("BACKGROUND_NOTIFICATION_TASK error:", error);
+      return;
+    }
+    // No extra work needed here — expo-notifications + FCM/APNs already display
+    // the system notification. This task's job is simply to exist and be
+    // registered so Android keeps the app process alive long enough to do so
+    // when the app was killed.
+  });
+}
 
 function configureHandler() {
   if (configured) return;
@@ -17,6 +38,12 @@ function configureHandler() {
       shouldSetBadge: true,
     }),
   });
+
+  if (Platform.OS === "android") {
+    Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((err) => {
+      console.error("registerTaskAsync(BACKGROUND_NOTIFICATION_TASK) failed:", err);
+    });
+  }
 }
 
 export function configurePushHandler() {

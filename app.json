@@ -19,7 +19,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "CFBundleDisplayName": "فورس - ForUs",
-        "CFBundleName": "فورس - ForUs"
+        "CFBundleName": "فورس - ForUs",
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {

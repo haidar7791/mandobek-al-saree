@@ -342,8 +342,10 @@ export default function DashboardScreen() {
           pathname: "/chat",
           params: { chatId: data.chatId, otherName: data.senderName },
         });
-      } else if (data?.type === "serviceRequest") {
-        router.push("/messages" as any);
+      } else if (data?.type === "serviceRequest" || data?.type === "requestStatus") {
+        // New booking (artisan side) or a status change on an existing one
+        // (client side) — both live on the reservations screen.
+        router.push("/reservations" as any);
       }
     });
     return () => sub.remove();
