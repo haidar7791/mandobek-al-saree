@@ -220,14 +220,26 @@ export default function ReservationsScreen() {
           setLoading(false);
           clearTimeout(safetyTimer);
         };
-        const handleError = () => {
+        const handleError = (err: Error) => {
           if (!mounted) return;
           setLoading(false);
           clearTimeout(safetyTimer);
+          // Surface the real Firestore error instead of silently showing an empty
+          // list — this is the fastest way to spot permission-denied / missing-index
+          // issues (Firestore prints a one-click "create index" link in this case).
+          console.error("Service requests subscription failed:", err);
+          Alert.alert(
+            "تعذّر تحميل الطلبات",
+            "حدث خطأ أثناء الاتصال بقاعدة البيانات. حاول لاحقاً أو تحقق من صلاحيات Firestore.\n\n" +
+              (err?.message || "")
+          );
         };
 
         if (asArtisan && artisanRecord) {
-          unsub = subscribeToServiceRequests(artisanRecord.id, handleList, handleError);
+          // Firestore security rules authorize reads by artisanUserId (auth uid),
+          // not artisanId (the artisans/{id} document id) — must match or the
+          // query is rejected outright with permission-denied.
+          unsub = subscribeToServiceRequests(user.uid, handleList, handleError);
         } else {
           unsub = subscribeToClientServiceRequests(user.uid, handleList, handleError);
         }

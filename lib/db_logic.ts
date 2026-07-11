@@ -440,11 +440,11 @@ export const getServiceRequestsByClient = async (clientId: string): Promise<Serv
   }
 };
 
-export const getServiceRequestsByArtisan = async (artisanId: string): Promise<ServiceRequest[]> => {
+export const getServiceRequestsByArtisan = async (artisanUserId: string): Promise<ServiceRequest[]> => {
   try {
     const q = query(
       collection(db, "serviceRequests"),
-      where("artisanId", "==", artisanId),
+      where("artisanUserId", "==", artisanUserId),
       orderBy("createdAt", "desc")
     );
     const snap = await getDocs(q);
@@ -577,13 +577,13 @@ export const cancelServiceRequest = async (requestId: string): Promise<void> => 
 };
 
 export const subscribeToServiceRequests = (
-  artisanId: string,
+  artisanUserId: string,
   callback: (requests: ServiceRequest[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, "serviceRequests"),
-    where("artisanId", "==", artisanId),
+    where("artisanUserId", "==", artisanUserId),
     orderBy("createdAt", "desc")
   );
   return onSnapshot(

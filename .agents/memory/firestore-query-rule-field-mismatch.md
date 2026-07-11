@@ -1,0 +1,10 @@
+---
+name: Firestore query field must match security-rule field exactly
+description: A Firestore compound query is rejected wholesale with permission-denied if it filters on a field the security rule doesn't check, even when the rule is otherwise permissive and the document would pass a get().
+---
+
+Firestore evaluates whether a *query* (not a single-document get) is provably compliant with the read rule before running it. If the rule's `allow read` condition checks field A (e.g. `resource.data.artisanUserId == request.auth.uid`) but the client queries `where("<different field B>", "==", value)`, Firestore can't prove every possible match is authorized, so it denies the entire query with `permission-denied` — regardless of whether the rule is otherwise wide open, and with no partial results.
+
+**Why:** Debugged in the "Mandobek Al-Saree" (ForUs) marketplace app: bookings (`serviceRequests`) were created fine and messaging worked, but artisans never saw incoming requests. The rules correctly checked `artisanUserId` (auth uid), but the artisan-side query filtered on `artisanId` (the `artisans/{id}` document id) — a different field holding a different value. The user had even opened the rules "fully" for testing and still got silent empty results, because the mismatch is structural, not a permissions-strictness issue.
+
+**How to apply:** When a Firestore `onSnapshot`/`getDocs` query returns empty/nothing for an authenticated user and nothing appears in a naive rules check, reproduce the exact query with the Firestore JS SDK using the project's public web config (no admin key needed) and see whether it throws `permission-denied` vs `FAILED_PRECONDITION` (missing index) vs succeeds. Then diff the query's `where()` field against the security rule's condition field for that collection — they must be the same field/value shape, not just "semantically the same entity" (e.g. a profile's own doc id vs. that profile owner's auth uid). Also make sure `onError` callbacks on `onSnapshot` surface real errors (Alert/log) instead of silently going to an empty-list state, or this class of bug is invisible.
