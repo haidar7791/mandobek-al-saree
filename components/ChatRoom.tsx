@@ -36,9 +36,9 @@ import {
 import { subscribeToPresence } from "../lib/presence";
 import Colors from "@/constants/colors";
 
-type PendingMedia =
-  | { type: "image"; uri: string }
-  | { type: "audio"; uri: string; duration: number };
+// Only images use the pending-preview step before sending. Voice notes are
+// uploaded and sent immediately when the user confirms the recording.
+type PendingMedia = { type: "image"; uri: string };
 
 const C = Colors.light;
 
@@ -208,24 +208,13 @@ export default function ChatRoom({
     const user = auth.currentUser;
     if (!user || !chatId || uploading) return;
 
-    // If there's a pending media item (image/audio picked but not yet sent),
-    // upload+send that; the text box is otherwise reserved for text messages.
+    // If there's a pending image (picked but not yet sent), upload+send it;
+    // the text box is otherwise reserved for text messages.
     if (pendingMedia) {
       setUploading(true);
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (pendingMedia.type === "image") {
-          await sendMediaMessage(chatId, user.uid, senderName, "image", pendingMedia.uri);
-        } else {
-          await sendMediaMessage(
-            chatId,
-            user.uid,
-            senderName,
-            "audio",
-            pendingMedia.uri,
-            pendingMedia.duration
-          );
-        }
+        await sendMediaMessage(chatId, user.uid, senderName, "image", pendingMedia.uri);
         setPendingMedia(null);
       } catch (err) {
         Alert.alert("خطأ", "تعذّر إرسال الوسائط، حاول مرة أخرى");
@@ -298,23 +287,39 @@ export default function ChatRoom({
     stopWaveAnimation();
   };
 
+  // Confirming a recording (✔) sends the voice note immediately — no
+  // preview/draft step, unlike picked images.
   const handleStopRecording = async () => {
     if (!recording) return;
+    let uri: string | null = null;
+    let duration = 0;
     try {
       setIsRecording(false);
       stopRecordingTimer();
       await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
-      setRecordingSeconds(0);
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      if (!uri) return;
-      const duration = Math.round((Date.now() - recordingStartTime.current) / 1000);
-      if (duration < 1) return; // too short, discard
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setPendingMedia({ type: "audio", uri, duration });
+      uri = recording.getURI();
+      duration = Math.round((Date.now() - recordingStartTime.current) / 1000);
     } catch (err) {
       Alert.alert("خطأ", "تعذّر إنهاء التسجيل");
+    } finally {
+      setRecording(null);
+      setRecordingSeconds(0);
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+    }
+
+    if (!uri || duration < 1) return; // too short or failed, discard
+
+    const user = auth.currentUser;
+    if (!user || !chatId) return;
+
+    setUploading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await sendMediaMessage(chatId, user.uid, senderName, "audio", uri, duration);
+    } catch (err) {
+      Alert.alert("خطأ", "تعذّر إرسال الرسالة الصوتية");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -588,19 +593,8 @@ export default function ChatRoom({
 
       {pendingMedia && (
         <View style={styles.pendingBar}>
-          {pendingMedia.type === "image" ? (
-            <Image source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} contentFit="cover" />
-          ) : (
-            <View style={styles.pendingAudioPreview}>
-              <Feather name="mic" size={16} color={C.accent} />
-              <Text style={styles.pendingAudioText}>
-                رسالة صوتية · {formatDuration(pendingMedia.duration)}
-              </Text>
-            </View>
-          )}
-          <Text style={styles.pendingLabel}>
-            {pendingMedia.type === "image" ? "جاهزة للإرسال" : "جاهزة للإرسال"}
-          </Text>
+          <Image source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} contentFit="cover" />
+          <Text style={styles.pendingLabel}>جاهزة للإرسال</Text>
           <Pressable style={styles.pendingCancelBtn} onPress={handleCancelPendingMedia} disabled={uploading}>
             <Feather name="x" size={16} color={C.textMuted} />
           </Pressable>
@@ -849,16 +843,6 @@ const styles = StyleSheet.create({
     borderTopColor: C.border,
   },
   pendingThumb: { width: 48, height: 48, borderRadius: 8 },
-  pendingAudioPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: C.inputBg,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  pendingAudioText: { fontSize: 12.5, fontFamily: "Cairo_600SemiBold", color: C.text },
   pendingLabel: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
   pendingCancelBtn: {
     width: 30,
