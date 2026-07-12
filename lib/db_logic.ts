@@ -812,8 +812,24 @@ export const subscribeToMessages = (
   });
 };
 
-export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
+// Account allowed to see every conversation in the messages list, including
+// support/customer-service chats that are hidden from regular users.
+const UNRESTRICTED_INBOX_EMAIL = "haidar.askry@gmail.com";
+
+/**
+ * Whether the signed-in viewer should see support chats in their general
+ * messages list instead of having them filtered out.
+ */
+export function canViewAllChats(viewerEmail?: string | null): boolean {
+  return viewerEmail?.toLowerCase() === UNRESTRICTED_INBOX_EMAIL;
+}
+
+export const getUserChats = async (
+  userId: string,
+  viewerEmail?: string | null
+): Promise<ChatSummary[]> => {
   try {
+    const bypassFilter = canViewAllChats(viewerEmail);
     const q = query(
       collection(db, "chats"),
       where("participants", "array-contains", userId)
@@ -822,6 +838,7 @@ export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
     const summaries = await Promise.all(
       snap.docs
         .filter((d) => {
+          if (bypassFilter) return true;
           const data = d.data();
           if (data.isSupport === true) return false;
           const participants: string[] = data.participants || [];
@@ -832,11 +849,11 @@ export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
           const data = d.data();
           const participants: string[] = data.participants || [];
           const otherUid = participants.find((u) => u !== userId) || "";
-          const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+          const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
           return {
             chatId: d.id,
             otherUserId: otherUid,
-            otherName: otherProfile?.name || "مستخدم فورس",
+            otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
             otherPhotoUri: otherProfile?.photoUri || null,
             lastMessage: data.lastMessage || "",
             lastAt: data.lastAt || "",
@@ -852,8 +869,10 @@ export const getUserChats = async (userId: string): Promise<ChatSummary[]> => {
 
 export const subscribeToUserChats = (
   userId: string,
-  callback: (chats: ChatSummary[]) => void
+  callback: (chats: ChatSummary[]) => void,
+  viewerEmail?: string | null
 ): Unsubscribe => {
+  const bypassFilter = canViewAllChats(viewerEmail);
   const q = query(
     collection(db, "chats"),
     where("participants", "array-contains", userId)
@@ -862,6 +881,7 @@ export const subscribeToUserChats = (
     const summaries = await Promise.all(
       snap.docs
         .filter((d) => {
+          if (bypassFilter) return true;
           const data = d.data();
           if (data.isSupport === true) return false;
           const participants: string[] = data.participants || [];
@@ -872,11 +892,11 @@ export const subscribeToUserChats = (
           const data = d.data();
           const participants: string[] = data.participants || [];
           const otherUid = participants.find((u) => u !== userId) || "";
-          const otherProfile = otherUid ? await getUserProfile(otherUid) : null;
+          const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
           return {
             chatId: d.id,
             otherUserId: otherUid,
-            otherName: otherProfile?.name || "مستخدم فورس",
+            otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
             otherPhotoUri: otherProfile?.photoUri || null,
             lastMessage: data.lastMessage || "",
             lastAt: data.lastAt || "",

@@ -129,11 +129,15 @@ export default function MessagesScreen() {
       router.replace("/login");
       return;
     }
-    const unsub = subscribeToUserChats(user.uid, (list) => {
-      setChats(list);
-      setLoading(false);
-      setRefreshing(false);
-    });
+    const unsub = subscribeToUserChats(
+      user.uid,
+      (list) => {
+        setChats(list);
+        setLoading(false);
+        setRefreshing(false);
+      },
+      user.email
+    );
     return unsub;
   }, []);
 
