@@ -162,6 +162,10 @@ export interface ServiceRequest {
   status: ServiceRequestStatus;
   createdAt: string;
   updatedAt?: string;
+  // Uids that have soft-deleted this request from their own "السجل" history
+  // view. The document itself is never removed so the other side's history
+  // (and any chat/records tied to it) stays intact.
+  hiddenFor?: string[];
 }
 
 export interface WalletRequest {
@@ -574,6 +578,30 @@ export const cancelServiceRequest = async (requestId: string): Promise<void> => 
     status: "cancelled",
     updatedAt: new Date().toISOString(),
   });
+};
+
+/**
+ * Soft-delete one or more service requests from the current user's own
+ * "السجل" history view. Adds userId to each request's hiddenFor array
+ * instead of deleting the document, so the other participant's history and
+ * any linked records stay intact. Capped batches of 400 writes, same
+ * pattern as other bulk Firestore operations in this file.
+ */
+export const hideServiceRequestsForUser = async (
+  requestIds: string[],
+  userId: string
+): Promise<void> => {
+  const BATCH_LIMIT = 400;
+  for (let i = 0; i < requestIds.length; i += BATCH_LIMIT) {
+    const chunk = requestIds.slice(i, i + BATCH_LIMIT);
+    const batch = writeBatch(db);
+    chunk.forEach((id) => {
+      batch.update(doc(db, "serviceRequests", id), {
+        hiddenFor: arrayUnion(userId),
+      });
+    });
+    await batch.commit();
+  }
 };
 
 export const subscribeToServiceRequests = (

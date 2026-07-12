@@ -23,6 +23,7 @@ import {
   getUserProfile,
   acceptServiceRequest,
   rejectServiceRequest,
+  hideServiceRequestsForUser,
   ACTIVE_STATUSES,
   STATUS_LABELS,
   getSpecialtyLabel,
@@ -76,12 +77,20 @@ function RequestCard({
   onAccept,
   onReject,
   onOpen,
+  selectionMode,
+  selected,
+  onToggleSelect,
+  onLongPress,
 }: {
   request: ServiceRequest;
   isArtisan: boolean;
   onAccept: () => void;
   onReject: () => void;
   onOpen: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  onLongPress?: () => void;
 }) {
   const openMaps = () => {
     if (!request.clientLocation) return;
@@ -97,13 +106,30 @@ function RequestCard({
   const showLiveLink = !isArtisan && request.status === "on_the_way";
 
   return (
-    <Animated.View entering={FadeInDown.springify()} style={styles.card}>
+    <Pressable
+      onLongPress={onLongPress}
+      onPress={selectionMode ? onToggleSelect : undefined}
+      delayLongPress={400}
+    >
+      <Animated.View
+        entering={FadeInDown.springify()}
+        style={[styles.card, selected && styles.cardSelected]}
+      >
       <View style={styles.cardHeader}>
-        <View style={[styles.statusPill, { backgroundColor: statusColor(request.status) + "22" }]}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor(request.status) }]} />
-          <Text style={[styles.statusText, { color: statusColor(request.status) }]}>
-            {STATUS_LABELS[request.status]}
-          </Text>
+        <View style={styles.cardHeaderLeft}>
+          {selectionMode ? (
+            <Pressable onPress={onToggleSelect} hitSlop={8} style={styles.checkboxWrap}>
+              <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                {selected ? <Feather name="check" size={12} color="#FFF" /> : null}
+              </View>
+            </Pressable>
+          ) : null}
+          <View style={[styles.statusPill, { backgroundColor: statusColor(request.status) + "22" }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor(request.status) }]} />
+            <Text style={[styles.statusText, { color: statusColor(request.status) }]}>
+              {STATUS_LABELS[request.status]}
+            </Text>
+          </View>
         </View>
         <Text style={styles.cardTime}>{formatTime(request.createdAt)}</Text>
       </View>
@@ -160,7 +186,7 @@ function RequestCard({
         </View>
       ) : null}
 
-      {!isPending ? (
+      {!isPending && !selectionMode ? (
         <View style={styles.bottomRow}>
           {isArtisan && request.clientPhone ? (
             <Pressable style={styles.smallBtn} onPress={callClient}>
@@ -174,7 +200,8 @@ function RequestCard({
           </Pressable>
         </View>
       ) : null}
-    </Animated.View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -184,6 +211,14 @@ export default function ReservationsScreen() {
   const [tab, setTab] = useState<Tab>("pending");
   const [isArtisan, setIsArtisan] = useState(false);
   const [loading, setLoading] = useState(true);
+  // History cleanup: selection mode is only ever entered from the "السجل"
+  // tab (enforced in enterSelectionMode / the tab-change effect below) so
+  // active/pending requests can never be bulk-deleted by accident.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const currentUid = auth.currentUser?.uid;
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -259,23 +294,111 @@ export default function ReservationsScreen() {
     };
   }, []);
 
+  // Requests this user has soft-deleted from their own history stay hidden
+  // everywhere in this screen (they're already completed/cancelled/rejected).
+  const visibleRequests = useMemo(
+    () => requests.filter((r) => !currentUid || !r.hiddenFor?.includes(currentUid)),
+    [requests, currentUid]
+  );
+
   const filtered = useMemo(() => {
-    if (tab === "pending") return requests.filter((r) => r.status === "pending");
-    if (tab === "active") return requests.filter((r) => ACTIVE_STATUSES.includes(r.status));
-    return requests.filter((r) =>
+    if (tab === "pending") return visibleRequests.filter((r) => r.status === "pending");
+    if (tab === "active") return visibleRequests.filter((r) => ACTIVE_STATUSES.includes(r.status));
+    return visibleRequests.filter((r) =>
       ["completed", "cancelled", "rejected"].includes(r.status)
     );
-  }, [requests, tab]);
+  }, [visibleRequests, tab]);
+
+  // Exit selection mode automatically if the user switches away from السجل,
+  // so a stray toolbar can never linger over the pending/active tabs.
+  useEffect(() => {
+    if (tab !== "history") {
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [tab]);
+
+  const enterSelectionMode = (id: string) => {
+    if (tab !== "history") return; // hard gate: only السجل may enter selection mode
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+  };
+
+  const toggleSelect = (id: string) => {
+    Haptics.selectionAsync();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    Haptics.selectionAsync();
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((r) => r.id)));
+    }
+  };
+
+  const handleCancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0 || tab !== "history") return;
+    Alert.alert(
+      "حذف من السجل",
+      "هل أنت متأكد من حذف الطلبات المحددة من السجل؟ لا يمكن التراجع عن هذه الخطوة.",
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            const ids = Array.from(selectedIds);
+            setDeleting(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            try {
+              await hideServiceRequestsForUser(ids, user.uid);
+              // Optimistic: mark them hidden locally instead of waiting on the
+              // Firestore round-trip so the list updates instantly.
+              setRequests((prev) =>
+                prev.map((r) =>
+                  ids.includes(r.id)
+                    ? { ...r, hiddenFor: [...(r.hiddenFor || []), user.uid] }
+                    : r
+                )
+              );
+              setSelectionMode(false);
+              setSelectedIds(new Set());
+            } catch (err) {
+              console.error("hideServiceRequestsForUser error:", err);
+              Alert.alert("خطأ", "تعذّر حذف الطلبات المحددة، حاول مرة أخرى");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const counts = useMemo(
     () => ({
-      pending: requests.filter((r) => r.status === "pending").length,
-      active: requests.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
-      history: requests.filter((r) =>
+      pending: visibleRequests.filter((r) => r.status === "pending").length,
+      active: visibleRequests.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
+      history: visibleRequests.filter((r) =>
         ["completed", "cancelled", "rejected"].includes(r.status)
       ).length,
     }),
-    [requests]
+    [visibleRequests]
   );
 
   const handleAccept = async (req: ServiceRequest) => {
@@ -349,6 +472,7 @@ export default function ReservationsScreen() {
             <Pressable
               key={t}
               style={[styles.tab, active && styles.tabActive]}
+              disabled={selectionMode}
               onPress={() => {
                 Haptics.selectionAsync();
                 setTab(t);
@@ -362,6 +486,27 @@ export default function ReservationsScreen() {
         })}
       </View>
 
+      {tab === "history" && selectionMode ? (
+        <View style={styles.selectionBar}>
+          <Pressable
+            style={[styles.selectionTrashBtn, (deleting || selectedIds.size === 0) && { opacity: 0.5 }]}
+            onPress={handleDeleteSelected}
+            disabled={deleting || selectedIds.size === 0}
+          >
+            <Feather name="trash-2" size={18} color="#FFF" />
+          </Pressable>
+          <Pressable style={styles.selectAllBtn} onPress={handleSelectAll}>
+            <Text style={styles.selectAllText}>
+              {selectedIds.size === filtered.length ? "إلغاء تحديد الكل" : "تحديد الكل"}
+            </Text>
+          </Pressable>
+          <Text style={styles.selectionCount}>تم تحديد {selectedIds.size} طلب</Text>
+          <Pressable style={styles.selectionCancelBtn} onPress={handleCancelSelection} hitSlop={8}>
+            <Feather name="x" size={20} color={C.textSecondary} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <FlatList
         data={filtered}
         keyExtractor={(r) => r.id}
@@ -372,6 +517,10 @@ export default function ReservationsScreen() {
             onAccept={() => handleAccept(item)}
             onReject={() => handleReject(item)}
             onOpen={() => handleOpen(item)}
+            selectionMode={tab === "history" && selectionMode}
+            selected={selectedIds.has(item.id)}
+            onToggleSelect={() => toggleSelect(item.id)}
+            onLongPress={tab === "history" ? () => enterSelectionMode(item.id) : undefined}
           />
         )}
         contentContainerStyle={[
@@ -424,6 +573,43 @@ const styles = StyleSheet.create({
     backgroundColor: C.background,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
+  selectionBar: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: C.card,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  selectionCount: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.text,
+    textAlign: "right",
+  },
+  selectAllBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: C.inputBg,
+  },
+  selectAllText: {
+    fontSize: 12,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
+  },
+  selectionTrashBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "#EF4444",
+    alignItems: "center", justifyContent: "center",
+  },
+  selectionCancelBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: "center", justifyContent: "center",
+  },
   tab: {
     flex: 1, alignItems: "center", justifyContent: "center",
     paddingVertical: 9, borderRadius: 10,
@@ -437,7 +623,21 @@ const styles = StyleSheet.create({
     backgroundColor: C.card, borderRadius: 16, padding: 14, gap: 10,
     borderWidth: 1, borderColor: C.border,
   },
+  cardSelected: {
+    borderColor: C.accent,
+    backgroundColor: "rgba(201,168,76,0.08)",
+  },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  cardHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  checkboxWrap: { padding: 2 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 6,
+    borderWidth: 2, borderColor: C.textMuted,
+    alignItems: "center", justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: C.accent, borderColor: C.accent,
+  },
   statusPill: {
     flexDirection: "row", alignItems: "center", gap: 6,
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
