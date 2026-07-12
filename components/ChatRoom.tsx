@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
@@ -85,7 +86,38 @@ export default function ChatRoom({
   // Audio recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingStartTime = useRef<number>(0);
+  const isRecordingRef = useRef(false);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // TikTok-style pulsing waveform bars shown while recording.
+  const waveAnims = useRef(
+    Array.from({ length: 5 }, () => new Animated.Value(6))
+  );
+
+  const animateWaveBar = (anim: Animated.Value) => {
+    const next = () => {
+      if (!isRecordingRef.current) return;
+      const toValue = 6 + Math.random() * 18;
+      Animated.timing(anim, {
+        toValue,
+        duration: 280 + Math.random() * 220,
+        useNativeDriver: false,
+      }).start(() => next());
+    };
+    next();
+  };
+
+  const startWaveAnimation = () => {
+    waveAnims.current.forEach((anim) => animateWaveBar(anim));
+  };
+
+  const stopWaveAnimation = () => {
+    waveAnims.current.forEach((anim) => {
+      anim.stopAnimation();
+      anim.setValue(6);
+    });
+  };
 
   // Audio playback — track which messageId is playing
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -157,13 +189,18 @@ export default function ChatRoom({
     }
   }, [messages, chatId, currentUid]);
 
-  // Cleanup audio on unmount
+  // Cleanup audio/timers on unmount
   useEffect(() => {
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync().catch(() => {});
         soundRef.current = null;
       }
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      isRecordingRef.current = false;
     };
   }, []);
 
@@ -238,20 +275,38 @@ export default function ChatRoom({
       );
       setRecording(rec);
       setIsRecording(true);
+      isRecordingRef.current = true;
       recordingStartTime.current = Date.now();
+      setRecordingSeconds(0);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
+      startWaveAnimation();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch (err) {
       Alert.alert("خطأ", "تعذّر بدء التسجيل");
     }
   };
 
+  const stopRecordingTimer = () => {
+    isRecordingRef.current = false;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    stopWaveAnimation();
+  };
+
   const handleStopRecording = async () => {
     if (!recording) return;
     try {
       setIsRecording(false);
+      stopRecordingTimer();
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setRecording(null);
+      setRecordingSeconds(0);
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       if (!uri) return;
       const duration = Math.round((Date.now() - recordingStartTime.current) / 1000);
@@ -261,6 +316,24 @@ export default function ChatRoom({
     } catch (err) {
       Alert.alert("خطأ", "تعذّر إنهاء التسجيل");
     }
+  };
+
+  // TikTok-style cancel: discard the in-progress recording without sending it.
+  const handleCancelRecording = async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    stopRecordingTimer();
+    setRecordingSeconds(0);
+    try {
+      await recording.stopAndUnloadAsync();
+    } catch {
+      // already stopped/unloaded — ignore
+    }
+    setRecording(null);
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {}
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handlePlayAudio = async (item: ChatMessage) => {
@@ -467,7 +540,7 @@ export default function ChatRoom({
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.select({ ios: "padding", android: "height", default: undefined })}
       keyboardVerticalOffset={0}
     >
       <LinearGradient
@@ -534,57 +607,84 @@ export default function ChatRoom({
         </View>
       )}
 
-      <View style={[styles.inputBar, { paddingBottom: bottomPad + 8 }]}>
-        {/* Media icons (image / voice) — left side of the bar */}
-        {uploading ? (
-          <ActivityIndicator size="small" color={C.accent} style={styles.uploadSpinner} />
-        ) : (
-          <>
-            <Pressable
-              style={[styles.mediaBtn, isRecording && styles.mediaBtnActive]}
-              onPress={isRecording ? handleStopRecording : handleStartRecording}
-              disabled={!!pendingMedia}
-            >
-              <Feather name="mic" size={18} color={isRecording ? "#ef4444" : C.textMuted} />
-            </Pressable>
-            <Pressable
-              style={styles.mediaBtn}
-              onPress={handlePickImage}
-              disabled={!!pendingMedia || isRecording}
-            >
-              <Feather name="image" size={18} color={C.textMuted} />
-            </Pressable>
-          </>
-        )}
+      {isRecording ? (
+        // TikTok-style recording bar: cancel (trash) on the right where the
+        // mic button normally sits, live timer + pulsing waveform in the
+        // middle, and a confirm button on the left where send normally sits.
+        <View style={[styles.recordingBar, { paddingBottom: bottomPad + 8 }]}>
+          <Pressable style={styles.trashBtn} onPress={handleCancelRecording}>
+            <Feather name="trash-2" size={20} color="#ef4444" />
+          </Pressable>
 
-        <TextInput
-          style={styles.textInput}
-          placeholder={isRecording ? "جارٍ التسجيل..." : "اكتب رسالتك..."}
-          placeholderTextColor={isRecording ? "#ef4444" : C.textMuted}
-          value={text}
-          onChangeText={setText}
-          textAlign="right"
-          multiline
-          maxLength={500}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          editable={!isRecording && !pendingMedia}
-        />
+          <View style={styles.waveformRow}>
+            <View style={styles.recDot} />
+            <Text style={styles.recordingTimerText}>{formatDuration(recordingSeconds)}</Text>
+            <View style={styles.waveformBars}>
+              {waveAnims.current.map((anim, i) => (
+                <Animated.View key={i} style={[styles.waveBar, { height: anim }]} />
+              ))}
+            </View>
+          </View>
 
-        {/* Send button — rightmost, next to the text input */}
-        <Pressable
-          style={[
-            styles.sendBtn,
-            (uploading || (!text.trim() && !pendingMedia)) && { opacity: 0.5 },
-          ]}
-          onPress={handleSend}
-          disabled={uploading || (!text.trim() && !pendingMedia)}
-        >
-          <LinearGradient colors={[C.accent, C.accentLight]} style={styles.sendBtnGrad}>
-            <Feather name="send" size={18} color={C.primary} />
-          </LinearGradient>
-        </Pressable>
-      </View>
+          <Pressable style={styles.confirmRecordingBtn} onPress={handleStopRecording}>
+            <LinearGradient colors={[C.accent, C.accentLight]} style={styles.confirmRecordingGrad}>
+              <Feather name="check" size={18} color={C.primary} />
+            </LinearGradient>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={[styles.inputBar, { paddingBottom: bottomPad + 8 }]}>
+          {/* Mic + image icons — right side of the bar (mic outermost) */}
+          {uploading ? (
+            <ActivityIndicator size="small" color={C.accent} style={styles.uploadSpinner} />
+          ) : (
+            <>
+              <Pressable
+                style={styles.mediaBtn}
+                onPress={handleStartRecording}
+                disabled={!!pendingMedia}
+              >
+                <Feather name="mic" size={18} color={C.textMuted} />
+              </Pressable>
+              <Pressable
+                style={styles.mediaBtn}
+                onPress={handlePickImage}
+                disabled={!!pendingMedia}
+              >
+                <Feather name="image" size={18} color={C.textMuted} />
+              </Pressable>
+            </>
+          )}
+
+          <TextInput
+            style={styles.textInput}
+            placeholder="اكتب رسالتك..."
+            placeholderTextColor={C.textMuted}
+            value={text}
+            onChangeText={setText}
+            textAlign="right"
+            multiline
+            maxLength={500}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            editable={!pendingMedia}
+          />
+
+          {/* Send button — left side of the bar */}
+          <Pressable
+            style={[
+              styles.sendBtn,
+              (uploading || (!text.trim() && !pendingMedia)) && { opacity: 0.5 },
+            ]}
+            onPress={handleSend}
+            disabled={uploading || (!text.trim() && !pendingMedia)}
+          >
+            <LinearGradient colors={[C.accent, C.accentLight]} style={styles.sendBtnGrad}>
+              <Feather name="send" size={18} color={C.primary} />
+            </LinearGradient>
+          </Pressable>
+        </View>
+      )}
 
       {/* Full-screen image viewer */}
       <Modal
@@ -664,7 +764,9 @@ const styles = StyleSheet.create({
   emptyChat: { alignItems: "center", paddingTop: 60, gap: 10 },
   emptyChatText: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textMuted },
   inputBar: {
-    flexDirection: "row", alignItems: "flex-end", gap: 8,
+    // row-reverse so the mic/image icons land on the right and the send
+    // button lands on the left, matching RTL reading order.
+    flexDirection: "row-reverse", alignItems: "flex-end", gap: 8,
     paddingHorizontal: 14, paddingTop: 10,
     backgroundColor: C.card,
     borderTopWidth: 1, borderTopColor: C.border,
@@ -687,6 +789,53 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#ef4444",
   },
   uploadSpinner: { width: 38, height: 38, justifyContent: "center", alignItems: "center" },
+  // TikTok-style recording bar: trash on the right (mic's slot), waveform +
+  // timer filling the middle, confirm button on the left (send's slot).
+  recordingBar: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    backgroundColor: C.card,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  trashBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: "rgba(239,68,68,0.12)",
+    alignItems: "center", justifyContent: "center",
+  },
+  waveformRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.inputBg,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  recDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: "#ef4444",
+  },
+  recordingTimerText: {
+    fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text,
+    minWidth: 34,
+  },
+  waveformBars: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    height: 24,
+  },
+  waveBar: {
+    width: 3, borderRadius: 2, backgroundColor: C.accent, minHeight: 4,
+  },
+  confirmRecordingBtn: { width: 44, height: 44, borderRadius: 14, overflow: "hidden" },
+  confirmRecordingGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   deletedRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   deletedText: { fontSize: 13, fontFamily: "Cairo_400Regular", fontStyle: "italic" },
   pendingBar: {
