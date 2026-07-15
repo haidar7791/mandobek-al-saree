@@ -38,11 +38,11 @@ import {
   subscribeToUserChatLastAts,
   subscribeToClientServiceRequests,
 } from "../lib/db_logic";
-import { signOut } from "firebase/auth";
 import Colors from "@/constants/colors";
 import {
   registerForPushNotifications,
   addNotificationTapListener,
+  performSignOut,
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
@@ -424,8 +424,8 @@ export default function DashboardScreen() {
         text: "خروج",
         style: "destructive",
         onPress: async () => {
-          await signOut(auth);
-          router.replace("/");
+          await performSignOut();
+          router.replace("/login");
         },
       },
     ]);

@@ -1,15 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, router } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { I18nManager } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { configurePushHandler } from "@/lib/push_notifications";
+import { configurePushHandler, registerForPushNotifications } from "@/lib/push_notifications";
 import { NetworkProvider } from "@/lib/network";
 import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
@@ -18,24 +18,37 @@ SplashScreen.preventAutoHideAsync();
 
 I18nManager.forceRTL(true);
 
-function RootLayoutNav() {
+// Auth-gated routing: the "logged out" group (index/login/register) and the
+// "logged in" group (dashboard and everything behind it) are mounted
+// exclusively via Stack.Protected. When isLoggedIn flips, expo-router
+// unmounts the inactive group entirely — its screens are wiped from the
+// navigation history, not just covered by the new screen. That's what stops
+// the hardware back button from ever revealing the login screen again once
+// signed in, and (symmetrically) from revealing authenticated screens after
+// sign-out.
+function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="register" />
-      <Stack.Screen name="admin" />
-      <Stack.Screen name="admin-dashboard" />
-      <Stack.Screen name="dashboard" />
-      <Stack.Screen name="profile" />
-      <Stack.Screen name="wallet" />
-      <Stack.Screen name="artisan-profile" />
-      <Stack.Screen name="chat" />
-      <Stack.Screen name="messages" />
-      <Stack.Screen name="reservations" />
-      <Stack.Screen name="active-order" />
-      <Stack.Screen name="support" />
-      <Stack.Screen name="promote" />
+      <Stack.Protected guard={!isLoggedIn}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={isLoggedIn}>
+        <Stack.Screen name="dashboard" />
+        <Stack.Screen name="admin" />
+        <Stack.Screen name="admin-dashboard" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="wallet" />
+        <Stack.Screen name="artisan-profile" />
+        <Stack.Screen name="chat" />
+        <Stack.Screen name="messages" />
+        <Stack.Screen name="reservations" />
+        <Stack.Screen name="active-order" />
+        <Stack.Screen name="support" />
+        <Stack.Screen name="promote" />
+      </Stack.Protected>
     </Stack>
   );
 }
@@ -45,7 +58,6 @@ export default function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
-  const redirectedRef = useRef(false);
 
   // Automatic artisan location tracking: no-op for client accounts, kicks in
   // silently for artisan accounts as soon as they're signed in.
@@ -82,6 +94,10 @@ export default function RootLayout() {
       }
       if (user) {
         presenceCleanup = setupPresence(user.uid);
+        // Refresh this device's push token for the account that's now
+        // active, so notifications always target whoever is currently
+        // signed in (and never the account that just logged out).
+        registerForPushNotifications(user.uid).catch(() => {});
       }
     });
     return () => {
@@ -93,12 +109,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsReady && authChecked) {
       SplashScreen.hideAsync();
-      if (isLoggedIn && !redirectedRef.current) {
-        redirectedRef.current = true;
-        router.replace("/dashboard" as any);
-      }
     }
-  }, [fontsReady, authChecked, isLoggedIn]);
+  }, [fontsReady, authChecked]);
 
   if (!fontsReady || !authChecked) return null;
 
@@ -107,7 +119,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <NetworkProvider>
-            <RootLayoutNav />
+            <RootLayoutNav isLoggedIn={isLoggedIn} />
           </NetworkProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

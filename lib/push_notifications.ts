@@ -3,7 +3,9 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import * as TaskManager from "expo-task-manager";
 import Constants from "expo-constants";
-import { setUserPushToken } from "./db_logic";
+import { signOut } from "firebase/auth";
+import { auth } from "./firebase";
+import { setUserPushToken, clearUserPushToken } from "./db_logic";
 
 let configured = false;
 
@@ -95,6 +97,22 @@ export async function registerForPushNotifications(
     console.error("registerForPushNotifications failed:", err);
     return null;
   }
+}
+
+// Clears the account's push token in Firestore *before* signing out, so a
+// device that just logged out never receives notifications meant for the
+// account that just left it. Firestore rules require request.auth.uid to
+// match the doc being written, so the clear must happen before signOut().
+export async function performSignOut(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    try {
+      await clearUserPushToken(uid);
+    } catch (err) {
+      console.error("clearUserPushToken failed:", err);
+    }
+  }
+  await signOut(auth);
 }
 
 export function addNotificationTapListener(

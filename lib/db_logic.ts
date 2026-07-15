@@ -1194,6 +1194,13 @@ export const setUserPushToken = async (
   await setDoc(doc(db, "users", userId), { pushToken: token }, { merge: true });
 };
 
+// Clears the push token for a user (called on sign-out) so notifications for
+// the account they just left stop arriving on this device, and so a stale
+// token isn't left behind for another account to inherit.
+export const clearUserPushToken = async (userId: string): Promise<void> => {
+  await setDoc(doc(db, "users", userId), { pushToken: null }, { merge: true });
+};
+
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
   try {
     const snap = await getDoc(doc(db, "users", userId));

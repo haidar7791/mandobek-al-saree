@@ -26,8 +26,8 @@ import Animated, {
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { performSignOut } from "@/lib/push_notifications";
 import {
   getBalance,
   getUserProfile,
@@ -334,8 +334,8 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            await signOut(auth);
-            router.replace("/");
+            await performSignOut();
+            router.replace("/login");
           },
         },
       ]
