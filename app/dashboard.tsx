@@ -122,7 +122,12 @@ function FeaturedCard({
       style={featStyles.card}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
+        // Pass the already-fetched artisan object along so the profile screen
+        // can render instantly instead of waiting on a fresh Firestore read.
+        router.push({
+          pathname: "/artisan-profile",
+          params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
+        });
       }}
     >
       {/* Avatar */}
@@ -197,7 +202,12 @@ function ArtisanCard({
         style={({ pressed }) => [styles.artisanCard, pressed && { opacity: 0.92 }]}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id } });
+          // Pass the already-fetched artisan object along so the profile screen
+          // can render instantly instead of waiting on a fresh Firestore read.
+          router.push({
+            pathname: "/artisan-profile",
+            params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
+          });
         }}
       >
         <View style={styles.cardLeft}>

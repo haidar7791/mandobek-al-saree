@@ -2,3 +2,4 @@
 - [babel-preset-expo missing](babel-preset-expo-missing.md) — Metro 500s after fresh install; force top-level install if npm doesn't hoist it
 - [expo-firebase-recaptcha breaks Android build](expo-firebase-recaptcha-gradle.md) — always drags in expo-firebase-core; use a custom WebView reCAPTCHA instead
 - [Firestore query field must match security-rule field](firestore-query-rule-field-mismatch.md) — a query filtering on a field the rule doesn't check gets permission-denied wholesale, even with lenient rules
+- [Firestore native persistence limits](firestore-native-persistence.md) — persistentLocalCache needs indexedDB (web only); on RN pass fetched data via nav params instead

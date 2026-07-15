@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -86,16 +87,43 @@ function ReviewCard({ review, index }: { review: Review; index: number }) {
   );
 }
 
+// Parse the artisan object passed as a nav param (JSON string) once, outside
+// render, so the profile screen can paint the hero (name/photo/rating) on the
+// very first frame instead of waiting on a Firestore round-trip.
+function parsePassedArtisan(raw?: string): ArtisanProfile | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ArtisanProfile;
+  } catch {
+    return null;
+  }
+}
+
 export default function ArtisanProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { artisanId } = useLocalSearchParams<{ artisanId: string }>();
+  const { artisanId, artisan: artisanParam } = useLocalSearchParams<{
+    artisanId: string;
+    artisan?: string;
+  }>();
 
-  const [artisan, setArtisan] = useState<ArtisanProfile | null>(null);
+  const initialArtisan = useMemo(() => parsePassedArtisan(artisanParam), [artisanParam]);
+
+  const [artisan, setArtisan] = useState<ArtisanProfile | null>(initialArtisan);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [userName, setUserName] = useState("مستخدم");
-  const [loading, setLoading] = useState(true);
+  // Only block on the full-screen loader when we have nothing to paint yet
+  // (e.g. deep link with just an id). When the card passed its data along,
+  // we already have an artisan to render on frame one.
+  const [loading, setLoading] = useState(!initialArtisan);
+  // Background refresh (fresh rating/availability + portfolio) after the
+  // instant paint — never blocks the UI, just quietly reconciles it.
+  const [refreshing, setRefreshing] = useState(!!initialArtisan);
+  // Tracks whether the reviews subscription has resolved at least once, so
+  // the reviews section can show its own lightweight loader instead of
+  // reusing the artisan/portfolio "refreshing" flag.
+  const [reviewsLoaded, setReviewsLoaded] = useState(false);
 
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -124,8 +152,13 @@ export default function ArtisanProfileScreen() {
         setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
       }
 
+      // Firestore's persistent local cache (see lib/firebase.ts) serves this
+      // from disk first when available, so even this "fresh" read resolves
+      // near-instantly — it just reconciles whatever we already painted from
+      // the nav params (rating/availability may have changed since the list
+      // was fetched).
       const artisanData = await getArtisanById(artisanId);
-      setArtisan(artisanData);
+      if (artisanData) setArtisan(artisanData);
       if (artisanData?.userId) {
         const artisanProfile = await getUserProfile(artisanData.userId);
         setPortfolioImages(artisanProfile?.portfolio || []);
@@ -134,6 +167,7 @@ export default function ArtisanProfileScreen() {
       console.error("loadData error:", err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [artisanId]);
 
@@ -142,7 +176,11 @@ export default function ArtisanProfileScreen() {
   // Real-time reviews subscription — independent from loadData
   useEffect(() => {
     if (!artisanId) return;
-    const unsub = subscribeToReviews(artisanId, setReviews);
+    setReviewsLoaded(false);
+    const unsub = subscribeToReviews(artisanId, (list) => {
+      setReviews(list);
+      setReviewsLoaded(true);
+    });
     return unsub;
   }, [artisanId]);
 
@@ -413,7 +451,16 @@ export default function ArtisanProfileScreen() {
             </View>
           )}
 
-          {reviews.length === 0 ? (
+          {reviews.length === 0 && !reviewsLoaded ? (
+            // Instant-paint mode: reviews are still loading in the background
+            // (the hero above already rendered from the passed-in artisan
+            // object), so show a lightweight inline loader instead of the
+            // full-screen "جارٍ التحميل..." state.
+            <View style={styles.reviewsLoading}>
+              <ActivityIndicator color={C.accent} />
+              <Text style={styles.noReviewsSub}>جارٍ تحميل التقييمات...</Text>
+            </View>
+          ) : reviews.length === 0 ? (
             <View style={styles.noReviews}>
               <Ionicons name="star-outline" size={32} color={C.textMuted} />
               <Text style={styles.noReviewsText}>لا توجد تقييمات بعد</Text>
@@ -609,6 +656,7 @@ const styles = StyleSheet.create({
   ratingOf: { fontSize: 16, fontFamily: "Cairo_400Regular", color: C.textMuted },
   ratingCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
   noReviews: { alignItems: "center", gap: 8, paddingVertical: 24 },
+  reviewsLoading: { alignItems: "center", gap: 8, paddingVertical: 24 },
   noReviewsText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.text },
   noReviewsSub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
   reviewCard: {
