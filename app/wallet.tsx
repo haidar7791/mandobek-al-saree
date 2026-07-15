@@ -31,7 +31,7 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 const ZAIN_CASH = "07827263200";
-const ASIA_HAWALA = "07827263200";
+const SUPER_KEY_CARD = "8950135544";
 
 export type WalletRequestType = "deposit" | "withdrawal";
 export type WalletRequestStatus = "pending" | "approved" | "rejected";
@@ -292,9 +292,11 @@ export default function WalletScreen() {
                 </Text>
               </View>
               <View style={styles.bannerRow}>
-                <MaterialCommunityIcons name="bank-transfer" size={14} color={C.textSecondary} />
+                <View style={styles.superKeyBadge}>
+                  <MaterialCommunityIcons name="credit-card-chip" size={12} color={C.primary} />
+                </View>
                 <Text style={styles.bannerAccount}>
-                  آسيا حوالة: <Text style={styles.bannerNum}>{ASIA_HAWALA}</Text>
+                  بطاقة إئتمان سوبر كي: <Text style={styles.bannerNum}>{SUPER_KEY_CARD}</Text>
                 </Text>
               </View>
             </View>
@@ -535,6 +537,11 @@ const styles = StyleSheet.create({
   },
   bannerNum: {
     fontFamily: "Cairo_700Bold", color: C.accent,
+  },
+  superKeyBadge: {
+    width: 18, height: 18, borderRadius: 5,
+    backgroundColor: C.accentLight,
+    alignItems: "center", justifyContent: "center",
   },
   tabBar: {
     flexDirection: "row", gap: 10,
