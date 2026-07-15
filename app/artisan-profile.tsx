@@ -305,7 +305,7 @@ export default function ArtisanProfileScreen() {
   }
 
   const initials = artisan.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  const isOwnProfile = !!auth.currentUser && auth.currentUser.uid === artisan.userId;
+  const isOwnProfile = auth.currentUser?.uid === artisan.userId;
 
   return (
     <View style={styles.root}>
