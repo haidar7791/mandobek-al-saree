@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -29,9 +29,11 @@ import {
   markMessagesRead,
   deleteMessageForEveryone,
   getUserProfile,
+  getArtisanByUserId,
   ADMIN_UID,
   ADMIN_DISPLAY_NAME,
   type ChatMessage,
+  type ArtisanProfile,
 } from "../lib/db_logic";
 import { subscribeToPresence } from "../lib/presence";
 import Colors from "@/constants/colors";
@@ -47,12 +49,29 @@ export interface ChatRoomProps {
   otherName: string;
   /** Explicit uid of the other participant. Derived from chatId if omitted. */
   otherUid?: string | null;
+  /**
+   * Pre-fetched artisan profile for the other participant (JSON-serialized),
+   * passed by callers that already have it — e.g. the artisan-profile screen
+   * navigating into a chat. Lets the header avatar/name become tappable
+   * instantly instead of waiting on a Firestore round-trip. If omitted,
+   * ChatRoom resolves it itself from `otherUid` in the background.
+   */
+  otherArtisan?: string | null;
   /** Whether to show the live online/offline presence indicator. Default true. */
   showPresence?: boolean;
   /** Feather icon to render in the header avatar instead of the name initial. */
   headerIcon?: keyof typeof Feather.glyphMap;
   /** Subtitle shown under the header name when presence is hidden. */
   headerSubtitle?: string;
+}
+
+function parsePassedArtisan(raw?: string | null): ArtisanProfile | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ArtisanProfile;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -65,6 +84,7 @@ export default function ChatRoom({
   chatId,
   otherName,
   otherUid: otherUidProp,
+  otherArtisan,
   showPresence = true,
   headerIcon,
   headerSubtitle,
@@ -134,6 +154,42 @@ export default function ChatRoom({
   // Derive the other participant's uid from chatId unless explicitly provided.
   const otherUid =
     otherUidProp ?? (chatId ? chatId.split("_").find((u) => u !== currentUid) || null : null);
+
+  // Artisan profile of the other participant, used to make the header
+  // avatar/name tappable and to open their profile instantly. Seeded from
+  // the `otherArtisan` param (if the caller already had it) and quietly
+  // reconciled in the background from `otherUid` — mirrors the same
+  // instant-paint pattern used by app/artisan-profile.tsx.
+  const initialOtherArtisan = useMemo(() => parsePassedArtisan(otherArtisan), [otherArtisan]);
+  const [otherArtisanProfile, setOtherArtisanProfile] = useState<ArtisanProfile | null>(
+    initialOtherArtisan
+  );
+
+  useEffect(() => {
+    if (!otherUid || otherUid === ADMIN_UID) {
+      setOtherArtisanProfile(null);
+      return;
+    }
+    let cancelled = false;
+    getArtisanByUserId(otherUid).then((a) => {
+      if (!cancelled) setOtherArtisanProfile(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [otherUid]);
+
+  const handleOpenArtisanProfile = () => {
+    if (!otherArtisanProfile) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: "/artisan-profile",
+      params: {
+        artisanId: otherArtisanProfile.id,
+        artisan: JSON.stringify(otherArtisanProfile),
+      },
+    });
+  };
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -555,7 +611,12 @@ export default function ChatRoom({
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
-        <View style={styles.headerInfo}>
+        <Pressable
+          style={styles.headerInfo}
+          onPress={handleOpenArtisanProfile}
+          disabled={!otherArtisanProfile}
+          hitSlop={6}
+        >
           <Text style={styles.headerName}>{otherName}</Text>
           {showPresence ? (
             <View style={styles.presenceRow}>
@@ -565,14 +626,25 @@ export default function ChatRoom({
           ) : headerSubtitle ? (
             <Text style={[styles.headerSub, { color: "rgba(255,255,255,0.5)" }]}>{headerSubtitle}</Text>
           ) : null}
-        </View>
-        <View style={styles.headerAvatar}>
-          {headerIcon ? (
+        </Pressable>
+        <Pressable
+          style={styles.headerAvatar}
+          onPress={handleOpenArtisanProfile}
+          disabled={!otherArtisanProfile}
+          hitSlop={6}
+        >
+          {otherArtisanProfile?.photoUri ? (
+            <Image
+              source={{ uri: otherArtisanProfile.photoUri }}
+              style={styles.headerAvatarImage}
+              contentFit="cover"
+            />
+          ) : headerIcon ? (
             <Feather name={headerIcon} size={18} color={C.accent} />
           ) : (
             <Text style={styles.headerAvatarText}>{otherName?.[0] ?? "?"}</Text>
           )}
-        </View>
+        </Pressable>
       </LinearGradient>
 
       <FlatList
@@ -723,7 +795,9 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.2)",
     alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
   },
+  headerAvatarImage: { width: 40, height: 40, borderRadius: 12 },
   headerAvatarText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent },
   msgList: { padding: 14, gap: 8 },
   msgRow: { flexDirection: "row" },

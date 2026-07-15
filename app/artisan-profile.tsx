@@ -210,7 +210,10 @@ export default function ArtisanProfileScreen() {
     if (!user || !artisan) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const chatId = buildChatId(user.uid, artisan.userId);
-    router.push({ pathname: "/chat", params: { chatId, otherName: artisan.name } });
+    router.push({
+      pathname: "/chat",
+      params: { chatId, otherName: artisan.name, otherArtisan: JSON.stringify(artisan) },
+    });
   };
 
   const handleBooking = async () => {
