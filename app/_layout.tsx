@@ -12,6 +12,7 @@ import { auth } from "@/lib/firebase";
 import { configurePushHandler } from "@/lib/push_notifications";
 import { NetworkProvider } from "@/lib/network";
 import { setupPresence } from "@/lib/presence";
+import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,7 +44,12 @@ export default function RootLayout() {
   const [fontsReady, setFontsReady] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
   const redirectedRef = useRef(false);
+
+  // Automatic artisan location tracking: no-op for client accounts, kicks in
+  // silently for artisan accounts as soon as they're signed in.
+  useArtisanLocationTracking(uid);
 
   useEffect(() => {
     configurePushHandler();
@@ -67,6 +73,7 @@ export default function RootLayout() {
     let presenceCleanup: (() => void) | null = null;
     const unsub = onAuthStateChanged(auth, (user) => {
       setIsLoggedIn(!!user);
+      setUid(user?.uid ?? null);
       setAuthChecked(true);
 
       if (presenceCleanup) {

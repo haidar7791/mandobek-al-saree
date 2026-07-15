@@ -305,6 +305,16 @@ export const updateArtisanPhotoIfExists = async (
   }
 };
 
+// Lightweight sync used by the automatic location-tracking hook to push a
+// fresh GPS fix into the artisan's document without requiring the full
+// ArtisanProfile payload.
+export const updateArtisanLocation = async (
+  artisanId: string,
+  location: GeoLocation
+): Promise<void> => {
+  await updateDoc(doc(db, "artisans", artisanId), { location });
+};
+
 export const subscribeToArtisans = (
   callback: (artisans: ArtisanProfile[]) => void,
   category?: ServiceCategory

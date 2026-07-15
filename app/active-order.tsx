@@ -20,7 +20,6 @@ import { auth } from "../lib/firebase";
 import {
   subscribeToServiceRequest,
   markRequestOnTheWay,
-  updateRequestLiveLocation,
   completeServiceRequest,
   cancelServiceRequest,
   getArtisanByUserId,
@@ -67,26 +66,10 @@ export default function ActiveOrderScreen() {
     return unsub;
   }, [requestId]);
 
-  // Auto-update artisan live location every 30s while on_the_way
-  useEffect(() => {
-    if (!isArtisanSide || !request || request.status !== "on_the_way") return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const { status } = await Location.getForegroundPermissionsAsync();
-        if (status !== "granted") return;
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (cancelled) return;
-        await updateRequestLiveLocation(request.id, {
-          lat: loc.coords.latitude,
-          lng: loc.coords.longitude,
-        });
-      } catch {}
-    };
-    tick();
-    const id = setInterval(tick, 30000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [isArtisanSide, request?.status, request?.id]);
+  // Live location while on_the_way/in_progress is now pushed automatically
+  // in the background by useArtisanLocationTracking (app/_layout.tsx), which
+  // switches to ~1-minute updates for whichever request is currently active
+  // for this artisan. No per-screen polling needed here anymore.
 
   const onTheWay = async () => {
     if (!request) return;
