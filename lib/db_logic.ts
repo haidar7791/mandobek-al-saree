@@ -33,6 +33,10 @@ export const HOME_SERVICES = [
   { key: "tiler", label: "سيراميك", icon: "grid" },
   { key: "ironsmith", label: "حداد", icon: "settings" },
   { key: "ac_tech", label: "صيانة مكيفات", icon: "wind" },
+  { key: "shovel", label: "شفل", icon: "layers" },
+  { key: "roller", label: "حادلة", icon: "minus-square" },
+  { key: "backhoe", label: "بوكلن", icon: "minimize-2" },
+  { key: "crane", label: "ونج", icon: "anchor" },
 ];
 
 export const CAR_SERVICES = [
@@ -44,18 +48,31 @@ export const CAR_SERVICES = [
 ];
 
 export const GENERAL_SERVICES = [
-  { key: "medical_clinic", label: "عيادات طبية", icon: "activity" },
-  { key: "taxi", label: "تكسي", icon: "navigation" },
-  { key: "heavy_machinery", label: "آليات ثقيلة", icon: "truck" },
+  { key: "fractures", label: "كسور", icon: "activity" },
+  { key: "internal_med", label: "باطنية", icon: "heart" },
+  { key: "gynecology", label: "نسائية", icon: "user" },
+  { key: "ophthalmology", label: "عيون", icon: "eye" },
+  { key: "pediatrics", label: "أطفال", icon: "smile" },
+  { key: "neurology", label: "جملة عصبية", icon: "cpu" },
+  { key: "cosmetic", label: "تجميل", icon: "star" },
+  { key: "dermatology", label: "جلدية", icon: "feather" },
+  { key: "general_med", label: "عامة", icon: "plus-circle" },
 ];
 
-export type ServiceCategory = "home" | "car" | "general";
+export const DELIVERY_SERVICES = [
+  { key: "taxi", label: "تكسي", icon: "navigation" },
+  { key: "bus", label: "باص", icon: "truck" },
+  { key: "courier", label: "مندوب", icon: "package" },
+];
 
-export const ALL_SPECIALTIES = [...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES];
+export type ServiceCategory = "home" | "car" | "general" | "delivery";
+
+export const ALL_SPECIALTIES = [...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
 
 export function getCategoryForSpecialty(key: string): ServiceCategory {
   if (HOME_SERVICES.find((s) => s.key === key)) return "home";
   if (CAR_SERVICES.find((s) => s.key === key)) return "car";
+  if (DELIVERY_SERVICES.find((s) => s.key === key)) return "delivery";
   return "general";
 }
 

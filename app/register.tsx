@@ -28,6 +28,7 @@ import {
   HOME_SERVICES,
   CAR_SERVICES,
   GENERAL_SERVICES,
+  DELIVERY_SERVICES,
   type GeoLocation,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -102,10 +103,11 @@ const SPECIALTY_SECTIONS = [
   { title: "نوع الحساب", items: [CLIENT_OPTION] },
   { title: "خدمات المنزل", items: HOME_SERVICES },
   { title: "خدمات السيارات", items: CAR_SERVICES },
-  { title: "خدمات عامة", items: GENERAL_SERVICES },
+  { title: "خدمات طبية", items: GENERAL_SERVICES },
+  { title: "خدمات توصيل", items: DELIVERY_SERVICES },
 ];
 
-const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES];
+const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();

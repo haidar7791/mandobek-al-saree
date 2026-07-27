@@ -33,6 +33,7 @@ import {
   HOME_SERVICES,
   CAR_SERVICES,
   GENERAL_SERVICES,
+  DELIVERY_SERVICES,
   getSpecialtyLabel,
   isFeaturedActive,
   subscribeToUserChatLastAts,
@@ -55,7 +56,8 @@ const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
   { key: "all", label: "الكل", icon: "grid" },
   { key: "home", label: "خدمات المنزل", icon: "home" },
   { key: "car", label: "خدمات السيارات", icon: "truck" },
-  { key: "general", label: "خدمات عامة", icon: "tool" },
+  { key: "general", label: "خدمات طبية", icon: "activity" },
+  { key: "delivery", label: "خدمات توصيل", icon: "navigation" },
 ];
 
 const SPECIALTY_FILTERS: Record<CategoryTab, { key: string; label: string; icon: string }[]> = {
@@ -63,6 +65,7 @@ const SPECIALTY_FILTERS: Record<CategoryTab, { key: string; label: string; icon:
   home: HOME_SERVICES,
   car: CAR_SERVICES,
   general: GENERAL_SERVICES,
+  delivery: DELIVERY_SERVICES,
 };
 
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
