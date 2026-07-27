@@ -166,13 +166,17 @@ export default function WalletScreen() {
   };
 
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("إذن مرفوض", "يرجى السماح بالوصول إلى مكتبة الصور");
-      return;
+    // Android 13+ uses the system Photo Picker — no permission required.
+    // iOS still requires an explicit media-library grant.
+    if (Platform.OS === "ios") {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("إذن مرفوض", "يرجى السماح بالوصول إلى مكتبة الصور");
+        return;
+      }
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: false,
       quality: 0.7,
     });

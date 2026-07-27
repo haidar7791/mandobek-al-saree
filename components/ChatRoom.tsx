@@ -288,8 +288,11 @@ export default function ChatRoom({
   };
 
   const handlePickImage = async () => {
+    // Android 13+ uses the system Photo Picker automatically — no permission
+    // declaration or runtime request needed. We call launchImageLibraryAsync
+    // directly; expo-image-picker handles the rest.
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 0.8,
       allowsEditing: false,
     });
