@@ -309,6 +309,7 @@ export default function ArtisanProfileScreen() {
 
   const initials = artisan.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const isOwnProfile = auth.currentUser?.uid === artisan.userId;
+  const isClientProfile = artisan.specialty === "client";
 
   return (
     <View style={styles.root}>
@@ -317,7 +318,7 @@ export default function ArtisanProfileScreen() {
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
-          {!isOwnProfile && (
+          {!isOwnProfile && !isClientProfile && (
             <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
               <Ionicons name="star" size={16} color={C.accent} />
               <Text style={styles.reviewNavText}>تقييم</Text>
@@ -386,12 +387,14 @@ export default function ArtisanProfileScreen() {
         </Pressable>
       </View>
 
-      <Pressable style={styles.bookBtn} onPress={() => setBookingModal(true)}>
-        <LinearGradient colors={[C.accent, C.accentLight]} style={styles.bookBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-          <Text style={styles.bookBtnText}>طلب الخدمة الآن</Text>
-          <Feather name="arrow-left" size={18} color={C.primary} />
-        </LinearGradient>
-      </Pressable>
+      {!isClientProfile && (
+        <Pressable style={styles.bookBtn} onPress={() => setBookingModal(true)}>
+          <LinearGradient colors={[C.accent, C.accentLight]} style={styles.bookBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={styles.bookBtnText}>طلب الخدمة الآن</Text>
+            <Feather name="arrow-left" size={18} color={C.primary} />
+          </LinearGradient>
+        </Pressable>
+      )}
 
       <Pressable style={styles.mapBtn} onPress={handleOpenMap}>
         <Feather name="map-pin" size={18} color={C.accent} />
@@ -435,6 +438,11 @@ export default function ArtisanProfileScreen() {
               <View style={styles.selfRatingBadge}>
                 <Feather name="user" size={12} color={C.textMuted} />
                 <Text style={styles.selfRatingText}>هذه صفحتك الشخصية</Text>
+              </View>
+            ) : isClientProfile ? (
+              <View style={styles.selfRatingBadge}>
+                <Feather name="user" size={12} color={C.textMuted} />
+                <Text style={styles.selfRatingText}>حساب زبون</Text>
               </View>
             ) : (
               <Pressable style={styles.addReviewBtn} onPress={() => setReviewModal(true)}>

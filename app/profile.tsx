@@ -350,8 +350,10 @@ export default function ProfileScreen() {
     );
   };
 
+  const CLIENT_OPTION_PROFILE = { key: "client", label: "زبون", icon: "user" };
+  const PROFILE_SPECIALTIES = [CLIENT_OPTION_PROFILE, ...ALL_SPECIALTIES];
   const selectedSpecialtyLabel =
-    ALL_SPECIALTIES.find((s) => s.key === specialty)?.label || "اختر تخصصك";
+    PROFILE_SPECIALTIES.find((s) => s.key === specialty)?.label || "اختر تخصصك";
 
   const btnScale = useSharedValue(1);
   const btnAnimStyle = useAnimatedStyle(() => ({
@@ -634,7 +636,7 @@ export default function ProfileScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>اختر تخصصك</Text>
             <FlatList
-              data={ALL_SPECIALTIES}
+              data={PROFILE_SPECIALTIES}
               keyExtractor={(item) => item.key}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 24 }}

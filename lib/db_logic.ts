@@ -77,6 +77,7 @@ export function getCategoryForSpecialty(key: string): ServiceCategory {
 }
 
 export function getSpecialtyLabel(key: string): string {
+  if (key === "client") return "زبون";
   return ALL_SPECIALTIES.find((s) => s.key === key)?.label ?? key;
 }
 
