@@ -9,6 +9,7 @@ import {
   Alert,
   Linking,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,6 +48,9 @@ export default function ActiveOrderScreen() {
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   const [isArtisanSide, setIsArtisanSide] = useState(false);
   const [updating, setUpdating] = useState(false);
+  // Optimistic local status override — applied immediately on tap,
+  // before the Firestore write resolves, so the UI feels instant.
+  const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -72,19 +76,43 @@ export default function ActiveOrderScreen() {
   // for this artisan. No per-screen polling needed here anymore.
 
   const onTheWay = async () => {
-    if (!request) return;
+    if (!request || updating) return;
+
+    // 1 — Lock the button and optimistically flip the UI to "on_the_way"
+    //     so the user sees an instant response without waiting for GPS or Firestore.
     setUpdating(true);
+    setOptimisticStatus("on_the_way");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // 2 — GPS with a hard 5-second timeout so a slow fix never blocks the write.
+    const getLocWithTimeout = (): Promise<{ lat: number; lng: number } | null> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), 5000);
+        Location.requestForegroundPermissionsAsync()
+          .then(({ status }) => {
+            if (status !== "granted") { clearTimeout(timer); resolve(null); return; }
+            return Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+              timeInterval: 4000,
+            });
+          })
+          .then((pos) => {
+            clearTimeout(timer);
+            if (pos) resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            else resolve(null);
+          })
+          .catch(() => { clearTimeout(timer); resolve(null); });
+      });
+
+    // 3 — Run GPS + Firestore write in the background; UI is already updated.
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      let loc = null as { lat: number; lng: number } | null;
-      if (status === "granted") {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      }
+      const loc = await getLocWithTimeout();
       await markRequestOnTheWay(request.id, loc);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      Alert.alert("خطأ", "تعذّر تحديث الحالة");
+      // Revert the optimistic update only on hard failure.
+      setOptimisticStatus(null);
+      Alert.alert("خطأ", "تعذّر تحديث الحالة، يرجى المحاولة مجدداً");
     } finally {
       setUpdating(false);
     }
@@ -163,6 +191,9 @@ export default function ActiveOrderScreen() {
   const distanceKm =
     live && client ? calcDistanceKm(live, client) : null;
 
+  // Displayed status: use the optimistic override until Firestore confirms.
+  const displayStatus = (optimisticStatus ?? request.status) as keyof typeof STATUS_LABELS;
+
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
@@ -171,7 +202,7 @@ export default function ActiveOrderScreen() {
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>
           <Text style={styles.title}>تفاصيل الطلب</Text>
-          <Text style={styles.sub}>{STATUS_LABELS[request.status]}</Text>
+          <Text style={styles.sub}>{STATUS_LABELS[displayStatus]}</Text>
         </View>
         <View style={styles.iconBadge}>
           <Feather name="navigation" size={20} color={C.accent} />
@@ -264,13 +295,26 @@ export default function ActiveOrderScreen() {
         {/* Action buttons */}
         {isArtisanSide ? (
           <View style={styles.actions}>
-            {request.status === "accepted" && (
-              <Pressable style={[styles.bigBtn, styles.bigBtnGreen]} onPress={onTheWay} disabled={updating}>
-                <Feather name="navigation" size={18} color="#FFF" />
-                <Text style={styles.bigBtnText}>أنا في الطريق</Text>
+            {displayStatus === "accepted" && (
+              <Pressable
+                style={[styles.bigBtn, styles.bigBtnGreen, updating && styles.bigBtnDisabled]}
+                onPress={onTheWay}
+                disabled={updating}
+              >
+                {updating ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={styles.bigBtnText}>جارٍ التحديث...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Feather name="navigation" size={18} color="#FFF" />
+                    <Text style={styles.bigBtnText}>أنا في الطريق</Text>
+                  </>
+                )}
               </Pressable>
             )}
-            {(request.status === "on_the_way" || request.status === "in_progress") && (
+            {(displayStatus === "on_the_way" || displayStatus === "in_progress") && (
               <Pressable style={[styles.bigBtn, styles.bigBtnBlue]} onPress={complete} disabled={updating}>
                 <Feather name="check-circle" size={18} color="#FFF" />
                 <Text style={styles.bigBtnText}>إنهاء الخدمة</Text>
@@ -360,4 +404,5 @@ const styles = StyleSheet.create({
   bigBtnBlue: { backgroundColor: "#3B82F6" },
   bigBtnRed: { backgroundColor: "#EF4444" },
   bigBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  bigBtnDisabled: { opacity: 0.75 },
 });
