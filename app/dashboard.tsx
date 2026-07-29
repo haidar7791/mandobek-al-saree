@@ -673,15 +673,12 @@ export default function DashboardScreen() {
           <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
         )}
         ListHeaderComponent={
-          filteredArtisans.length > 0 ? (
+          filteredArtisans.length > 0 && userLocation ? (
             <View style={styles.listHeader}>
-              <Text style={styles.listCount}>{`${filteredArtisans.length} صاحب اختصاص متاح`}</Text>
-              {userLocation && (
-                <View style={styles.sortedBadge}>
-                  <Feather name="navigation" size={11} color={C.accent} />
-                  <Text style={styles.sortedText}>مرتب حسب القرب</Text>
-                </View>
-              )}
+              <View style={styles.sortedBadge}>
+                <Feather name="navigation" size={11} color={C.accent} />
+                <Text style={styles.sortedText}>مرتب حسب القرب</Text>
+              </View>
             </View>
           ) : null
         }
