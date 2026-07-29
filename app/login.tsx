@@ -25,7 +25,7 @@ import Animated, {
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
@@ -36,7 +36,19 @@ import Colors from "@/constants/colors";
 /** WhatsApp support number (international format, no +) */
 const SUPPORT_WHATSAPP = "9647800000000";
 
-const CREDS_KEY = "@forus:saved_creds";
+const CREDS_KEY = "forus.biometric.creds";
+
+/**
+ * SecureStore options:
+ * - Android: data encrypted with AES-256-GCM, key stored in Android Keystore (hardware-backed when available)
+ * - iOS: stored in Keychain with kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+ * requireAuthentication is intentionally false — biometric gate is our own LocalAuthentication call;
+ * we don't want SecureStore to add a second prompt on read.
+ */
+const SECURE_OPTS: SecureStore.SecureStoreOptions = {
+  keychainService: CREDS_KEY,
+  requireAuthentication: false,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +73,10 @@ interface SavedCreds {
 
 async function loadSavedCreds(): Promise<SavedCreds | null> {
   try {
-    const raw = await AsyncStorage.getItem(CREDS_KEY);
+    // Check availability first (SecureStore unavailable on some emulators/web)
+    const available = await SecureStore.isAvailableAsync();
+    if (!available) return null;
+    const raw = await SecureStore.getItemAsync(CREDS_KEY, SECURE_OPTS);
     return raw ? (JSON.parse(raw) as SavedCreds) : null;
   } catch {
     return null;
@@ -70,15 +85,23 @@ async function loadSavedCreds(): Promise<SavedCreds | null> {
 
 async function saveCreds(contact: string, password: string) {
   try {
-    await AsyncStorage.setItem(CREDS_KEY, JSON.stringify({ contact, password }));
+    const available = await SecureStore.isAvailableAsync();
+    if (!available) return;
+    await SecureStore.setItemAsync(
+      CREDS_KEY,
+      JSON.stringify({ contact, password }),
+      SECURE_OPTS
+    );
   } catch {
-    /* silently ignore */
+    /* silently ignore — biometric is an enhancement, not a requirement */
   }
 }
 
 async function clearCreds() {
   try {
-    await AsyncStorage.removeItem(CREDS_KEY);
+    const available = await SecureStore.isAvailableAsync();
+    if (!available) return;
+    await SecureStore.deleteItemAsync(CREDS_KEY, SECURE_OPTS);
   } catch {
     /* silently ignore */
   }
