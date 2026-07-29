@@ -564,21 +564,32 @@ export default function DashboardScreen() {
       </LinearGradient>
 
       {/* ── أفضل مقدمي الخدمة — directly under search bar ── */}
-      {promotedArtisans.length > 0 && (
+      {(promotedArtisans.length > 0 || userRole === "artisan") && (
         <View style={featStyles.section}>
           <View style={featStyles.sectionHeader}>
+            {userRole === "artisan" && (
+              <Pressable
+                style={featStyles.promoteBtn}
+                onPress={() => router.push("/promote" as any)}
+              >
+                <Ionicons name="rocket" size={12} color={C.accent} />
+                <Text style={featStyles.promoteBtnText}>روّج حسابك</Text>
+              </Pressable>
+            )}
             <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
           </View>
-          <FlatList
-            data={promotedArtisans}
-            keyExtractor={(a) => a.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={featStyles.scrollRow}
-            renderItem={({ item }) => (
-              <FeaturedCard artisan={item} userLocation={userLocation} />
-            )}
-          />
+          {promotedArtisans.length > 0 && (
+            <FlatList
+              data={promotedArtisans}
+              keyExtractor={(a) => a.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={featStyles.scrollRow}
+              renderItem={({ item }) => (
+                <FeaturedCard artisan={item} userLocation={userLocation} />
+              )}
+            />
+          )}
         </View>
       )}
 
@@ -642,27 +653,6 @@ export default function DashboardScreen() {
       </View>
 
       <View style={styles.listWrapper}>
-      {userRole === "artisan" && (
-        <Pressable
-          style={styles.promoteBanner}
-          onPress={() => router.push("/promote" as any)}
-        >
-          <LinearGradient
-            colors={["rgba(201,168,76,0.2)", "rgba(201,168,76,0.08)"]}
-            style={styles.promoteBannerGrad}
-          >
-            <View style={styles.promoteIcon}>
-              <Ionicons name="rocket" size={18} color={C.accent} />
-            </View>
-            <View style={{ flex: 1, alignItems: "flex-end" }}>
-              <Text style={styles.promoteTitle}>روّج لحسابك واظهر في القمة</Text>
-              <Text style={styles.promoteSub}>زبائن أكثر، طلبات أكثر</Text>
-            </View>
-            <Feather name="chevron-left" size={18} color={C.accent} />
-          </LinearGradient>
-        </Pressable>
-      )}
-
       <FlatList
         data={filteredArtisans}
         keyExtractor={(item) => item.id}
@@ -745,22 +735,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
-  promoteBanner: {
-    marginHorizontal: 12, marginTop: 6, marginBottom: 4,
-    borderRadius: 12, overflow: "hidden",
-    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
-  },
-  promoteBannerGrad: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
-  },
-  promoteIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "rgba(201,168,76,0.18)",
-    alignItems: "center", justifyContent: "center",
-  },
-  promoteTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: Colors.light.text, textAlign: "right" },
-  promoteSub: { fontSize: 11, fontFamily: "Cairo_400Regular", color: Colors.light.textSecondary, textAlign: "right" },
   headerIconBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -886,10 +860,17 @@ const featStyles = StyleSheet.create({
     backgroundColor: C.background,
   },
   sectionHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 14, marginBottom: 8,
   },
   sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  promoteBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(201,168,76,0.14)", borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+  },
+  promoteBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
   scrollRow: { paddingHorizontal: 14, gap: 8, paddingBottom: 4 },
   /* Compact horizontal card */
   card: {
