@@ -33,8 +33,25 @@ import {
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
-function isValidEmail(s: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+/** Returns true if the input looks like a phone number (starts with digit or +, no @) */
+function isPhoneInput(s: string): boolean {
+  const t = s.trim();
+  return /^[\d\+]/.test(t) && !t.includes("@");
+}
+
+/** Validates that the contact is either a non-empty email or a phone (min 7 digits) */
+function isValidContact(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+  if (isPhoneInput(t)) return /[\d]{7,}/.test(t); // at least 7 digits
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);    // classic email regex
+}
+
+/** Convert phone or email to Firebase-compatible email (mirrors login.tsx) */
+function toFirebaseEmail(contact: string): string {
+  const t = contact.trim().toLowerCase();
+  if (t.includes("@")) return t;
+  return `${t}@sanad.app`;
 }
 
 const C = Colors.light;
@@ -138,9 +155,9 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح");
+    const rawContact = email.trim();
+    if (!isValidContact(rawContact)) {
+      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح أو رقم هاتف صحيح");
       return;
     }
     if (password.length < 6) {
@@ -156,22 +173,29 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Convert phone → Firebase-compatible email (e.g. 0781234567 → 0781234567@sanad.app)
+    const firebaseEmail = toFirebaseEmail(rawContact);
+    const isPhone = isPhoneInput(rawContact);
+
     btnScale.value = withSpring(0.96, { damping: 12 }, () => { btnScale.value = withSpring(1); });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     try {
       const location = await requestLocation();
-      const credential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+      const credential = await createUserWithEmailAndPassword(auth, firebaseEmail, password);
       const uid = credential.user.uid;
 
       const savedSpecialty = role === "artisan" ? specialty : undefined;
-      await ensureUserDocument(uid, trimmedEmail, role, { specialty: savedSpecialty, location });
+      // ensureUserDocument detects @sanad.app suffix and saves the original phone number
+      await ensureUserDocument(uid, firebaseEmail, role, { specialty: savedSpecialty, location });
 
       if (role === "artisan" && specialty) {
         const category = getCategoryForSpecialty(specialty);
+        // For phone registrations, display name = the raw phone number; for email = local part
+        const displayName = isPhone ? rawContact : firebaseEmail.split("@")[0];
         await createOrUpdateArtisan(uid, {
-          name: trimmedEmail.split("@")[0],
-          phone: "",
+          name: displayName,
+          phone: isPhone ? rawContact : "",
           photoUri: null,
           specialty,
           category,
@@ -189,11 +213,11 @@ export default function RegisterScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const code = err?.code || "";
       if (code === "auth/email-already-in-use") {
-        Alert.alert("خطأ", "هذا البريد مسجل مسبقاً");
+        Alert.alert("خطأ", isPhone ? "رقم الهاتف هذا مسجّل مسبقاً" : "هذا البريد مسجل مسبقاً");
       } else if (code === "auth/weak-password") {
         Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
       } else if (code === "auth/invalid-email") {
-        Alert.alert("خطأ", "البريد الإلكتروني غير صحيح");
+        Alert.alert("خطأ", "صيغة البريد الإلكتروني غير صحيحة");
       } else {
         Alert.alert("خطأ", "حدث خطأ أثناء إنشاء الحساب");
       }
@@ -206,6 +230,11 @@ export default function RegisterScreen() {
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
   const selectedSpecialtyLabel = ALL_OPTIONS.find((s) => s.key === specialty)?.label ?? "";
+
+  // Dynamic keyboard: phone-pad when input starts with digit/+, else email-address
+  const contactKeyboardType: "phone-pad" | "email-address" = isPhoneInput(email)
+    ? "phone-pad"
+    : "email-address";
 
   return (
     <View style={styles.root}>
@@ -232,12 +261,12 @@ export default function RegisterScreen() {
         >
           <View style={styles.card}>
               <InputField
-                label="البريد الإلكتروني"
-                placeholder="example@email.com"
+                label="البريد الإلكتروني أو رقم الهاتف"
+                placeholder="example@email.com أو 07xxxxxxxx"
                 value={email}
                 onChangeText={setEmail}
-                icon={<Feather name="mail" size={18} color={C.textSecondary} />}
-                keyboardType="email-address"
+                icon={<Feather name="user" size={18} color={C.textSecondary} />}
+                keyboardType={contactKeyboardType}
                 onSubmitEditing={() => ref2.current?.focus()}
               />
 
