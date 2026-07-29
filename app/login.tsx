@@ -34,7 +34,7 @@ import Colors from "@/constants/colors";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** WhatsApp support number (international format, no +) */
-const SUPPORT_WHATSAPP = "9647800000000";
+const SUPPORT_WHATSAPP = "967827263200";
 
 const CREDS_KEY = "forus.biometric.creds";
 
