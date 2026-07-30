@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "فورس - ForUs",
+    "name": "فورس",
     "slug": "sanad-app",
     "version": "14",
     "orientation": "portrait",
@@ -18,8 +18,8 @@
       "bundleIdentifier": "com.haidar.forus",
       "buildNumber": "1",
       "infoPlist": {
-        "CFBundleDisplayName": "فورس - ForUs",
-        "CFBundleName": "فورس - ForUs",
+        "CFBundleDisplayName": "فورس",
+        "CFBundleName": "فورس",
         "UIBackgroundModes": ["remote-notification"]
       }
     },
