@@ -41,7 +41,7 @@
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
-      "name": "فورس - ForUs"
+      "name": "فورس"
     },
     "plugins": [
       [
