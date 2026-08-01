@@ -201,13 +201,19 @@ export default function LoginScreen() {
   // ── Boot: check biometric capability + saved creds ──
   useEffect(() => {
     (async () => {
-      const [hasHw, isEnrolled, creds] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-        loadSavedCreds(),
-      ]);
-      setBiometricAvailable(hasHw && isEnrolled);
-      setSavedCreds(creds);
+      try {
+        const [hasHw, isEnrolled, creds] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+          loadSavedCreds(),
+        ]);
+        setBiometricAvailable(hasHw && isEnrolled);
+        setSavedCreds(creds);
+      } catch (err) {
+        // Biometric module may not be available on all devices; fail gracefully
+        console.warn("Biometric init error:", err);
+        setBiometricAvailable(false);
+      }
     })();
   }, []);
 
