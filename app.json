@@ -2,7 +2,7 @@
   "expo": {
     "name": "فورس",
     "slug": "sanad-app",
-    "version": "15",
+    "version": "16",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "forus",
