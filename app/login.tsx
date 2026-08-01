@@ -199,8 +199,11 @@ export default function LoginScreen() {
   const contactKeyboardType = isPhoneInput(contact) ? "phone-pad" : "email-address";
 
   // ── Boot: check biometric capability + saved creds ──
+  // Deferred by 500 ms so the UI fully paints before touching native keystore /
+  // LocalAuthentication modules — avoids a crash on Android production builds
+  // where these native modules aren't ready at the first JS frame.
   useEffect(() => {
-    (async () => {
+    const timer = setTimeout(async () => {
       try {
         const [hasHw, isEnrolled, creds] = await Promise.all([
           LocalAuthentication.hasHardwareAsync(),
@@ -214,7 +217,8 @@ export default function LoginScreen() {
         console.warn("Biometric init error:", err);
         setBiometricAvailable(false);
       }
-    })();
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   // ─── Core sign-in logic (shared by manual + biometric paths) ──────────────

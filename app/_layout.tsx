@@ -5,6 +5,7 @@ import * as Font from "expo-font";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
 import { I18nManager } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
@@ -58,13 +59,18 @@ export default function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
+  // Catches async errors from Firebase / network that can't be caught by the
+  // class-based ErrorBoundary (which only intercepts render-phase throws).
+  const [fatalError, setFatalError] = useState<Error | null>(null);
 
   // Automatic artisan location tracking: no-op for client accounts, kicks in
   // silently for artisan accounts as soon as they're signed in.
   useArtisanLocationTracking(uid);
 
   useEffect(() => {
-    configurePushHandler();
+    try {
+      configurePushHandler();
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -83,34 +89,63 @@ export default function RootLayout() {
 
   useEffect(() => {
     let presenceCleanup: (() => void) | null = null;
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setIsLoggedIn(!!user);
-      setUid(user?.uid ?? null);
-      setAuthChecked(true);
+    let unsub: (() => void) | null = null;
 
-      if (presenceCleanup) {
-        presenceCleanup();
-        presenceCleanup = null;
-      }
-      if (user) {
-        presenceCleanup = setupPresence(user.uid);
-        // Refresh this device's push token for the account that's now
-        // active, so notifications always target whoever is currently
-        // signed in (and never the account that just logged out).
-        registerForPushNotifications(user.uid).catch(() => {});
-      }
-    });
+    try {
+      unsub = onAuthStateChanged(auth, (user) => {
+        try {
+          setIsLoggedIn(!!user);
+          setUid(user?.uid ?? null);
+          setAuthChecked(true);
+
+          if (presenceCleanup) {
+            presenceCleanup();
+            presenceCleanup = null;
+          }
+          if (user) {
+            presenceCleanup = setupPresence(user.uid);
+            // Refresh this device's push token for the account that's now
+            // active, so notifications always target whoever is currently
+            // signed in (and never the account that just logged out).
+            registerForPushNotifications(user.uid).catch(() => {});
+          }
+        } catch (innerErr) {
+          console.warn("Auth state handler error:", innerErr);
+          // Still mark auth as checked so the app doesn't hang on splash
+          setAuthChecked(true);
+        }
+      });
+    } catch (err) {
+      // Firebase itself failed to initialize (e.g. google-services.json missing
+      // in AAB, network unreachable at cold start). Surface via ErrorFallback
+      // instead of a silent crash.
+      console.error("Firebase auth init error:", err);
+      setFatalError(err instanceof Error ? err : new Error(String(err)));
+      setAuthChecked(true);
+    }
+
     return () => {
-      unsub();
+      unsub?.();
       if (presenceCleanup) presenceCleanup();
     };
   }, []);
 
   useEffect(() => {
     if (fontsReady && authChecked) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsReady, authChecked]);
+
+  // Show a recoverable error screen if Firebase/network threw during boot.
+  // The user sees a "Try Again" button (reloadAppAsync) instead of a blank crash.
+  if (fatalError) {
+    return (
+      <ErrorFallback
+        error={fatalError}
+        resetError={() => setFatalError(null)}
+      />
+    );
+  }
 
   if (!fontsReady || !authChecked) return null;
 

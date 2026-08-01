@@ -26,7 +26,7 @@
     "android": {
       "package": "com.haidar.forus",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 15,
+      "versionCode": 16,
       "adaptiveIcon": {
         "backgroundColor": "#0D1421",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
