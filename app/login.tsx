@@ -247,11 +247,13 @@ export default function LoginScreen() {
 
     try {
       await performSignIn(contact.trim(), password);
-      // Save credentials so biometric can re-use them
-      await saveCreds(contact.trim(), password);
-      setSavedCreds({ contact: contact.trim(), password });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
+      // Save credentials for biometric re-use AFTER navigation — fire-and-forget
+      // so a slow or failing SecureStore write never blocks the login redirect.
+      saveCreds(contact.trim(), password)
+        .then(() => setSavedCreds({ contact: contact.trim(), password }))
+        .catch(() => {});
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const code = err?.code || "";
