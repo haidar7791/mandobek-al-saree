@@ -66,16 +66,52 @@ function initFirebase() {
 initFirebase();
 
 // ─── WhatsApp client ──────────────────────────────────────────────────────────
+// Resolve system Chromium installed via Nix (replit.nix / .replit packages).
+// Falls back to letting Puppeteer find its own bundled browser if none found.
+function findChromium() {
+  const candidates = [
+    // Nix-managed chromium wrapper (stable-25_05 channel)
+    "/run/current-system/sw/bin/chromium",
+    "/nix/var/nix/profiles/default/bin/chromium",
+    // Common Linux paths
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Last resort: search PATH
+  try {
+    const { execSync } = require("child_process");
+    const result = execSync("which chromium chromium-browser 2>/dev/null || true")
+      .toString().trim().split("\n")[0];
+    if (result) return result;
+  } catch {}
+  return null; // let Puppeteer use its bundled browser
+}
+
+const chromiumPath = findChromium();
+if (chromiumPath) {
+  console.log("🌐 Chromium found:", chromiumPath);
+} else {
+  console.log("🌐 Chromium: using Puppeteer bundled browser");
+}
+
 const waClient = new Client({
   authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
   puppeteer: {
     headless: true,
+    ...(chromiumPath ? { executablePath: chromiumPath } : {}),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--disable-software-rasterizer",
       "--single-process",
+      "--no-zygote",
     ],
   },
 });
