@@ -19,12 +19,13 @@
  *  • node index.js   — scan the QR that appears in the terminal
  */
 
-const express = require("express");
-const qrcode  = require("qrcode-terminal");
+const express      = require("express");
+const qrcode       = require("qrcode-terminal");
+const QRCode       = require("qrcode");           // generates PNG/data-URL for browser
 const { Client, LocalAuth } = require("whatsapp-web.js");
-const admin   = require("firebase-admin");
-const fs      = require("fs");
-const path    = require("path");
+const admin        = require("firebase-admin");
+const fs           = require("fs");
+const path         = require("path");
 
 // ─── Load env ────────────────────────────────────────────────────────────────
 require("./env");   // tiny helper – see env.js
@@ -116,21 +117,26 @@ const waClient = new Client({
   },
 });
 
-let waReady = false;
+let waReady   = false;
+let latestQR  = null;   // raw QR string — served to the browser page
 
 waClient.on("qr", (qr) => {
+  latestQR = qr;
   console.log("\n══════════════════════════════════════════════");
   console.log("  امسح رمز QR بواتساب رقم 07827263200");
+  console.log(`  أو افتح: http://localhost:${PORT}/`);
   console.log("══════════════════════════════════════════════\n");
   qrcode.generate(qr, { small: true });
 });
 
 waClient.on("authenticated", () => {
+  latestQR = null;
   console.log("✅ WhatsApp: تمت المصادقة بنجاح");
 });
 
 waClient.on("ready", () => {
-  waReady = true;
+  waReady  = true;
+  latestQR = null;
   console.log("✅ WhatsApp: العميل جاهز لإرسال الرسائل");
 });
 
@@ -186,11 +192,84 @@ function isValidIraqiPhone(phone) {
 const app = express();
 app.use(express.json());
 
+// ── QR viewer page ────────────────────────────────────────────────────────────
+// Open http://localhost:3001/ in any browser to see the QR as an image.
+// The page auto-refreshes every 5 s while waiting for a new QR, and shows
+// a "connected" screen once WhatsApp is ready.
+app.get("/", async (_req, res) => {
+  if (waReady) {
+    return res.send(`<!DOCTYPE html><html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>فورس – WhatsApp</title>
+<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
+justify-content:center;min-height:100vh;margin:0;background:#0d1421;color:#fff;}
+.badge{font-size:4rem;margin-bottom:1rem}.msg{font-size:1.4rem;color:#25d366}</style>
+</head><body>
+<div class="badge">✅</div>
+<p class="msg">WhatsApp متصل وجاهز لإرسال الرسائل</p>
+</body></html>`);
+  }
+
+  if (!latestQR) {
+    return res.send(`<!DOCTYPE html><html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="3">
+<title>فورس – WhatsApp QR</title>
+<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
+justify-content:center;min-height:100vh;margin:0;background:#0d1421;color:#fff;}</style>
+</head><body>
+<p>⏳ جاري تهيئة WhatsApp — الصفحة ستُحدَّث تلقائياً...</p>
+</body></html>`);
+  }
+
+  // Generate QR as a base-64 PNG data-URL
+  let qrDataUrl;
+  try {
+    qrDataUrl = await QRCode.toDataURL(latestQR, {
+      errorCorrectionLevel: "H",
+      margin: 2,
+      width: 320,
+      color: { dark: "#000000", light: "#ffffff" },
+    });
+  } catch (err) {
+    return res.status(500).send("فشل توليد صورة QR: " + err.message);
+  }
+
+  res.send(`<!DOCTYPE html><html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>فورس – WhatsApp QR</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
+       justify-content:center;min-height:100vh;background:#0d1421;color:#fff;padding:1rem;}
+  h1{font-size:1.4rem;margin-bottom:.5rem;color:#25d366}
+  p{font-size:.9rem;color:#aaa;margin-bottom:1.2rem;text-align:center}
+  .card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 4px 24px #0007}
+  img{display:block;width:280px;height:280px}
+  .note{margin-top:1rem;font-size:.8rem;color:#666;text-align:center}
+</style>
+</head>
+<body>
+  <h1>📲 امسح رمز QR بواتساب</h1>
+  <p>افتح واتساب رقم <strong>07827263200</strong><br>
+     الأجهزة المرتبطة ← ربط جهاز جديد</p>
+  <div class="card">
+    <img src="${qrDataUrl}" alt="WhatsApp QR Code">
+  </div>
+  <p class="note">تُحدَّث الصفحة تلقائياً كل 30 ثانية</p>
+</body>
+</html>`);
+});
+
 // Health check
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     whatsapp: waReady ? "ready" : "not_ready",
+    qr_pending: !waReady && !!latestQR,
   });
 });
 
