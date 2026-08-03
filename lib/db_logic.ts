@@ -1329,26 +1329,29 @@ export const ensureUserDocument = async (
   userId: string,
   email: string,
   role: "client" | "artisan" = "client",
-  extraData?: { specialty?: string; location?: GeoLocation | null }
+  extraData?: { name?: string; specialty?: string; location?: GeoLocation | null }
 ): Promise<void> => {
   try {
     const ref = doc(db, "users", userId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       const isPhone = email.endsWith("@sanad.app");
-      const defaultName = isPhone
+      const fallbackName = isPhone
         ? email.replace("@sanad.app", "")
         : email.split("@")[0];
+      // Use the explicitly supplied name when available, otherwise fall back to derived value
+      const displayName = extraData?.name?.trim() || fallbackName;
       await setDoc(
         ref,
         {
-          name: defaultName,
+          name: displayName,
           email,
           role,
           balance: 0,
           phone: isPhone ? email.replace("@sanad.app", "") : "",
           photoUri: null,
           location: extraData?.location ?? null,
+          // Always persist specialty (including "client") so profile screen renders correctly
           specialty: extraData?.specialty ?? null,
           createdAt: serverTimestamp(),
         },
@@ -1358,6 +1361,7 @@ export const ensureUserDocument = async (
       const updates: Record<string, any> = {};
       if (extraData?.location !== undefined) updates.location = extraData.location;
       if (extraData?.specialty) updates.specialty = extraData.specialty;
+      if (extraData?.name?.trim()) updates.name = extraData.name.trim();
       if (Object.keys(updates).length > 0) {
         await updateDoc(ref, updates);
       }

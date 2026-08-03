@@ -128,17 +128,17 @@ const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERA
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
 
-  const ref2 = useRef<TextInput>(null);
-  const ref3 = useRef<TextInput>(null);
+  const contactRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -155,21 +155,22 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = async () => {
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      Alert.alert("خطأ", "يرجى إدخال الاسم الكامل");
+      return;
+    }
     const rawContact = email.trim();
     if (!isValidContact(rawContact)) {
       Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح أو رقم هاتف صحيح");
       return;
     }
-    if (password.length < 6) {
-      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-      return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert("خطأ", "كلمتا المرور غير متطابقتين");
-      return;
-    }
     if (!specialty) {
       Alert.alert("خطأ", "يرجى اختيار نوع الحساب أو التخصص");
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
       return;
     }
 
@@ -185,16 +186,17 @@ export default function RegisterScreen() {
       const credential = await createUserWithEmailAndPassword(auth, firebaseEmail, password);
       const uid = credential.user.uid;
 
-      const savedSpecialty = role === "artisan" ? specialty : undefined;
-      // ensureUserDocument detects @sanad.app suffix and saves the original phone number
-      await ensureUserDocument(uid, firebaseEmail, role, { specialty: savedSpecialty, location });
+      // Save name + specialty (including "client") so profile screen shows correct data immediately
+      await ensureUserDocument(uid, firebaseEmail, role, {
+        name: trimmedName,
+        specialty,          // always persist — clients get "client", artisans get their specialty key
+        location,
+      });
 
       if (role === "artisan" && specialty) {
         const category = getCategoryForSpecialty(specialty);
-        // For phone registrations, display name = the raw phone number; for email = local part
-        const displayName = isPhone ? rawContact : firebaseEmail.split("@")[0];
         await createOrUpdateArtisan(uid, {
-          name: displayName,
+          name: trimmedName,
           phone: isPhone ? rawContact : "",
           photoUri: null,
           specialty,
@@ -260,16 +262,30 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
+              {/* 1 ── الاسم الكامل */}
               <InputField
-                label="البريد الإلكتروني أو رقم الهاتف"
-                placeholder="example@email.com أو 07xxxxxxxx"
-                value={email}
-                onChangeText={setEmail}
+                label="الاسم الكامل"
+                placeholder="أدخل اسمك الكامل"
+                value={fullName}
+                onChangeText={setFullName}
                 icon={<Feather name="user" size={18} color={C.textSecondary} />}
-                keyboardType={contactKeyboardType}
-                onSubmitEditing={() => ref2.current?.focus()}
+                keyboardType="default"
+                onSubmitEditing={() => contactRef.current?.focus()}
               />
 
+              {/* 2 ── رقم الهاتف أو البريد */}
+              <InputField
+                label="رقم الهاتف أو البريد الإلكتروني"
+                placeholder="07xxxxxxxx أو example@email.com"
+                value={email}
+                onChangeText={setEmail}
+                icon={<Feather name="phone" size={18} color={C.textSecondary} />}
+                keyboardType={contactKeyboardType}
+                innerRef={contactRef}
+                onSubmitEditing={() => passwordRef.current?.focus()}
+              />
+
+              {/* 3 ── نوع الحساب / التخصص */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>نوع الحساب / التخصص</Text>
                 <Pressable
@@ -289,6 +305,7 @@ export default function RegisterScreen() {
                 </Text>
               </View>
 
+              {/* 4 ── كلمة المرور */}
               <InputField
                 label="كلمة المرور"
                 placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
@@ -296,18 +313,7 @@ export default function RegisterScreen() {
                 onChangeText={setPassword}
                 icon={<Feather name="lock" size={18} color={C.textSecondary} />}
                 secureTextEntry
-                innerRef={ref2}
-                onSubmitEditing={() => ref3.current?.focus()}
-              />
-
-              <InputField
-                label="تأكيد كلمة المرور"
-                placeholder="أعد إدخال كلمة المرور"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                icon={<Feather name="check-circle" size={18} color={C.textSecondary} />}
-                secureTextEntry
-                innerRef={ref3}
+                innerRef={passwordRef}
                 returnKeyType="done"
                 onSubmitEditing={handleRegister}
               />
