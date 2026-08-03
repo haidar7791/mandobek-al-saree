@@ -48,15 +48,8 @@ export const CAR_SERVICES = [
 ];
 
 export const GENERAL_SERVICES = [
-  { key: "fractures", label: "كسور", icon: "activity" },
-  { key: "internal_med", label: "باطنية", icon: "heart" },
-  { key: "gynecology", label: "نسائية", icon: "user" },
-  { key: "ophthalmology", label: "عيون", icon: "eye" },
-  { key: "pediatrics", label: "أطفال", icon: "smile" },
-  { key: "neurology", label: "جملة عصبية", icon: "cpu" },
-  { key: "cosmetic", label: "تجميل", icon: "star" },
-  { key: "dermatology", label: "جلدية", icon: "feather" },
-  { key: "general_med", label: "عامة", icon: "plus-circle" },
+  { key: "clinic", label: "عيادات طبية", icon: "activity" },
+  { key: "lab_center", label: "مراكز ومختبرات", icon: "thermometer" },
 ];
 
 export const DELIVERY_SERVICES = [
@@ -1324,6 +1317,164 @@ export const removePortfolioImage = async (
     // ignore if file already removed
   }
 };
+
+// ─── Products / Marketplace ───────────────────────────────────────────────────
+
+export interface Product {
+  id: string;
+  title: string;
+  price: number;
+  description?: string;
+  imageUrl: string;
+  sellerId: string;
+  sellerName: string;
+  sellerPhone: string;
+  status: "available" | "sold";
+  soldAt?: string | null;
+  createdAt: string;
+}
+
+export interface ProductOrder {
+  id: string;
+  productId: string;
+  productTitle: string;
+  productImageUrl: string;
+  sellerId: string;
+  buyerId: string;
+  buyerName: string;
+  buyerPhone: string;
+  buyerLocation?: GeoLocation | null;
+  status: "pending" | "accepted" | "rejected";
+  createdAt: string;
+}
+
+export const uploadProductImage = async (
+  localUri: string,
+  productId: string
+): Promise<string> => {
+  const resp = await fetch(localUri);
+  const blob = await resp.blob();
+  const storageRef = ref(storage, `products/${productId}/image.jpg`);
+  await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+  return getDownloadURL(storageRef);
+};
+
+export const createProduct = async (data: {
+  title: string;
+  price: number;
+  description?: string;
+  localImageUri: string;
+  sellerId: string;
+  sellerName: string;
+  sellerPhone: string;
+}): Promise<string> => {
+  const docRef = doc(collection(db, "products"));
+  const imageUrl = await uploadProductImage(data.localImageUri, docRef.id);
+  await setDoc(docRef, {
+    title: data.title,
+    price: data.price,
+    description: data.description || "",
+    imageUrl,
+    sellerId: data.sellerId,
+    sellerName: data.sellerName,
+    sellerPhone: data.sellerPhone,
+    status: "available",
+    soldAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  return docRef.id;
+};
+
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+export const subscribeToProducts = (
+  callback: (products: Product[]) => void
+): (() => void) => {
+  const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snap) => {
+    const now = Date.now();
+    const products = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as Product))
+      .filter((p) => {
+        if (p.status !== "sold") return true;
+        if (!p.soldAt) return false;
+        return now - new Date(p.soldAt).getTime() < TWENTY_FOUR_HOURS_MS;
+      });
+    callback(products);
+  });
+};
+
+export const createProductOrder = async (
+  data: Omit<ProductOrder, "id" | "createdAt" | "status">
+): Promise<string> => {
+  const docRef = await addDoc(collection(db, "productOrders"), {
+    ...data,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+  try {
+    const sellerProfile = await getUserProfile(data.sellerId);
+    if (sellerProfile?.pushToken) {
+      await sendExpoPush(
+        sellerProfile.pushToken,
+        `طلب شراء جديد — ${data.productTitle}`,
+        `${data.buyerName} يريد شراء منتجك\nالهاتف: ${data.buyerPhone}`,
+        { type: "productOrder", orderId: docRef.id, productId: data.productId }
+      );
+    }
+  } catch (err) {
+    console.error("notify seller on productOrder failed:", err);
+  }
+  return docRef.id;
+};
+
+export const respondToProductOrder = async (
+  orderId: string,
+  productId: string,
+  productTitle: string,
+  buyerId: string,
+  response: "accepted" | "rejected"
+): Promise<void> => {
+  await updateDoc(doc(db, "productOrders", orderId), { status: response });
+  if (response === "accepted") {
+    await updateDoc(doc(db, "products", productId), {
+      status: "sold",
+      soldAt: new Date().toISOString(),
+    });
+  }
+  try {
+    const buyerProfile = await getUserProfile(buyerId);
+    if (buyerProfile?.pushToken) {
+      const accepted = response === "accepted";
+      await sendExpoPush(
+        buyerProfile.pushToken,
+        accepted ? `تم قبول طلبك — ${productTitle}` : `اعتذار — ${productTitle}`,
+        accepted
+          ? "تم قبول طلب الشراء! تواصل مع صاحب المنتج لإتمام الصفقة."
+          : "اعتذر صاحب المنتج عن البيع في الوقت الحالي.",
+        { type: "productOrderResponse", orderId, productId, response }
+      );
+    }
+  } catch (err) {
+    console.error("notify buyer on productOrder response failed:", err);
+  }
+};
+
+export const subscribeToSellerProductOrders = (
+  sellerId: string,
+  callback: (orders: ProductOrder[]) => void
+): (() => void) => {
+  const q = query(
+    collection(db, "productOrders"),
+    where("sellerId", "==", sellerId),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProductOrder)));
+  });
+};
+
+// ─── User Documents ────────────────────────────────────────────────────────────
 
 export const ensureUserDocument = async (
   userId: string,

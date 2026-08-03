@@ -13,6 +13,8 @@ import {
   ScrollView,
   Alert,
   TouchableOpacity,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +32,7 @@ import {
   type ArtisanProfile,
   type ServiceCategory,
   type GeoLocation,
+  type Product,
   HOME_SERVICES,
   CAR_SERVICES,
   GENERAL_SERVICES,
@@ -38,6 +41,8 @@ import {
   isFeaturedActive,
   subscribeToUserChatLastAts,
   subscribeToClientServiceRequests,
+  subscribeToProducts,
+  createProductOrder,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 import {
@@ -298,6 +303,15 @@ export default function DashboardScreen() {
   const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
   const [pendingBookingCount, setPendingBookingCount] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
+
+  // ── Segment ──
+  const [mainTab, setMainTab] = useState<"services" | "products">("services");
+
+  // ── Marketplace ──
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   const { profile: liveProfile, isPhoneOk, completionPercent } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
@@ -356,9 +370,11 @@ export default function DashboardScreen() {
           params: { chatId: data.chatId, otherName: data.senderName },
         });
       } else if (data?.type === "serviceRequest" || data?.type === "requestStatus") {
-        // New booking (artisan side) or a status change on an existing one
-        // (client side) — both live on the reservations screen.
         router.push("/reservations" as any);
+      } else if (data?.type === "productOrder") {
+        router.push("/product-orders" as any);
+      } else if (data?.type === "productOrderResponse") {
+        setMainTab("products");
       }
     });
     return () => sub.remove();
@@ -384,6 +400,16 @@ export default function DashboardScreen() {
     const user = auth.currentUser;
     if (!user) return;
     const unsub = subscribeToUserChatLastAts(user.uid, setChatLastAts);
+    return unsub;
+  }, []);
+
+  // Marketplace: subscribe to products
+  useEffect(() => {
+    setProductsLoading(true);
+    const unsub = subscribeToProducts((data) => {
+      setProducts(data);
+      setProductsLoading(false);
+    });
     return unsub;
   }, []);
 
@@ -561,133 +587,353 @@ export default function DashboardScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* ── Main segment: خدمات | منتجات ── */}
+        <View style={styles.segmentWrap}>
+          <Pressable
+            style={[styles.segmentBtn, mainTab === "products" && styles.segmentBtnActive]}
+            onPress={() => { Haptics.selectionAsync(); setMainTab("products"); }}
+          >
+            <Ionicons
+              name="pricetag-outline"
+              size={15}
+              color={mainTab === "products" ? C.primary : "rgba(255,255,255,0.7)"}
+            />
+            <Text style={[styles.segmentText, mainTab === "products" && styles.segmentTextActive]}>
+              المنتجات
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.segmentBtn, mainTab === "services" && styles.segmentBtnActive]}
+            onPress={() => { Haptics.selectionAsync(); setMainTab("services"); }}
+          >
+            <Ionicons
+              name="hammer-outline"
+              size={15}
+              color={mainTab === "services" ? C.primary : "rgba(255,255,255,0.7)"}
+            />
+            <Text style={[styles.segmentText, mainTab === "services" && styles.segmentTextActive]}>
+              الخدمات
+            </Text>
+          </Pressable>
+        </View>
       </LinearGradient>
 
-      {/* ── أفضل مقدمي الخدمة — directly under search bar ── */}
-      {(promotedArtisans.length > 0 || userRole === "artisan") && (
-        <View style={featStyles.section}>
-          <View style={featStyles.sectionHeader}>
-            {userRole === "artisan" && (
-              <Pressable
-                style={featStyles.promoteBtn}
-                onPress={() => router.push("/promote" as any)}
-              >
-                <Ionicons name="rocket" size={12} color={C.accent} />
-                <Text style={featStyles.promoteBtnText}>روّج حسابك</Text>
-              </Pressable>
-            )}
-            <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
-          </View>
-          {promotedArtisans.length > 0 && (
-            <FlatList
-              data={promotedArtisans}
-              keyExtractor={(a) => a.id}
+      {/* ══════════════════════════════════════════════════════
+           SERVICES SEGMENT
+      ══════════════════════════════════════════════════════ */}
+      {mainTab === "services" && (
+        <>
+          {/* أفضل مقدمي الخدمة */}
+          {(promotedArtisans.length > 0 || userRole === "artisan") && (
+            <View style={featStyles.section}>
+              <View style={featStyles.sectionHeader}>
+                {userRole === "artisan" && (
+                  <Pressable
+                    style={featStyles.promoteBtn}
+                    onPress={() => router.push("/promote" as any)}
+                  >
+                    <Ionicons name="rocket" size={12} color={C.accent} />
+                    <Text style={featStyles.promoteBtnText}>روّج حسابك</Text>
+                  </Pressable>
+                )}
+                <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
+              </View>
+              {promotedArtisans.length > 0 && (
+                <FlatList
+                  data={promotedArtisans}
+                  keyExtractor={(a) => a.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={featStyles.scrollRow}
+                  renderItem={({ item }) => (
+                    <FeaturedCard artisan={item} userLocation={userLocation} />
+                  )}
+                />
+              )}
+            </View>
+          )}
+
+          {/* Category + specialty tabs */}
+          <View style={styles.stickyBar}>
+            <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={featStyles.scrollRow}
-              renderItem={({ item }) => (
-                <FeaturedCard artisan={item} userLocation={userLocation} />
+              contentContainerStyle={styles.categoryTabs}
+              style={styles.categoryTabsWrapper}
+            >
+              {CATEGORY_TABS.map((tab) => (
+                <Pressable
+                  key={tab.key}
+                  style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setActiveCategory(tab.key);
+                    setActiveSpecialty("all");
+                  }}
+                >
+                  <Feather
+                    name={tab.icon as any}
+                    size={14}
+                    color={activeCategory === tab.key ? C.primary : C.textSecondary}
+                  />
+                  <Text style={[styles.catTabText, activeCategory === tab.key && styles.catTabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {specialtyFilters.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.specialtyFilters}
+                style={styles.specialtyFilterWrapper}
+              >
+                <Pressable
+                  style={[styles.specFilter, activeSpecialty === "all" && styles.specFilterActive]}
+                  onPress={() => { Haptics.selectionAsync(); setActiveSpecialty("all"); }}
+                >
+                  <Text style={[styles.specFilterText, activeSpecialty === "all" && styles.specFilterTextActive]}>
+                    الكل
+                  </Text>
+                </Pressable>
+                {specialtyFilters.map((sp) => (
+                  <Pressable
+                    key={sp.key}
+                    style={[styles.specFilter, activeSpecialty === sp.key && styles.specFilterActive]}
+                    onPress={() => { Haptics.selectionAsync(); setActiveSpecialty(sp.key); }}
+                  >
+                    <Text style={[styles.specFilterText, activeSpecialty === sp.key && styles.specFilterTextActive]}>
+                      {sp.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Artisans list */}
+          <View style={styles.listWrapper}>
+            <FlatList
+              data={filteredArtisans}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item, index }) => (
+                <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
               )}
+              ListHeaderComponent={
+                filteredArtisans.length > 0 && userLocation ? (
+                  <View style={styles.listHeader}>
+                    <View style={styles.sortedBadge}>
+                      <Feather name="navigation" size={11} color={C.accent} />
+                      <Text style={styles.sortedText}>مرتب حسب القرب</Text>
+                    </View>
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                loading ? (
+                  <View style={styles.emptyState}>
+                    <Feather name="loader" size={36} color={C.textMuted} />
+                    <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Feather name="users" size={48} color={C.textMuted} />
+                    <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
+                    <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
+                  </View>
+                )
+              }
+            />
+          </View>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+           PRODUCTS SEGMENT
+      ══════════════════════════════════════════════════════ */}
+      {mainTab === "products" && (
+        <View style={styles.listWrapper}>
+          {/* Products header bar */}
+          <View style={styles.productsBar}>
+            <TouchableOpacity
+              style={styles.ordersBtn}
+              onPress={() => router.push("/product-orders" as any)}
+              activeOpacity={0.8}
+            >
+              <Feather name="inbox" size={15} color={C.accent} />
+              <Text style={styles.ordersBtnText}>طلبات واردة</Text>
+            </TouchableOpacity>
+            <Text style={styles.productsBarTitle}>سوق المنتجات</Text>
+          </View>
+
+          {productsLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={C.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={products}
+              keyExtractor={(p) => p.id}
+              numColumns={2}
+              columnWrapperStyle={styles.productsRow}
+              contentContainerStyle={[styles.productsContent, { paddingBottom: bottomPad + 90 }]}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item: product }) => {
+                const isSold = product.status === "sold";
+                return (
+                  <View style={[styles.productCard, isSold && styles.productCardSold]}>
+                    {/* Image */}
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => setFullscreenImage(product.imageUrl)}
+                    >
+                      <Image
+                        source={{ uri: product.imageUrl }}
+                        style={styles.productImage}
+                        resizeMode="cover"
+                      />
+                      {isSold && (
+                        <View style={styles.soldOverlay}>
+                          <Text style={styles.soldOverlayText}>مباع</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+
+                    {/* Details */}
+                    <View style={styles.productBody}>
+                      <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+                      <Text style={styles.productPrice}>
+                        {product.price.toLocaleString("ar-IQ")} <Text style={styles.productCurrency}>د.ع</Text>
+                      </Text>
+                      {product.description ? (
+                        <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
+                      ) : null}
+                      <Text style={styles.productSeller} numberOfLines={1}>
+                        <Feather name="user" size={10} color={C.textMuted} /> {product.sellerName}
+                      </Text>
+                    </View>
+
+                    {/* Buy button */}
+                    {!isSold && (
+                      <TouchableOpacity
+                        style={[
+                          styles.buyBtn,
+                          buyingProductId === product.id && styles.btnDisabled,
+                        ]}
+                        activeOpacity={0.85}
+                        disabled={buyingProductId === product.id}
+                        onPress={async () => {
+                          const user = auth.currentUser;
+                          if (!user) { router.replace("/login" as any); return; }
+                          const selfProfile = await getUserProfile(user.uid);
+                          Alert.alert(
+                            "تأكيد الشراء",
+                            `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
+                            [
+                              { text: "إلغاء", style: "cancel" },
+                              {
+                                text: "إرسال الطلب",
+                                onPress: async () => {
+                                  setBuyingProductId(product.id);
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                  try {
+                                    await createProductOrder({
+                                      productId: product.id,
+                                      productTitle: product.title,
+                                      productImageUrl: product.imageUrl,
+                                      sellerId: product.sellerId,
+                                      buyerId: user.uid,
+                                      buyerName: selfProfile?.name || userName,
+                                      buyerPhone: selfProfile?.phone || "",
+                                      buyerLocation: userLocation,
+                                    });
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                    Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
+                                  } catch {
+                                    Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
+                                  } finally {
+                                    setBuyingProductId(null);
+                                  }
+                                },
+                              },
+                            ]
+                          );
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[C.accent, C.accentLight]}
+                          style={styles.buyBtnGradient}
+                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        >
+                          {buyingProductId === product.id ? (
+                            <ActivityIndicator size="small" color={C.primary} />
+                          ) : (
+                            <>
+                              <Ionicons name="cart-outline" size={14} color={C.primary} />
+                              <Text style={styles.buyBtnText}>شراء</Text>
+                            </>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
+                  <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
+                  <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
+                </View>
+              }
             />
           )}
+
+          {/* FAB — إضافة منتج */}
+          <TouchableOpacity
+            style={[styles.fab, { bottom: bottomPad + 20 }]}
+            onPress={() => router.push("/add-product" as any)}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={[C.accent, C.accentLight]}
+              style={styles.fabGradient}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <Feather name="plus" size={20} color={C.primary} />
+              <Text style={styles.fabText}>إضافة منتج</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
       )}
 
-      <View style={styles.stickyBar}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryTabs}
-        style={styles.categoryTabsWrapper}
+      {/* ── Fullscreen image viewer ── */}
+      <Modal
+        visible={!!fullscreenImage}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setFullscreenImage(null)}
       >
-        {CATEGORY_TABS.map((tab) => (
-          <Pressable
-            key={tab.key}
-            style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
-            onPress={() => {
-              Haptics.selectionAsync();
-              setActiveCategory(tab.key);
-              setActiveSpecialty("all");
-            }}
-          >
-            <Feather
-              name={tab.icon as any}
-              size={14}
-              color={activeCategory === tab.key ? C.primary : C.textSecondary}
+        <Pressable style={styles.fullscreenOverlay} onPress={() => setFullscreenImage(null)}>
+          {fullscreenImage && (
+            <Image
+              source={{ uri: fullscreenImage }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
             />
-            <Text style={[styles.catTabText, activeCategory === tab.key && styles.catTabTextActive]}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {specialtyFilters.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.specialtyFilters}
-          style={styles.specialtyFilterWrapper}
-        >
-          <Pressable
-            style={[styles.specFilter, activeSpecialty === "all" && styles.specFilterActive]}
-            onPress={() => { Haptics.selectionAsync(); setActiveSpecialty("all"); }}
-          >
-            <Text style={[styles.specFilterText, activeSpecialty === "all" && styles.specFilterTextActive]}>
-              الكل
-            </Text>
-          </Pressable>
-          {specialtyFilters.map((sp) => (
-            <Pressable
-              key={sp.key}
-              style={[styles.specFilter, activeSpecialty === sp.key && styles.specFilterActive]}
-              onPress={() => { Haptics.selectionAsync(); setActiveSpecialty(sp.key); }}
-            >
-              <Text style={[styles.specFilterText, activeSpecialty === sp.key && styles.specFilterTextActive]}>
-                {sp.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-      </View>
-
-      <View style={styles.listWrapper}>
-      <FlatList
-        data={filteredArtisans}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item, index }) => (
-          <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
-        )}
-        ListHeaderComponent={
-          filteredArtisans.length > 0 && userLocation ? (
-            <View style={styles.listHeader}>
-              <View style={styles.sortedBadge}>
-                <Feather name="navigation" size={11} color={C.accent} />
-                <Text style={styles.sortedText}>مرتب حسب القرب</Text>
-              </View>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.emptyState}>
-              <Feather name="loader" size={36} color={C.textMuted} />
-              <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Feather name="users" size={48} color={C.textMuted} />
-              <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
-              <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
-            </View>
-          )
-        }
-      />
-      </View>
+          )}
+          <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenImage(null)}>
+            <Feather name="x" size={22} color="#FFF" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -850,6 +1096,92 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_700Bold",
     color: "#FFF",
     lineHeight: 11,
+  },
+  btnDisabled: { opacity: 0.6 },
+
+  // ── Segment toggle ──
+  segmentWrap: {
+    flexDirection: "row", backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14, padding: 3, gap: 2,
+  },
+  segmentBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 9, borderRadius: 11,
+  },
+  segmentBtnActive: { backgroundColor: C.accent },
+  segmentText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "rgba(255,255,255,0.7)" },
+  segmentTextActive: { color: C.primary },
+
+  // ── Products bar ──
+  productsBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: C.background,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  productsBarTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  ordersBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+  },
+  ordersBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+
+  // ── Product cards ──
+  productsContent: { padding: 12 },
+  productsRow: { gap: 10, marginBottom: 10, justifyContent: "space-between" },
+  productCard: {
+    flex: 1, maxWidth: "48%",
+    backgroundColor: C.card, borderRadius: 14, overflow: "hidden",
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+  },
+  productCardSold: { opacity: 0.7 },
+  productImage: { width: "100%", height: 140 },
+  soldOverlay: {
+    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center", justifyContent: "center",
+  },
+  soldOverlayText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  productBody: { padding: 10, gap: 4 },
+  productTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  productPrice: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  productCurrency: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
+  productDesc: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  productSeller: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  buyBtn: { marginHorizontal: 8, marginBottom: 10, borderRadius: 10, overflow: "hidden" },
+  buyBtnGradient: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 9, gap: 5,
+  },
+  buyBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // ── FAB ──
+  fab: {
+    position: "absolute", left: 16, right: 16,
+    borderRadius: 16, overflow: "hidden",
+    shadowColor: C.accent, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
+  },
+  fabGradient: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 15, gap: 8,
+  },
+  fabText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // ── Fullscreen viewer ──
+  fullscreenOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center", justifyContent: "center",
+  },
+  fullscreenImage: { width: "100%", height: "80%" },
+  fullscreenClose: {
+    position: "absolute", top: 52, right: 20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
   },
 });
 
