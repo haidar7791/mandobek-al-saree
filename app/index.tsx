@@ -171,12 +171,12 @@ export default function WelcomeScreen() {
 
         <View style={styles.btnGroup}>
           <ActionButton
-            icon={<Feather name="user-plus" size={22} color={C.accent} />}
+            icon={<Feather name="user-plus" size={22} color={C.primary} />}
             label="تسجيل حساب جديد"
             subtitle="أنشئ حسابك الآن"
             onPress={() => router.push("/register")}
             delay={200}
-            variant="outline"
+            variant="gold"
           />
           <ActionButton
             icon={<Feather name="log-in" size={22} color={C.primary} />}
