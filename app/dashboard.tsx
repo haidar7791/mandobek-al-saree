@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -42,6 +43,7 @@ import {
   subscribeToProducts,
   createProductOrder,
 } from "../lib/db_logic";
+// Note: getPromotedArtisans removed — promoted artisans now bubble to top of main list
 import Colors from "@/constants/colors";
 import {
   registerForPushNotifications,
@@ -103,83 +105,6 @@ function StarRow({ rating }: { rating: number }) {
   );
 }
 
-function FeaturedCard({
-  artisan,
-  userLocation,
-}: {
-  artisan: ArtisanProfile;
-  userLocation: GeoLocation | null;
-}) {
-  const distance =
-    userLocation && artisan.location
-      ? calcDistanceKm(userLocation, artisan.location)
-      : null;
-
-  const initials = artisan.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.75}
-      style={featStyles.card}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        // Pass the already-fetched artisan object along so the profile screen
-        // can render instantly instead of waiting on a fresh Firestore read.
-        router.push({
-          pathname: "/artisan-profile",
-          params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
-        });
-      }}
-    >
-      {/* Avatar */}
-      <View style={featStyles.avatarWrap}>
-        {artisan.photoUri ? (
-          <Image source={{ uri: artisan.photoUri }} style={featStyles.avatar} resizeMode="cover" />
-        ) : (
-          <View style={featStyles.avatarFallback}>
-            <LinearGradient colors={[C.primary, "#1E2F60"]} style={StyleSheet.absoluteFill} />
-            <Text style={featStyles.avatarInitials}>{initials}</Text>
-          </View>
-        )}
-        <View style={[featStyles.availDot, artisan.isAvailable ? featStyles.availOnline : featStyles.availOffline]} />
-      </View>
-
-      {/* Details */}
-      <View style={featStyles.body}>
-        <Text style={featStyles.name} numberOfLines={1}>{artisan.name}</Text>
-
-        <View style={featStyles.specialtyBadge}>
-          <Text style={featStyles.specialtyText} numberOfLines={1}>
-            {getSpecialtyLabel(artisan.specialty)}
-          </Text>
-        </View>
-
-        <View style={featStyles.metaRow}>
-          <Ionicons name="star" size={10} color="#F59E0B" />
-          <Text style={featStyles.ratingText}>
-            {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}
-          </Text>
-          {distance !== null && (
-            <>
-              <Text style={featStyles.metaSep}>·</Text>
-              <Feather name="map-pin" size={9} color={C.accent} />
-              <Text style={featStyles.distText} numberOfLines={1}>
-                {distance < 1
-                  ? `${Math.round(distance * 1000)} م`
-                  : `${distance.toFixed(1)} كم`}
-              </Text>
-            </>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
 
 function ArtisanCard({
   artisan,
@@ -308,6 +233,9 @@ export default function DashboardScreen() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
+
+  // search state — kept for filteredArtisans (search now lives in /search screen)
+  const [search] = useState("");
   const { profile: liveProfile, isPhoneOk, completionPercent } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
@@ -323,10 +251,9 @@ export default function DashboardScreen() {
     if (!user) { router.replace("/login" as any); return; }
 
     try {
-      const [profile, allArtisans, promoted] = await Promise.all([
+      const [profile, allArtisans] = await Promise.all([
         getUserProfile(user.uid),
         getArtisans(),
-        getPromotedArtisans(),
       ]);
 
       if (profile) {
@@ -337,7 +264,6 @@ export default function DashboardScreen() {
       setUserId(user.uid);
 
       setArtisans(allArtisans);
-      setPromotedArtisans(promoted);
 
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -472,25 +398,30 @@ export default function DashboardScreen() {
     if (activeSpecialty !== "all") {
       result = result.filter((a) => a.specialty === activeSpecialty);
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.name.toLowerCase().includes(q) ||
-          getSpecialtyLabel(a.specialty).includes(q)
-      );
-    }
+    // search is now handled in /search screen; keep variable reference to avoid TS warning
+    void search;
 
     if (userLocation) {
       result.sort((a, b) => {
+        // Promoted artisans always bubble to the top; among equals, sort by distance
+        const aFeat = isFeaturedActive(a) ? 0 : 1;
+        const bFeat = isFeaturedActive(b) ? 0 : 1;
+        if (aFeat !== bFeat) return aFeat - bFeat;
         const da = a.location ? calcDistanceKm(userLocation, a.location) : Infinity;
         const db = b.location ? calcDistanceKm(userLocation, b.location) : Infinity;
         return da - db;
       });
+    } else {
+      // No location — promoted first, then rest
+      result.sort((a, b) => {
+        const aFeat = isFeaturedActive(a) ? 0 : 1;
+        const bFeat = isFeaturedActive(b) ? 0 : 1;
+        return aFeat - bFeat;
+      });
     }
 
     return result;
-  }, [artisans, activeCategory, activeSpecialty, search, userLocation]);
+  }, [artisans, activeCategory, activeSpecialty, userLocation]);
 
   const specialtyFilters = SPECIALTY_FILTERS[activeCategory];
 
@@ -527,7 +458,7 @@ export default function DashboardScreen() {
           )}
           <Pressable style={styles.headerIconCol} onPress={() => router.push("/reservations" as any)}>
             <View style={styles.headerIconBtn}>
-              <Feather name="calendar" size={20} color="#FFF" />
+              <Feather name="inbox" size={20} color="#FFF" />
               {pendingBookingCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
@@ -536,7 +467,7 @@ export default function DashboardScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.headerIconLabel}>الحجوزات</Text>
+            <Text style={styles.headerIconLabel}>طلبات واردة</Text>
           </Pressable>
           <Pressable style={styles.headerIconCol} onPress={handleMessagesPress}>
             <View style={styles.headerIconBtn}>
@@ -574,22 +505,18 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.searchBar}>
-          <Feather name="search" size={16} color={C.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="ابحث عن صاحب اختصاص أو خدمة..."
-            placeholderTextColor={C.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            textAlign="right"
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch("")}>
-              <Feather name="x" size={16} color={C.textMuted} />
-            </Pressable>
-          )}
-        </View>
+        {/* ── البحث العائم — أيقونة فقط تفتح شاشة البحث الشاملة ── */}
+        <Pressable
+          style={styles.searchIconBtn}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/search" as any); }}
+          accessibilityLabel="بحث"
+        >
+          <Feather name="search" size={18} color="rgba(255,255,255,0.85)" />
+          <Text style={styles.searchIconLabel}>ابحث عن خدمة أو منتج أو صاحب اختصاص...</Text>
+          <View style={styles.searchIconArrow}>
+            <Feather name="chevron-left" size={14} color="rgba(255,255,255,0.5)" />
+          </View>
+        </Pressable>
 
         {/* ── Main segment: خدمات | منتجات ── */}
         <View style={styles.segmentWrap}>
@@ -627,38 +554,19 @@ export default function DashboardScreen() {
       ══════════════════════════════════════════════════════ */}
       {mainTab === "services" && (
         <>
-          {/* أفضل مقدمي الخدمة */}
-          {(promotedArtisans.length > 0 || userRole === "artisan") && (
-            <View style={featStyles.section}>
-              <View style={featStyles.sectionHeader}>
-                {userRole === "artisan" && (
-                  <Pressable
-                    style={featStyles.promoteBtn}
-                    onPress={() => router.push("/promote" as any)}
-                  >
-                    <Ionicons name="rocket" size={12} color={C.accent} />
-                    <Text style={featStyles.promoteBtnText}>روّج حسابك</Text>
-                  </Pressable>
-                )}
-                <Text style={featStyles.sectionTitle}>أفضل مقدمي الخدمة</Text>
-              </View>
-              {promotedArtisans.length > 0 && (
-                <FlatList
-                  data={promotedArtisans}
-                  keyExtractor={(a) => a.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={featStyles.scrollRow}
-                  renderItem={({ item }) => (
-                    <FeaturedCard artisan={item} userLocation={userLocation} />
-                  )}
-                />
-              )}
-            </View>
-          )}
-
-          {/* Category + specialty tabs */}
+          {/* Category + specialty tabs — with inline "روّج حسابك" for artisans */}
           <View style={styles.stickyBar}>
+            {userRole === "artisan" && (
+              <View style={styles.promoteRow}>
+                <Pressable
+                  style={styles.promoteRowBtn}
+                  onPress={() => router.push("/promote" as any)}
+                >
+                  <Ionicons name="rocket" size={12} color={C.accent} />
+                  <Text style={styles.promoteRowBtnText}>روّج حسابك — ظهور مميز في المقدمة</Text>
+                </Pressable>
+              </View>
+            )}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -764,14 +672,24 @@ export default function DashboardScreen() {
         <View style={styles.listWrapper}>
           {/* Products header bar */}
           <View style={styles.productsBar}>
-            <TouchableOpacity
-              style={styles.ordersBtn}
-              onPress={() => router.push("/product-orders" as any)}
-              activeOpacity={0.8}
-            >
-              <Feather name="inbox" size={15} color={C.accent} />
-              <Text style={styles.ordersBtnText}>طلبات واردة</Text>
-            </TouchableOpacity>
+            <View style={styles.productsBtnsGroup}>
+              <TouchableOpacity
+                style={styles.ordersBtn}
+                onPress={() => router.push("/reservations" as any)}
+                activeOpacity={0.8}
+              >
+                <Feather name="inbox" size={14} color={C.accent} />
+                <Text style={styles.ordersBtnText}>طلبات واردة</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addProductBtn}
+                onPress={() => router.push("/add-product" as any)}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus" size={14} color="#FFF" />
+                <Text style={styles.addProductBtnText}>إضافة منتج</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.productsBarTitle}>سوق المنتجات</Text>
           </View>
 
@@ -898,21 +816,6 @@ export default function DashboardScreen() {
             />
           )}
 
-          {/* FAB — إضافة منتج */}
-          <TouchableOpacity
-            style={[styles.fab, { bottom: bottomPad + 20 }]}
-            onPress={() => router.push("/add-product" as any)}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={[C.accent, C.accentLight]}
-              style={styles.fabGradient}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            >
-              <Feather name="plus" size={20} color={C.primary} />
-              <Text style={styles.fabText}>إضافة منتج</Text>
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -989,15 +892,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center", justifyContent: "center",
   },
-  searchBar: {
-    flexDirection: "row", alignItems: "center",
-    backgroundColor: "#FFF", borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 10, gap: 10,
+  // ── Floating search button ──
+  searchIconBtn: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
-  searchInput: {
-    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
-    color: C.text, padding: 0,
+  searchIconLabel: {
+    flex: 1, fontSize: 13, fontFamily: "Cairo_400Regular",
+    color: "rgba(255,255,255,0.5)", textAlign: "right",
   },
+  searchIconArrow: { opacity: 0.5 },
   categoryTabsWrapper: { backgroundColor: "#FFF", maxHeight: 54 },
   categoryTabs: {
     paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row",
@@ -1115,6 +1021,20 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "rgba(255,255,255,0.7)" },
   segmentTextActive: { color: C.primary },
 
+  // ── Promote row (services tab) ──
+  promoteRow: {
+    paddingHorizontal: 14, paddingTop: 8, paddingBottom: 4,
+    backgroundColor: "#FFF",
+  },
+  promoteRowBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+    alignSelf: "flex-end",
+  },
+  promoteRowBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+
   // ── Products bar ──
   productsBar: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -1123,13 +1043,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
   productsBarTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  productsBtnsGroup: { flexDirection: "row", gap: 8, alignItems: "center" },
   ordersBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 6,
+    paddingHorizontal: 11, paddingVertical: 6,
     borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
   },
   ordersBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  addProductBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: C.primary, borderRadius: 10,
+    paddingHorizontal: 11, paddingVertical: 6,
+  },
+  addProductBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: "#FFF" },
 
   // ── Product cards ──
   productsContent: { padding: 12 },
@@ -1161,19 +1088,6 @@ const styles = StyleSheet.create({
   },
   buyBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary },
 
-  // ── FAB ──
-  fab: {
-    position: "absolute", left: 16, right: 16,
-    borderRadius: 16, overflow: "hidden",
-    shadowColor: C.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
-  },
-  fabGradient: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 15, gap: 8,
-  },
-  fabText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
-
   // ── Fullscreen viewer ──
   fullscreenOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.92)",
@@ -1188,69 +1102,3 @@ const styles = StyleSheet.create({
   },
 });
 
-const featStyles = StyleSheet.create({
-  section: {
-    paddingTop: 10, paddingBottom: 8,
-    borderBottomWidth: 1, borderBottomColor: C.border,
-    backgroundColor: C.background,
-  },
-  sectionHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 14, marginBottom: 8,
-  },
-  sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  promoteBtn: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(201,168,76,0.14)", borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
-  },
-  promoteBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  scrollRow: { paddingHorizontal: 14, gap: 8, paddingBottom: 4 },
-  /* Compact horizontal card */
-  card: {
-    width: 180,
-    backgroundColor: C.card,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  /* Avatar */
-  avatarWrap: { position: "relative" },
-  avatar: { width: 44, height: 44, borderRadius: 10 },
-  avatarFallback: {
-    width: 44, height: 44, borderRadius: 10,
-    alignItems: "center", justifyContent: "center", overflow: "hidden",
-  },
-  avatarInitials: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent },
-  availDot: {
-    position: "absolute", bottom: 1, right: 1,
-    width: 10, height: 10, borderRadius: 5,
-    borderWidth: 1.5, borderColor: C.card,
-  },
-  availOnline: { backgroundColor: "#22C55E" },
-  availOffline: { backgroundColor: "#9CA3AF" },
-  /* Body */
-  body: { flex: 1, gap: 3, alignItems: "flex-end" },
-  name: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  specialtyBadge: {
-    backgroundColor: "rgba(13,27,62,0.08)", borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  specialtyText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.primary },
-  metaRow: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    justifyContent: "flex-end",
-  },
-  ratingText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#F59E0B" },
-  metaSep: { fontSize: 10, color: C.textMuted },
-  distText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
-});

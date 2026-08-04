@@ -165,31 +165,64 @@ export default function ChatRoom({
     initialOtherArtisan
   );
 
+  // Basic user profile for the other participant (non-artisan fallback)
+  const [otherUserName, setOtherUserName] = useState<string | null>(null);
+  const [otherUserPhoto, setOtherUserPhoto] = useState<string | null>(null);
+
   useEffect(() => {
     if (!otherUid || otherUid === ADMIN_UID) {
       setOtherArtisanProfile(null);
       return;
     }
     let cancelled = false;
-    getArtisanByUserId(otherUid).then((a) => {
-      if (!cancelled) setOtherArtisanProfile(a);
+    // Fetch artisan profile AND plain user profile in parallel
+    Promise.all([
+      getArtisanByUserId(otherUid),
+      getUserProfile(otherUid),
+    ]).then(([artisan, userProf]) => {
+      if (cancelled) return;
+      setOtherArtisanProfile(artisan);
+      if (userProf) {
+        setOtherUserName(userProf.name || null);
+        setOtherUserPhoto(userProf.photoUri || null);
+      }
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [otherUid]);
 
-  const handleOpenArtisanProfile = () => {
-    if (!otherArtisanProfile) return;
+  /**
+   * Tap on the other user's name/avatar in the chat header:
+   * - artisans → /artisan-profile (with "طلب خدمة" CTA)
+   * - regular users → /user-profile (name, photo, chat button)
+   * Both roles always open a profile; the header is never dead.
+   */
+  const handleOpenOtherProfile = () => {
+    if (!otherUid || otherUid === ADMIN_UID) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: "/artisan-profile",
-      params: {
-        artisanId: otherArtisanProfile.id,
-        artisan: JSON.stringify(otherArtisanProfile),
-      },
-    });
+    if (otherArtisanProfile) {
+      router.push({
+        pathname: "/artisan-profile",
+        params: {
+          artisanId: otherArtisanProfile.id,
+          artisan: JSON.stringify(otherArtisanProfile),
+        },
+      });
+    } else {
+      router.push({
+        pathname: "/user-profile",
+        params: {
+          userId: otherUid,
+          userName: otherUserName ?? otherName,
+          userPhoto: otherUserPhoto ?? "",
+        },
+      });
+    }
   };
+
+  // Keep old name for backward compat (used by header Pressables below)
+  const handleOpenArtisanProfile = handleOpenOtherProfile;
+  // Header tap is enabled for any non-admin participant (artisan OR regular user)
+  const canOpenProfile = !!otherUid && otherUid !== ADMIN_UID;
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -617,7 +650,7 @@ export default function ChatRoom({
         <Pressable
           style={styles.headerInfo}
           onPress={handleOpenArtisanProfile}
-          disabled={!otherArtisanProfile}
+          disabled={!canOpenProfile}
           hitSlop={6}
         >
           <Text style={styles.headerName}>{otherName}</Text>
@@ -633,12 +666,12 @@ export default function ChatRoom({
         <Pressable
           style={styles.headerAvatar}
           onPress={handleOpenArtisanProfile}
-          disabled={!otherArtisanProfile}
+          disabled={!canOpenProfile}
           hitSlop={6}
         >
-          {otherArtisanProfile?.photoUri ? (
+          {(otherArtisanProfile?.photoUri || otherUserPhoto) ? (
             <Image
-              source={{ uri: otherArtisanProfile.photoUri }}
+              source={{ uri: (otherArtisanProfile?.photoUri || otherUserPhoto)! }}
               style={styles.headerAvatarImage}
               contentFit="cover"
             />

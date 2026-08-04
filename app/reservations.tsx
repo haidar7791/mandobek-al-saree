@@ -24,22 +24,26 @@ import {
   acceptServiceRequest,
   rejectServiceRequest,
   hideServiceRequestsForUser,
+  subscribeToSellerProductOrders,
+  respondToProductOrder,
   ACTIVE_STATUSES,
   STATUS_LABELS,
   getSpecialtyLabel,
   type ServiceRequest,
   type ServiceRequestStatus,
+  type ProductOrder,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
 
-type Tab = "pending" | "active" | "history";
+type Tab = "pending" | "active" | "history" | "products";
 
 const TAB_LABELS: Record<Tab, string> = {
   pending: "الجديدة",
   active: "النشطة",
   history: "السجل",
+  products: "المنتجات",
 };
 
 function formatTime(iso: string): string {
@@ -208,6 +212,7 @@ function RequestCard({
 export default function ReservationsScreen() {
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
   const [tab, setTab] = useState<Tab>("pending");
   const [isArtisan, setIsArtisan] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -292,6 +297,18 @@ export default function ReservationsScreen() {
       clearTimeout(safetyTimer);
       if (unsub) unsub();
     };
+  }, []);
+
+  // Product orders subscription — runs in parallel with service requests
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsub = subscribeToSellerProductOrders(
+      user.uid,
+      (orders) => setProductOrders(orders),
+      () => setProductOrders([])
+    );
+    return unsub;
   }, []);
 
   // Requests this user has soft-deleted from their own history stay hidden
@@ -397,9 +414,13 @@ export default function ReservationsScreen() {
       history: visibleRequests.filter((r) =>
         ["completed", "cancelled", "rejected"].includes(r.status)
       ).length,
+      products: productOrders.filter((o) => o.status === "pending").length,
     }),
-    [visibleRequests]
+    [visibleRequests, productOrders]
   );
+
+  const pendingProductOrders = productOrders.filter((o) => o.status === "pending");
+  const otherProductOrders  = productOrders.filter((o) => o.status !== "pending");
 
   const handleAccept = async (req: ServiceRequest) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -454,9 +475,9 @@ export default function ReservationsScreen() {
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>
-          <Text style={styles.title}>{isArtisan ? "الحجوزات" : "طلباتي"}</Text>
+          <Text style={styles.title}>طلبات واردة</Text>
           <Text style={styles.sub}>
-            {isArtisan ? "إدارة طلبات العملاء" : "تتبّع طلبات الخدمة"}
+            {isArtisan ? "طلبات الخدمات والمنتجات" : "تتبّع طلباتك"}
           </Text>
         </View>
         <View style={styles.iconBadge}>
@@ -507,45 +528,143 @@ export default function ReservationsScreen() {
         </View>
       ) : null}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(r) => r.id}
-        renderItem={({ item }) => (
-          <RequestCard
-            request={item}
-            isArtisan={isArtisan}
-            onAccept={() => handleAccept(item)}
-            onReject={() => handleReject(item)}
-            onOpen={() => handleOpen(item)}
-            selectionMode={tab === "history" && selectionMode}
-            selected={selectedIds.has(item.id)}
-            onToggleSelect={() => toggleSelect(item.id)}
-            onLongPress={tab === "history" ? () => enterSelectionMode(item.id) : undefined}
-          />
-        )}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: bottomPad + 20 },
-          filtered.length === 0 && { flex: 1 },
-        ]}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="calendar-outline" size={42} color={C.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {loading ? "جارٍ التحميل..." : "لا توجد طلبات في هذا القسم"}
-            </Text>
-            {!loading && (
-              <Text style={styles.emptySub}>
-                {isArtisan
-                  ? "ستظهر طلبات العملاء هنا فور وصولها"
-                  : "ابحث عن صاحب اختصاص وأرسل طلب خدمتك من صفحته الشخصية"}
+      {tab !== "products" ? (
+        <FlatList
+          data={filtered}
+          keyExtractor={(r) => r.id}
+          renderItem={({ item }) => (
+            <RequestCard
+              request={item}
+              isArtisan={isArtisan}
+              onAccept={() => handleAccept(item)}
+              onReject={() => handleReject(item)}
+              onOpen={() => handleOpen(item)}
+              selectionMode={tab === "history" && selectionMode}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={() => toggleSelect(item.id)}
+              onLongPress={tab === "history" ? () => enterSelectionMode(item.id) : undefined}
+            />
+          )}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: bottomPad + 20 },
+            filtered.length === 0 && { flex: 1 },
+          ]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="calendar-outline" size={42} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {loading ? "جارٍ التحميل..." : "لا توجد طلبات في هذا القسم"}
               </Text>
-            )}
-          </View>
-        }
-      />
+              {!loading && (
+                <Text style={styles.emptySub}>
+                  {isArtisan
+                    ? "ستظهر طلبات العملاء هنا فور وصولها"
+                    : "ابحث عن صاحب اختصاص وأرسل طلب خدمتك من صفحته الشخصية"}
+                </Text>
+              )}
+            </View>
+          }
+        />
+      ) : (
+        /* ── تبويب طلبات المنتجات ── */
+        <FlatList
+          data={[...pendingProductOrders, ...otherProductOrders]}
+          keyExtractor={(o) => o.id}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: bottomPad + 20 },
+            productOrders.length === 0 && { flex: 1 },
+          ]}
+          ListHeaderComponent={
+            pendingProductOrders.length > 0 ? (
+              <View style={styles.productOrdersHeader}>
+                <View style={styles.pendingDot} />
+                <Text style={styles.productOrdersHeaderText}>
+                  بانتظار ردك ({pendingProductOrders.length})
+                </Text>
+              </View>
+            ) : null
+          }
+          renderItem={({ item: order }) => {
+            const cfg =
+              order.status === "pending"
+                ? { label: "بانتظار ردك", color: "#F59E0B", bg: "rgba(245,158,11,0.1)" }
+                : order.status === "accepted"
+                ? { label: "تم القبول", color: "#22C55E", bg: "rgba(34,197,94,0.1)" }
+                : { label: "مرفوض", color: "#EF4444", bg: "rgba(239,68,68,0.1)" };
+            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+              day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+            });
+            return (
+              <Animated.View entering={FadeInDown.springify()} style={styles.card}>
+                <View style={styles.productOrderTop}>
+                  <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                </View>
+                <View style={styles.metaRow}>
+                  <Feather name="user" size={13} color={C.textSecondary} />
+                  <Text style={styles.metaText}>{order.buyerName}</Text>
+                </View>
+                {order.buyerPhone ? (
+                  <View style={styles.metaRow}>
+                    <Feather name="phone" size={13} color={C.textSecondary} />
+                    <Text style={styles.metaText}>{order.buyerPhone}</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.cardTime}>{date}</Text>
+                {order.status === "pending" && (
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      style={[styles.actionBtn, styles.rejectBtn]}
+                      onPress={() =>
+                        Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
+                          { text: "إلغاء", style: "cancel" },
+                          {
+                            text: "رفض", style: "destructive",
+                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected"),
+                          },
+                        ])
+                      }
+                    >
+                      <Feather name="x" size={16} color="#FFF" />
+                      <Text style={styles.actionBtnText}>رفض</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.actionBtn, styles.acceptBtn]}
+                      onPress={() =>
+                        Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
+                          { text: "إلغاء", style: "cancel" },
+                          {
+                            text: "قبول",
+                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted"),
+                          },
+                        ])
+                      }
+                    >
+                      <Feather name="check" size={16} color="#FFF" />
+                      <Text style={styles.actionBtnText}>قبول</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </Animated.View>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Feather name="inbox" size={42} color={C.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>لا توجد طلبات منتجات</Text>
+              <Text style={styles.emptySub}>ستظهر هنا طلبات شراء منتجاتك فور وصولها</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -692,4 +811,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center" },
   emptySub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center", lineHeight: 22 },
+  productOrdersHeader: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginBottom: 8, justifyContent: "flex-end",
+  },
+  pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
+  productOrdersHeaderText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+  productOrderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  productOrderTitle: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  productOrderStatus: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
+  productOrderStatusText: { fontSize: 11, fontFamily: "Cairo_600SemiBold" },
 });

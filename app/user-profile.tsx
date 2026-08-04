@@ -39,13 +39,13 @@ export default function UserProfileScreen() {
   useEffect(() => {
     if (!userId) return;
     getUserProfile(userId).then((p) => {
-      if (p) setProfile({ name: p.name, phone: p.phone, bio: p.bio, photoUri: p.photoUri });
+      if (p) setProfile({ name: p.name, phone: p.phone ?? undefined, bio: p.bio ?? undefined, photoUri: p.photoUri ?? undefined });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [userId]);
 
   const displayName = profile?.name || nameProp || "مستخدم";
-  const photoUri = profile?.photoUri || (userPhoto || undefined);
+  const photoUri = profile?.photoUri || userPhoto || undefined;
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
   const handleCall = () => {
