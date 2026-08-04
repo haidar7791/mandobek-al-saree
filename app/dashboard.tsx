@@ -681,24 +681,14 @@ export default function DashboardScreen() {
         <View style={styles.listWrapper}>
           {/* Products header bar */}
           <View style={styles.productsBar}>
-            <View style={styles.productsBtnsGroup}>
-              <TouchableOpacity
-                style={styles.ordersBtn}
-                onPress={() => router.push("/reservations" as any)}
-                activeOpacity={0.8}
-              >
-                <Feather name="inbox" size={14} color={C.accent} />
-                <Text style={styles.ordersBtnText}>طلبات واردة</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addProductBtn}
-                onPress={() => router.push("/add-product" as any)}
-                activeOpacity={0.8}
-              >
-                <Feather name="plus" size={14} color="#FFF" />
-                <Text style={styles.addProductBtnText}>إضافة منتج</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.ordersBtn}
+              onPress={() => router.push("/add-product" as any)}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={14} color={C.accent} />
+              <Text style={styles.ordersBtnText}>إضافة منتج</Text>
+            </TouchableOpacity>
             <Text style={styles.productsBarTitle}>سوق المنتجات</Text>
           </View>
 
