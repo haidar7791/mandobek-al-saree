@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
@@ -187,6 +188,10 @@ function configureExpoAndLanding(app: express.Application) {
     }
 
     if (req.path === "/") {
+      // In dev mode, let the Metro proxy handle web requests
+      if (process.env.NODE_ENV === "development") {
+        return next();
+      }
       return serveLandingPage({
         req,
         res,
@@ -237,6 +242,20 @@ function setupErrorHandler(app: express.Application) {
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
+
+  // In dev mode: proxy all remaining requests to the Metro web bundler (port 8081)
+  // so the Replit preview pane (port 5000) shows the live Expo web app.
+  if (process.env.NODE_ENV === "development") {
+    const metroProxy = createProxyMiddleware({
+      target: "http://127.0.0.1:8081",
+      changeOrigin: true,
+      ws: true,
+      logger: console,
+    });
+    app.use("/", metroProxy);
+    server.on("upgrade", metroProxy.upgrade as any);
+    log("Dev proxy: forwarding web requests → Metro at :8081");
+  }
 
   setupErrorHandler(app);
 
