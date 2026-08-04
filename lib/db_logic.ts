@@ -653,15 +653,22 @@ export const subscribeToClientServiceRequests = (
   callback: (requests: ServiceRequest[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe => {
+  // Single-field filter only (no orderBy) to avoid requiring a Composite Index.
+  // Results are sorted in-memory by createdAt descending.
   const q = query(
     collection(db, "serviceRequests"),
-    where("clientId", "==", clientId),
-    orderBy("createdAt", "desc")
+    where("clientId", "==", clientId)
   );
   return onSnapshot(
     q,
     (snap) => {
-      const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceRequest));
+      const requests = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as ServiceRequest))
+        .sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
       callback(requests);
     },
     (err) => {
@@ -1546,15 +1553,23 @@ export const subscribeToSellerProductOrders = (
   callback: (orders: ProductOrder[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
+  // Single-field filter only (no orderBy) to avoid requiring a Composite Index.
+  // Results are sorted in-memory by createdAt descending.
   const q = query(
     collection(db, "productOrders"),
-    where("sellerId", "==", sellerId),
-    orderBy("createdAt", "desc")
+    where("sellerId", "==", sellerId)
   );
   return onSnapshot(
     q,
     (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProductOrder)));
+      const orders = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as ProductOrder))
+        .sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+      callback(orders);
     },
     (err) => {
       console.error("subscribeToSellerProductOrders error:", err);
