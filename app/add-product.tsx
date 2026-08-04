@@ -77,9 +77,18 @@ export default function AddProductScreen() {
         sellerPhone: profile?.phone || "",
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم النشر ✓", "تم نشر منتجك في السوق بنجاح!", [
-        { text: "حسناً", onPress: () => router.back() },
-      ]);
+
+      // Reset form so it's clean if the user opens this screen again
+      setTitle("");
+      setPrice("");
+      setDescription("");
+      setImageUri(null);
+
+      // Navigate back immediately — don't wait for the user to tap "حسناً"
+      router.back();
+      Alert.alert("تم النشر ✓", "تم نشر منتجك في السوق بنجاح!");
+      // Note: setLoading(false) is intentionally omitted here.
+      // The screen is unmounting; re-enabling the button would allow a duplicate submit.
     } catch (err: any) {
       console.error("createProduct error:", err);
       const msg =
@@ -91,7 +100,7 @@ export default function AddProductScreen() {
           ? `تفاصيل الخطأ: ${err.message}`
           : "حدث خطأ أثناء نشر المنتج، يرجى المحاولة مجدداً";
       Alert.alert("خطأ في النشر", msg);
-    } finally {
+      // Re-enable the button only on failure so the user can try again
       setLoading(false);
     }
   };
