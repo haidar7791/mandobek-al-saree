@@ -7,7 +7,6 @@ import {
   Pressable,
   FlatList,
   Platform,
-  TextInput,
   Image,
   RefreshControl,
   ScrollView,
@@ -26,7 +25,6 @@ import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
 import {
   getArtisans,
-  getPromotedArtisans,
   getUserProfile,
   calcDistanceKm,
   type ArtisanProfile,
@@ -289,11 +287,9 @@ function ArtisanCard({
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
-  const [promotedArtisans, setPromotedArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("all");
   const [activeSpecialty, setActiveSpecialty] = useState<string>("all");
-  const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState("المستخدم");
   const [userRole, setUserRole] = useState<"client" | "artisan" | "admin">("client");
