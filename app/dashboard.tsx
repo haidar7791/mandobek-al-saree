@@ -427,6 +427,16 @@ export default function DashboardScreen() {
     return result;
   }, [artisans, activeCategory, activeSpecialty, userLocation]);
 
+  // Sort products: featured sellers first, then by creation date (newest first)
+  const sortedProducts = React.useMemo(() => {
+    return [...products].sort((a, b) => {
+      const aF = isFeaturedActive({ featuredUntil: a.sellerFeaturedUntil }) ? 0 : 1;
+      const bF = isFeaturedActive({ featuredUntil: b.sellerFeaturedUntil }) ? 0 : 1;
+      if (aF !== bF) return aF - bF;
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
+    });
+  }, [products]);
+
   const specialtyFilters = SPECIALTY_FILTERS[activeCategory];
 
   return (
@@ -509,20 +519,16 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* ── شريط الأدوات الثابت: ترويج + بحث — يظهر في كلا القسمين ── */}
+        {/* ── شريط الأدوات الثابت: ترويج + بحث — يظهر لجميع المستخدمين ── */}
         <View style={styles.headerUtilRow}>
-          {userRole === "artisan" ? (
-            <Pressable
-              style={styles.promoteHeaderBtn}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/promote" as any); }}
-              accessibilityLabel="روّج حسابك"
-            >
-              <Ionicons name="rocket" size={13} color={C.accent} />
-              <Text style={styles.promoteHeaderBtnText}>روّج حسابك</Text>
-            </Pressable>
-          ) : (
-            <View style={{ flex: 1 }} />
-          )}
+          <Pressable
+            style={styles.promoteHeaderBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/promote" as any); }}
+            accessibilityLabel="روّج حسابك"
+          >
+            <Ionicons name="rocket" size={13} color={C.accent} />
+            <Text style={styles.promoteHeaderBtnText}>روّج حسابك</Text>
+          </Pressable>
           <Pressable
             style={styles.searchCircleBtn}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/search" as any); }}
@@ -702,7 +708,7 @@ export default function DashboardScreen() {
             </View>
           ) : (
             <FlatList
-              data={products}
+              data={sortedProducts}
               keyExtractor={(p) => p.id}
               numColumns={2}
               columnWrapperStyle={styles.productsRow}
@@ -738,9 +744,24 @@ export default function DashboardScreen() {
                       {product.description ? (
                         <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
                       ) : null}
-                      <Text style={styles.productSeller} numberOfLines={1}>
-                        <Feather name="user" size={10} color={C.textMuted} /> {product.sellerName}
-                      </Text>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any);
+                        }}
+                      >
+                        <View style={styles.productSellerRow}>
+                          <Feather name="user" size={10} color={C.textMuted} />
+                          <Text style={styles.productSeller} numberOfLines={1}>{product.sellerName}</Text>
+                          {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
+                            <View style={styles.productFeaturedBadge}>
+                              <Ionicons name="star" size={8} color={C.primary} />
+                              <Text style={styles.productFeaturedText}>مميز</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
                     </View>
 
                     {/* Buy button */}
@@ -1080,7 +1101,17 @@ const styles = StyleSheet.create({
   productPrice: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
   productCurrency: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
   productDesc: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
-  productSeller: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  productSeller: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  productSellerRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 4,
+    flexWrap: "wrap", marginTop: 2,
+  },
+  productFeaturedBadge: {
+    flexDirection: "row", alignItems: "center", gap: 2,
+    backgroundColor: C.accent, borderRadius: 6,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  productFeaturedText: { fontSize: 8, fontFamily: "Cairo_700Bold", color: C.primary },
   buyBtn: { marginHorizontal: 8, marginBottom: 10, borderRadius: 10, overflow: "hidden" },
   buyBtnGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",

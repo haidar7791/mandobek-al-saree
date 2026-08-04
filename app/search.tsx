@@ -186,6 +186,7 @@ export default function SearchScreen() {
             // product
             const p = item.data as Product;
             const isSold = p.status === "sold";
+            const sellerFeatured = isFeaturedActive({ featuredUntil: p.sellerFeaturedUntil });
             return (
               <View style={[styles.rowCard, isSold && styles.rowCardDim]}>
                 {p.imageUrl ? (
@@ -198,7 +199,23 @@ export default function SearchScreen() {
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>{p.title}</Text>
                   <Text style={styles.priceText}>{p.price.toLocaleString("ar-IQ")} د.ع</Text>
-                  <Text style={styles.rowSub} numberOfLines={1}>{p.sellerName}</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/user-profile", params: { userId: p.sellerId, userName: p.sellerName } } as any);
+                    }}
+                  >
+                    <View style={styles.sellerRow}>
+                      <Text style={styles.rowSub} numberOfLines={1}>{p.sellerName}</Text>
+                      {sellerFeatured && (
+                        <View style={styles.featuredBadge}>
+                          <Ionicons name="star" size={9} color={C.primary} />
+                          <Text style={styles.featuredText}>مميز</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
                 </View>
                 {isSold && (
                   <View style={styles.soldBadge}>
@@ -279,6 +296,9 @@ const styles = StyleSheet.create({
   availDot: { width: 10, height: 10, borderRadius: 5 },
   productThumb: { width: 60, height: 60, borderRadius: 12 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
+  sellerRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 5, flexWrap: "wrap",
+  },
   soldBadge: {
     backgroundColor: "rgba(239,68,68,0.1)", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 4,
