@@ -1196,6 +1196,7 @@ export interface UserProfile {
   pushToken?: string | null;
   createdAt?: any;
   email?: string;
+  featuredUntil?: string | null;
 }
 
 export const setUserPushToken = async (
@@ -1329,6 +1330,7 @@ export interface Product {
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
+  sellerFeaturedUntil?: string | null;
   status: "available" | "sold";
   soldAt?: string | null;
   createdAt: string;
@@ -1385,6 +1387,13 @@ export const createProduct = async (data: {
 }): Promise<string> => {
   const docRef = doc(collection(db, "products"));
   const imageUrl = await uploadProductImage(data.localImageUri, docRef.id);
+
+  // Carry seller's active featured-until so the marketplace can sort/badge instantly
+  const sellerSnap = await getDoc(doc(db, "users", data.sellerId));
+  const sellerFeaturedUntil = sellerSnap.exists()
+    ? (sellerSnap.data() as any).featuredUntil ?? null
+    : null;
+
   await setDoc(docRef, {
     title: data.title,
     price: data.price,
@@ -1393,11 +1402,60 @@ export const createProduct = async (data: {
     sellerId: data.sellerId,
     sellerName: data.sellerName,
     sellerPhone: data.sellerPhone,
+    sellerFeaturedUntil,
     status: "available",
     soldAt: null,
     createdAt: new Date().toISOString(),
   });
   return docRef.id;
+};
+
+// Promote any user (client OR artisan). Deducts cost from wallet, writes
+// featuredUntil to users/{userId}, batch-updates all their products, and if the
+// user also has an artisan profile it gets promoted too.
+export const promoteUser = async (
+  userId: string,
+  days: number,
+  cost: number
+): Promise<{ ok: true; until: string } | { ok: false; reason: "no_balance" | "error"; balance?: number }> => {
+  try {
+    const bal = await getBalance(userId);
+    if (bal < cost) return { ok: false, reason: "no_balance", balance: bal };
+
+    const userSnap = await getDoc(doc(db, "users", userId));
+    const current = userSnap.exists() ? (userSnap.data() as any).featuredUntil : null;
+    const startMs =
+      current && new Date(current).getTime() > Date.now()
+        ? new Date(current).getTime()
+        : Date.now();
+    const untilIso = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
+
+    await adjustBalanceByDelta(userId, -cost);
+    await setDoc(doc(db, "users", userId), { featuredUntil: untilIso }, { merge: true });
+
+    // Batch-update sellerFeaturedUntil on all products by this seller
+    const prodSnap = await getDocs(
+      query(collection(db, "products"), where("sellerId", "==", userId))
+    );
+    if (prodSnap.docs.length > 0) {
+      const batch = writeBatch(db);
+      prodSnap.docs.forEach((d) => batch.update(d.ref, { sellerFeaturedUntil: untilIso }));
+      await batch.commit();
+    }
+
+    // If user is also an artisan, promote their artisan profile too
+    try {
+      const artisan = await getArtisanByUserId(userId);
+      if (artisan) {
+        await updateDoc(doc(db, "artisans", artisan.id), { featuredUntil: untilIso });
+      }
+    } catch { /* not an artisan — ignore */ }
+
+    return { ok: true, until: untilIso };
+  } catch (err) {
+    console.error("promoteUser error:", err);
+    return { ok: false, reason: "error" };
+  }
 };
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
