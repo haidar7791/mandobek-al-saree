@@ -1,49 +1,34 @@
-# Mandobek Al-Saree
+# فورس (ForUs)
 
-A React Native / Expo mobile marketplace app with an Express backend. The app connects service artisans with customers — supporting orders, chat, wallet, admin dashboard, and push notifications.
+An Arabic-language React Native / Expo mobile app — a service marketplace connecting customers with artisans/service providers. Built with Expo Router (file-based routing), an Express backend, and Firebase for auth and Firestore data.
 
 ## Stack
 
-- **Frontend**: React Native + Expo (expo-router), targets iOS / Android / Web
-- **Backend**: Express 5 (TypeScript, `tsx`)  
-- **Database**: PostgreSQL via Drizzle ORM (`shared/schema.ts`)
-- **Auth**: Firebase (phone verification + reCAPTCHA)
-- **Real-time**: WebSockets (`ws`)
+- **Frontend**: React Native + Expo (SDK 54), Expo Router v6, React Query
+- **Backend**: Express 5 (TypeScript via `tsx`), served on port 5000
+- **Auth / Data**: Firebase (Firestore + Firebase Auth)
+- **Push notifications**: Expo Notifications + Firebase FCM
 
 ## Running on Replit
-
-Two workflows run in parallel:
 
 | Workflow | Command | Port |
 |---|---|---|
 | Start Backend | `npm run server:dev` | 5000 |
 | Start Frontend | `npm run expo:dev` | 8081 |
 
-The backend serves the Express API on port 5000.  
-The Expo Metro bundler runs on port 8081 — scan the QR code with **Expo Go** on a device, or press `w` to open the web preview.
+The backend serves a landing page at port 5000 with a QR code. Scan it with **Expo Go** on your phone to preview the app, or press `w` in the Expo terminal to open the web version.
 
-## Environment
+## Key files
 
-- `DATABASE_URL` — auto-injected by Replit (PostgreSQL, runtime-managed)
-- Firebase config — public keys set as `EXPO_PUBLIC_FIREBASE_*` in `.replit` `[userenv.shared]`
-- `SESSION_SECRET` — set as a Replit Secret
+- `app/` — Expo Router screens (login, register, dashboard, chat, wallet, admin, etc.)
+- `server/` — Express backend (routes, storage, email templates)
+- `app.json` — Expo / EAS config (app name, bundle IDs, plugins)
+- `assets/images/` — App icons and splash screen
 
-## Database
+## Notes
 
-Schema lives in `shared/schema.ts`. Apply changes with:
+- The `google-services.json` (Firebase Android config) must be present at the repo root for Android builds. It is gitignored — add it before running `eas build`.
+- Firebase config is embedded inside the app screens via Firebase SDK initialisation — update it there if you switch Firebase projects.
+- package-lock.json should not be committed (see `.gitignore`) — it picks up Replit-specific resolved URLs that break EAS builds.
 
-```
-npm run db:push
-```
-
-## Project structure
-
-```
-app/          Expo Router screens (login, dashboard, chat, wallet, …)
-components/   Shared React Native components
-server/       Express backend (index.ts, routes.ts, storage.ts)
-shared/       Drizzle schema + shared types
-assets/       Images and fonts
-```
-
-## User preferences
+## User Preferences
