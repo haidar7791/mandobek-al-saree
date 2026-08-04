@@ -1352,8 +1352,23 @@ export const uploadProductImage = async (
   localUri: string,
   productId: string
 ): Promise<string> => {
-  const resp = await fetch(localUri);
-  const blob = await resp.blob();
+  let blob: Blob;
+
+  if (localUri.startsWith("data:")) {
+    // Web: expo-image-picker may return a base64 data URI
+    const [header, base64] = localUri.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    blob = new Blob([bytes], { type: mime });
+  } else {
+    // Native / blob URL
+    const resp = await fetch(localUri);
+    if (!resp.ok) throw new Error(`fetch image failed: ${resp.status}`);
+    blob = await resp.blob();
+  }
+
   const storageRef = ref(storage, `products/${productId}/image.jpg`);
   await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
   return getDownloadURL(storageRef);

@@ -82,7 +82,15 @@ export default function AddProductScreen() {
       ]);
     } catch (err: any) {
       console.error("createProduct error:", err);
-      Alert.alert("خطأ", "حدث خطأ أثناء نشر المنتج، يرجى المحاولة مجدداً");
+      const msg =
+        err?.code === "storage/unauthorized"
+          ? "ليس لديك صلاحية رفع الصورة — تأكد من تسجيل الدخول"
+          : err?.code === "storage/canceled"
+          ? "تم إلغاء رفع الصورة"
+          : err?.message
+          ? `تفاصيل الخطأ: ${err.message}`
+          : "حدث خطأ أثناء نشر المنتج، يرجى المحاولة مجدداً";
+      Alert.alert("خطأ في النشر", msg);
     } finally {
       setLoading(false);
     }
