@@ -326,7 +326,11 @@ export default function DashboardScreen() {
   }, []);
 
   // Marketplace: subscribe to products (realtime — updates immediately on publish)
+  // Depends on userId so we only subscribe after Firebase auth has restored the
+  // session. Subscribing before auth is ready causes PERMISSION_DENIED, which
+  // would clear the list and never retry.
   useEffect(() => {
+    if (!userId) return;
     setProductsLoading(true);
     const unsub = subscribeToProducts(
       (data) => {
@@ -340,7 +344,7 @@ export default function DashboardScreen() {
       }
     );
     return unsub;
-  }, []);
+  }, [userId]);
 
   // Badge: subscribe to active/pending service requests
   useEffect(() => {
