@@ -313,58 +313,61 @@ export default function ArtisanProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.heroGrad, { paddingTop: topPad + 8 }]}>
+      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.heroGrad, { paddingTop: topPad + 6 }]}>
         <View style={styles.heroNav}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
           {!isOwnProfile && !isClientProfile && (
             <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
-              <Ionicons name="star" size={16} color={C.accent} />
-              <Text style={styles.reviewNavText}>تقييم</Text>
+              <Ionicons name="star" size={15} color={C.accent} />
+              <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
             </Pressable>
           )}
         </View>
 
         <View style={styles.heroContent}>
-          <View style={styles.heroPhotoWrap}>
-            {artisan.photoUri ? (
-              <Image source={{ uri: artisan.photoUri }} style={styles.heroPhoto} />
-            ) : (
-              <View style={styles.heroInitials}>
-                <Text style={styles.heroInitialsText}>{initials}</Text>
+          <View style={styles.heroRow}>
+            <View style={styles.heroPhotoWrap}>
+              {artisan.photoUri ? (
+                <Image source={{ uri: artisan.photoUri }} style={styles.heroPhoto} />
+              ) : (
+                <View style={styles.heroInitials}>
+                  <Text style={styles.heroInitialsText}>{initials}</Text>
+                </View>
+              )}
+              <View style={[styles.heroAvailDot, artisan.isAvailable ? styles.dotOnline : styles.dotOffline]} />
+            </View>
+
+            <View style={styles.heroTextBlock}>
+              <Text style={styles.heroName}>{artisan.name}</Text>
+              <View style={styles.specialtyPill}>
+                <Text style={styles.specialtyPillText}>{getSpecialtyLabel(artisan.specialty)}</Text>
               </View>
-            )}
-            <View style={[styles.heroAvailDot, artisan.isAvailable ? styles.dotOnline : styles.dotOffline]} />
-          </View>
-
-          <Text style={styles.heroName}>{artisan.name}</Text>
-          <View style={styles.specialtyPill}>
-            <Text style={styles.specialtyPillText}>{getSpecialtyLabel(artisan.specialty)}</Text>
-          </View>
-
-          <View style={styles.heroStats}>
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>
-                {computedRating > 0 ? computedRating.toFixed(1) : "-"}
-              </Text>
-              <Text style={styles.statLabel}>التقييم</Text>
-            </View>
-            <View style={styles.statDiv} />
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>{computedCount}</Text>
-              <Text style={styles.statLabel}>تقييم</Text>
-            </View>
-            <View style={styles.statDiv} />
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>
-                {distance !== null
-                  ? distance < 1
-                    ? `${Math.round(distance * 1000)}م`
-                    : `${distance.toFixed(1)}كم`
-                  : "-"}
-              </Text>
-              <Text style={styles.statLabel}>البعد</Text>
+              <View style={styles.heroStats}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statVal}>
+                    {computedRating > 0 ? computedRating.toFixed(1) : "-"}
+                  </Text>
+                  <Text style={styles.statLabel}>التقييم</Text>
+                </View>
+                <View style={styles.statDiv} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statVal}>{computedCount}</Text>
+                  <Text style={styles.statLabel}>تقييم</Text>
+                </View>
+                <View style={styles.statDiv} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statVal}>
+                    {distance !== null
+                      ? distance < 1
+                        ? `${Math.round(distance * 1000)}م`
+                        : `${distance.toFixed(1)}كم`
+                      : "-"}
+                  </Text>
+                  <Text style={styles.statLabel}>البعد</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -431,56 +434,6 @@ export default function ArtisanProfileScreen() {
             </ScrollView>
           </View>
         )}
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            {isOwnProfile ? (
-              <View style={styles.selfRatingBadge}>
-                <Feather name="user" size={12} color={C.textMuted} />
-                <Text style={styles.selfRatingText}>هذه صفحتك الشخصية</Text>
-              </View>
-            ) : isClientProfile ? (
-              <View style={styles.selfRatingBadge}>
-                <Feather name="user" size={12} color={C.textMuted} />
-                <Text style={styles.selfRatingText}>حساب زبون</Text>
-              </View>
-            ) : (
-              <Pressable style={styles.addReviewBtn} onPress={() => setReviewModal(true)}>
-                <Feather name="plus" size={14} color={C.accent} />
-                <Text style={styles.addReviewText}>أضف تقييم</Text>
-              </Pressable>
-            )}
-            <Text style={styles.sectionTitle}>التقييمات والآراء</Text>
-          </View>
-
-          {computedCount > 0 && (
-            <View style={styles.ratingOverview}>
-              <StarDisplay rating={computedRating} size={20} />
-              <Text style={styles.ratingBig}>{computedRating.toFixed(1)}</Text>
-              <Text style={styles.ratingOf}>/ 5</Text>
-              <Text style={styles.ratingCount}>({computedCount} تقييم)</Text>
-            </View>
-          )}
-
-          {reviews.length === 0 && !reviewsLoaded ? (
-            // Instant-paint mode: reviews are still loading in the background
-            // (the hero above already rendered from the passed-in artisan
-            // object), so show a lightweight inline loader instead of the
-            // full-screen "جارٍ التحميل..." state.
-            <View style={styles.reviewsLoading}>
-              <ActivityIndicator color={C.accent} />
-              <Text style={styles.noReviewsSub}>جارٍ تحميل التقييمات...</Text>
-            </View>
-          ) : reviews.length === 0 ? (
-            <View style={styles.noReviews}>
-              <Ionicons name="star-outline" size={32} color={C.textMuted} />
-              <Text style={styles.noReviewsText}>لا توجد تقييمات بعد</Text>
-              <Text style={styles.noReviewsSub}>كن أول من يقيّم صاحب الاختصاص هذا</Text>
-            </View>
-          ) : (
-            reviews.map((r, i) => <ReviewCard key={r.id} review={r} index={i} />)
-          )}
-        </View>
       </ScrollView>
 
       <Modal visible={bookingModal} transparent animationType="fade" onRequestClose={() => setBookingModal(false)}>
@@ -525,49 +478,88 @@ export default function ArtisanProfileScreen() {
         </View>
       </Modal>
 
+      {/* Full-screen reviews modal — add a new review + browse all past reviews */}
       <Modal visible={reviewModal} transparent animationType="slide" onRequestClose={() => setReviewModal(false)}>
-        <View style={modalStyles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setReviewModal(false)} />
-          <View style={modalStyles.sheet}>
+        <View style={modalStyles.reviewOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !reviewLoading && setReviewModal(false)} />
+          <View style={modalStyles.reviewSheet}>
+            {/* Handle + header */}
             <View style={modalStyles.handle} />
             <View style={modalStyles.header}>
-              <Pressable onPress={() => setReviewModal(false)} style={modalStyles.closeBtn}>
+              <Pressable onPress={() => !reviewLoading && setReviewModal(false)} style={modalStyles.closeBtn}>
                 <Feather name="x" size={18} color={C.textSecondary} />
               </Pressable>
-              <Text style={modalStyles.title}>تقييم {artisan.name}</Text>
+              <Text style={modalStyles.title}>التقييمات والآراء — {artisan.name}</Text>
             </View>
 
-            <ScrollView contentContainerStyle={modalStyles.body} keyboardShouldPersistTaps="handled">
-              <StarPicker value={reviewRating} onChange={setReviewRating} />
-              <Text style={styles.ratingLabel}>
-                {["", "ضعيف", "مقبول", "جيد", "جيد جداً", "ممتاز"][reviewRating]}
-              </Text>
+            <ScrollView
+              contentContainerStyle={modalStyles.reviewBody}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* ── Add review section ─────────────────────────────── */}
+              {!isOwnProfile && !isClientProfile && (
+                <View style={modalStyles.addReviewSection}>
+                  <Text style={modalStyles.subTitle}>أضف تقييمك</Text>
+                  <StarPicker value={reviewRating} onChange={setReviewRating} />
+                  <Text style={styles.ratingLabel}>
+                    {["", "ضعيف", "مقبول", "جيد", "جيد جداً", "ممتاز"][reviewRating]}
+                  </Text>
+                  <View style={styles.fieldWrap}>
+                    <Text style={styles.fieldLabel}>تعليقك (اختياري)</Text>
+                    <TextInput
+                      style={styles.textArea}
+                      placeholder="شاركنا تجربتك مع صاحب الاختصاص هذا..."
+                      placeholderTextColor={C.textMuted}
+                      value={reviewComment}
+                      onChangeText={setReviewComment}
+                      multiline
+                      numberOfLines={3}
+                      textAlign="right"
+                      textAlignVertical="top"
+                    />
+                  </View>
+                  <Pressable
+                    style={[modalStyles.sendBtn, reviewLoading && { opacity: 0.6 }]}
+                    onPress={handleAddReview}
+                    disabled={reviewLoading}
+                  >
+                    <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.sendGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                      <Text style={modalStyles.sendText}>{reviewLoading ? "جارٍ الإرسال..." : "إرسال التقييم"}</Text>
+                      <Ionicons name="star" size={16} color={C.primary} />
+                    </LinearGradient>
+                  </Pressable>
+                </View>
+              )}
 
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>تعليقك (اختياري)</Text>
-                <TextInput
-                  style={styles.textArea}
-                  placeholder="شاركنا تجربتك مع صاحب الاختصاص هذا..."
-                  placeholderTextColor={C.textMuted}
-                  value={reviewComment}
-                  onChangeText={setReviewComment}
-                  multiline
-                  numberOfLines={3}
-                  textAlign="right"
-                  textAlignVertical="top"
-                />
+              {/* ── Rating overview bar ─────────────────────────────── */}
+              {computedCount > 0 && (
+                <View style={modalStyles.ratingOverview}>
+                  <StarDisplay rating={computedRating} size={20} />
+                  <Text style={modalStyles.ratingBig}>{computedRating.toFixed(1)}</Text>
+                  <Text style={modalStyles.ratingOf}>/ 5</Text>
+                  <Text style={modalStyles.ratingCount}>({computedCount} تقييم)</Text>
+                </View>
+              )}
+
+              {/* ── Past reviews list ────────────────────────────────── */}
+              <View style={modalStyles.reviewsSection}>
+                <Text style={modalStyles.subTitle}>التقييمات السابقة</Text>
+                {reviews.length === 0 && !reviewsLoaded ? (
+                  <View style={styles.reviewsLoading}>
+                    <ActivityIndicator color={C.accent} />
+                    <Text style={styles.noReviewsSub}>جارٍ تحميل التقييمات...</Text>
+                  </View>
+                ) : reviews.length === 0 ? (
+                  <View style={styles.noReviews}>
+                    <Ionicons name="star-outline" size={36} color={C.textMuted} />
+                    <Text style={styles.noReviewsText}>لا توجد تقييمات بعد</Text>
+                    <Text style={styles.noReviewsSub}>كن أول من يقيّم صاحب الاختصاص هذا</Text>
+                  </View>
+                ) : (
+                  reviews.map((r, i) => <ReviewCard key={r.id} review={r} index={i} />)
+                )}
               </View>
-
-              <Pressable
-                style={[modalStyles.sendBtn, reviewLoading && { opacity: 0.6 }]}
-                onPress={handleAddReview}
-                disabled={reviewLoading}
-              >
-                <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.sendGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                  <Text style={modalStyles.sendText}>{reviewLoading ? "جارٍ الإرسال..." : "إرسال التقييم"}</Text>
-                  <Ionicons name="star" size={16} color={C.primary} />
-                </LinearGradient>
-              </Pressable>
             </ScrollView>
           </View>
         </View>
@@ -578,10 +570,10 @@ export default function ArtisanProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
-  heroGrad: { paddingBottom: 20, paddingHorizontal: 20 },
+  heroGrad: { paddingBottom: 12, paddingHorizontal: 16 },
   heroNav: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 8,
   },
   backBtn: {
     width: 36, height: 36, borderRadius: 10,
@@ -594,35 +586,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
   },
   reviewNavText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  heroContent: { alignItems: "center", gap: 8 },
-  heroPhotoWrap: { position: "relative" },
-  heroPhoto: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: C.accent },
+  // Hero — compact horizontal layout (photo left, text right)
+  heroContent: { paddingBottom: 4 },
+  heroRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  heroPhotoWrap: { position: "relative", flexShrink: 0 },
+  heroPhoto: { width: 68, height: 68, borderRadius: 34, borderWidth: 2.5, borderColor: C.accent },
   heroInitials: {
-    width: 88, height: 88, borderRadius: 44,
+    width: 68, height: 68, borderRadius: 34,
     backgroundColor: "rgba(201,168,76,0.2)",
-    borderWidth: 3, borderColor: C.accent,
+    borderWidth: 2.5, borderColor: C.accent,
     alignItems: "center", justifyContent: "center",
   },
-  heroInitialsText: { fontSize: 30, fontFamily: "Cairo_700Bold", color: C.accent },
+  heroInitialsText: { fontSize: 24, fontFamily: "Cairo_700Bold", color: C.accent },
   heroAvailDot: {
-    position: "absolute", bottom: 4, right: 4,
-    width: 16, height: 16, borderRadius: 8,
-    borderWidth: 2.5, borderColor: "#162452",
+    position: "absolute", bottom: 2, right: 2,
+    width: 13, height: 13, borderRadius: 7,
+    borderWidth: 2, borderColor: "#162452",
   },
   dotOnline: { backgroundColor: "#22C55E" },
   dotOffline: { backgroundColor: "#9CA3AF" },
-  heroName: { fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "center" },
+  heroTextBlock: { flex: 1, gap: 4, alignItems: "flex-end" },
+  heroName: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
   specialtyPill: {
-    backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 16,
-    paddingHorizontal: 14, paddingVertical: 5,
+    backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 12,
+    paddingHorizontal: 10, paddingVertical: 3, alignSelf: "flex-end",
   },
-  specialtyPillText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  heroStats: { flexDirection: "row", alignItems: "center", gap: 0, marginTop: 4 },
-  statItem: { alignItems: "center", paddingHorizontal: 20, gap: 2 },
-  statVal: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  statLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
-  statDiv: { width: 1, height: 32, backgroundColor: "rgba(255,255,255,0.2)" },
-  actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+  specialtyPillText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  heroStats: { flexDirection: "row", alignItems: "center", gap: 0, marginTop: 2, alignSelf: "flex-end" },
+  statItem: { alignItems: "center", paddingHorizontal: 12, gap: 1 },
+  statVal: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  statDiv: { width: 1, height: 26, backgroundColor: "rgba(255,255,255,0.2)" },
+  actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: 12, borderRadius: 14,
@@ -720,11 +715,11 @@ const styles = StyleSheet.create({
 });
 
 const modalStyles = StyleSheet.create({
+  // ── Booking confirmation modal (centered card) ──────────────────────────
   overlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
   },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "90%" },
   handle: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: C.border,
     alignSelf: "center", marginTop: 10, marginBottom: 4,
@@ -737,9 +732,8 @@ const modalStyles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 10, backgroundColor: C.inputBg,
     alignItems: "center", justifyContent: "center",
   },
-  title: { flex: 1, fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  body: { padding: 20, gap: 16 },
-  sendBtn: { borderRadius: 14, overflow: "hidden", marginTop: 8 },
+  title: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  sendBtn: { borderRadius: 14, overflow: "hidden", marginTop: 4 },
   sendGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 14, gap: 10,
@@ -774,4 +768,43 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 13, gap: 8,
   },
   confirmBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // ── Full reviews sheet (bottom-anchored, ~93% height) ────────────────────
+  reviewOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-end",
+  },
+  reviewSheet: {
+    backgroundColor: C.background,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: "93%",
+  },
+  reviewBody: { padding: 16, gap: 16, paddingBottom: 32 },
+
+  // "أضف تقييمك" card inside the reviews sheet
+  addReviewSection: {
+    backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 12,
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07, shadowRadius: 8, elevation: 2,
+  },
+
+  // Sub-heading inside the reviews sheet
+  subTitle: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right",
+  },
+
+  // Rating overview bar inside the sheet
+  ratingOverview: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    justifyContent: "flex-end",
+    backgroundColor: C.card, borderRadius: 12, padding: 14,
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 1,
+  },
+  ratingBig: { fontSize: 26, fontFamily: "Cairo_700Bold", color: C.text },
+  ratingOf: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  ratingCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
+
+  // Past reviews list section
+  reviewsSection: { gap: 10 },
 });
