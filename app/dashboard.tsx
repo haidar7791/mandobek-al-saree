@@ -700,8 +700,6 @@ export default function DashboardScreen() {
             <FlatList
               data={sortedProducts}
               keyExtractor={(p) => p.id}
-              numColumns={2}
-              columnWrapperStyle={styles.productsRow}
               contentContainerStyle={[styles.productsContent, { paddingBottom: bottomPad + 90 }]}
               showsVerticalScrollIndicator={false}
               renderItem={({ item: product }) => {
@@ -1070,44 +1068,43 @@ const styles = StyleSheet.create({
   addProductBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: "#FFF" },
 
   // ── Product cards ──
-  productsContent: { padding: 12 },
-  productsRow: { gap: 10, marginBottom: 10, justifyContent: "space-between" },
+  productsContent: { paddingTop: 12 },
   productCard: {
-    flex: 1, maxWidth: "48%",
-    backgroundColor: C.card, borderRadius: 14, overflow: "hidden",
-    shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    marginHorizontal: 12, marginBottom: 14,
+    backgroundColor: C.card, borderRadius: 16, overflow: "hidden",
+    shadowColor: C.shadow, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.10, shadowRadius: 10, elevation: 4,
   },
   productCardSold: { opacity: 0.7 },
-  productImage: { width: "100%", height: 140 },
+  productImage: { width: "100%", height: 210 },
   soldOverlay: {
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center", justifyContent: "center",
   },
   soldOverlayText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  productBody: { padding: 10, gap: 4 },
-  productTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  productPrice: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
-  productCurrency: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
-  productDesc: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
-  productSeller: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  productBody: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 6 },
+  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  productPrice: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  productCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.accent },
+  productDesc: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  productSeller: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
   productSellerRow: {
-    flexDirection: "row-reverse", alignItems: "center", gap: 4,
-    flexWrap: "wrap", marginTop: 2,
+    flexDirection: "row-reverse", alignItems: "center", gap: 5,
+    flexWrap: "wrap", marginTop: 4,
   },
   productFeaturedBadge: {
-    flexDirection: "row", alignItems: "center", gap: 2,
-    backgroundColor: C.accent, borderRadius: 6,
-    paddingHorizontal: 5, paddingVertical: 1,
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: C.accent, borderRadius: 7,
+    paddingHorizontal: 7, paddingVertical: 2,
   },
-  productFeaturedText: { fontSize: 8, fontFamily: "Cairo_700Bold", color: C.primary },
-  buyBtn: { marginHorizontal: 8, marginBottom: 10, borderRadius: 10, overflow: "hidden" },
+  productFeaturedText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+  buyBtn: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, borderRadius: 12, overflow: "hidden" },
   buyBtnGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 9, gap: 5,
+    paddingVertical: 13, gap: 6,
   },
-  buyBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary },
+  buyBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
 
   // ── Fullscreen viewer ──
   fullscreenOverlay: {
