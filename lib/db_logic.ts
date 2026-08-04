@@ -1388,20 +1388,28 @@ export const createProduct = async (data: {
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
 export const subscribeToProducts = (
-  callback: (products: Product[]) => void
+  callback: (products: Product[]) => void,
+  onError?: (err: Error) => void
 ): (() => void) => {
   const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const now = Date.now();
-    const products = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() } as Product))
-      .filter((p) => {
-        if (p.status !== "sold") return true;
-        if (!p.soldAt) return false;
-        return now - new Date(p.soldAt).getTime() < TWENTY_FOUR_HOURS_MS;
-      });
-    callback(products);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const now = Date.now();
+      const products = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Product))
+        .filter((p) => {
+          if (p.status !== "sold") return true;
+          if (!p.soldAt) return false;
+          return now - new Date(p.soldAt).getTime() < TWENTY_FOUR_HOURS_MS;
+        });
+      callback(products);
+    },
+    (err) => {
+      console.error("subscribeToProducts error:", err);
+      onError?.(err);
+    }
+  );
 };
 
 export const createProductOrder = async (
@@ -1462,16 +1470,24 @@ export const respondToProductOrder = async (
 
 export const subscribeToSellerProductOrders = (
   sellerId: string,
-  callback: (orders: ProductOrder[]) => void
+  callback: (orders: ProductOrder[]) => void,
+  onError?: (err: Error) => void
 ): (() => void) => {
   const q = query(
     collection(db, "productOrders"),
     where("sellerId", "==", sellerId),
     orderBy("createdAt", "desc")
   );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProductOrder)));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ProductOrder)));
+    },
+    (err) => {
+      console.error("subscribeToSellerProductOrders error:", err);
+      onError?.(err);
+    }
+  );
 };
 
 // ─── User Documents ────────────────────────────────────────────────────────────

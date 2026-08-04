@@ -403,13 +403,20 @@ export default function DashboardScreen() {
     return unsub;
   }, []);
 
-  // Marketplace: subscribe to products
+  // Marketplace: subscribe to products (realtime — updates immediately on publish)
   useEffect(() => {
     setProductsLoading(true);
-    const unsub = subscribeToProducts((data) => {
-      setProducts(data);
-      setProductsLoading(false);
-    });
+    const unsub = subscribeToProducts(
+      (data) => {
+        setProducts(data);
+        setProductsLoading(false);
+      },
+      (_err) => {
+        // PERMISSION_DENIED or any other error — stop spinner, show empty list
+        setProductsLoading(false);
+        setProducts([]);
+      }
+    );
     return unsub;
   }, []);
 

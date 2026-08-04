@@ -158,10 +158,18 @@ export default function ProductOrdersScreen() {
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) { router.replace("/login" as any); return; }
-    const unsub = subscribeToSellerProductOrders(user.uid, (data) => {
-      setOrders(data);
-      setLoading(false);
-    });
+    const unsub = subscribeToSellerProductOrders(
+      user.uid,
+      (data) => {
+        setOrders(data);
+        setLoading(false);
+      },
+      (_err) => {
+        // PERMISSION_DENIED or network error — stop spinner, show empty state
+        setLoading(false);
+        setOrders([]);
+      }
+    );
     return unsub;
   }, []);
 

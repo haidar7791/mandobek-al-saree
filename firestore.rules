@@ -121,5 +121,41 @@ service cloud.firestore {
                     && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
+
+    // ── المنتجات (سوق البيع والشراء) ──
+    match /products/{productId} {
+      // أي مستخدم مسجّل يمكنه استعراض المنتجات
+      allow read: if isSignedIn();
+      // الإنشاء مسموح فقط إن كان sellerId هو المستخدم الحالي
+      allow create: if isSignedIn()
+                    && request.resource.data.sellerId == request.auth.uid;
+      // التعديل مسموح للبائع أو المشرف
+      // (respondToProductOrder تُحدّث status من "available" → "sold")
+      allow update: if isSignedIn() && (
+                      resource.data.sellerId == request.auth.uid
+                      || isAdmin()
+                    );
+      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid
+                    || isAdmin();
+    }
+
+    // ── طلبات شراء المنتجات ──
+    match /productOrders/{orderId} {
+      // البائع أو المشتري أو المشرف يمكنهم القراءة
+      allow read: if isSignedIn() && (
+                    resource.data.sellerId == request.auth.uid
+                    || resource.data.buyerId == request.auth.uid
+                    || isAdmin()
+                  );
+      // المشتري فقط ينشئ الطلب
+      allow create: if isSignedIn()
+                    && request.resource.data.buyerId == request.auth.uid;
+      // البائع أو المشرف يُعدّل الحالة (قبول / رفض)
+      allow update: if isSignedIn() && (
+                      resource.data.sellerId == request.auth.uid
+                      || isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
   }
 }
