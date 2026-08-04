@@ -15,7 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
-import { getUserProfile, buildChatId } from "../lib/db_logic";
+import { getUserProfile, getArtisanByUserId, buildChatId } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -32,16 +32,54 @@ export default function UserProfileScreen() {
     name: string; phone?: string; bio?: string; photoUri?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
+  const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
   useEffect(() => {
     if (!userId) return;
-    getUserProfile(userId).then((p) => {
-      if (p) setProfile({ name: p.name, phone: p.phone ?? undefined, bio: p.bio ?? undefined, photoUri: p.photoUri ?? undefined });
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await getUserProfile(userId);
+        if (cancelled) return;
+
+        if (p?.role === "artisan") {
+          // Resolve the artisan document so we can hand off the pre-fetched
+          // object to artisan-profile.tsx for an instant, zero-loading-screen
+          // paint — same pattern used by dashboard artisan cards.
+          const artisan = await getArtisanByUserId(userId);
+          if (cancelled) return;
+          if (artisan) {
+            // Replace so pressing Back from artisan-profile returns to whatever
+            // screen the user came from (e.g. the products list), not here.
+            router.replace({
+              pathname: "/artisan-profile",
+              params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
+            } as any);
+            return; // don't setLoading(false) — this screen is being replaced
+          }
+          // artisan doc missing despite role="artisan" — fall through to client view
+        }
+
+        if (p) {
+          setProfile({
+            name: p.name,
+            phone: p.phone ?? undefined,
+            bio: p.bio ?? undefined,
+            photoUri: p.photoUri ?? undefined,
+          });
+        }
+        setResolvedRole(p?.role === "admin" ? "admin" : "client");
+      } catch {
+        setResolvedRole("client");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [userId]);
 
   const displayName = profile?.name || nameProp || "مستخدم";
@@ -69,6 +107,18 @@ export default function UserProfileScreen() {
     router.push({ pathname: "/chat", params: { chatId, otherName: displayName } });
   };
 
+  // While we're resolving an artisan account and about to replace() this screen,
+  // render nothing — avoids a flash of the client profile layout.
+  if (loading && resolvedRole === null) {
+    return (
+      <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator color={C.accent} />
+      </View>
+    );
+  }
+
+  const roleLabel = resolvedRole === "admin" ? "مدير" : "زبون";
+
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 8 }]}>
@@ -90,7 +140,7 @@ export default function UserProfileScreen() {
           ) : (
             <>
               <Text style={styles.name}>{displayName}</Text>
-              <Text style={styles.roleTag}>زبون</Text>
+              <Text style={styles.roleTag}>{roleLabel}</Text>
             </>
           )}
         </View>
