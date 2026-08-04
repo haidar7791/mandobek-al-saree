@@ -1,5 +1,5 @@
 entrypoint = "README.md"
-modules = ["nodejs-20", "web"]
+modules = ["nodejs-20", "web", "nix"]
 
 [nix]
 channel = "stable-25_05"
