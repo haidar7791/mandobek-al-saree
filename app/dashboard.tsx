@@ -509,18 +509,28 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* ── البحث العائم — أيقونة فقط تفتح شاشة البحث الشاملة ── */}
-        <Pressable
-          style={styles.searchIconBtn}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/search" as any); }}
-          accessibilityLabel="بحث"
-        >
-          <Feather name="search" size={18} color="rgba(255,255,255,0.85)" />
-          <Text style={styles.searchIconLabel}>ابحث عن خدمة أو منتج أو صاحب اختصاص...</Text>
-          <View style={styles.searchIconArrow}>
-            <Feather name="chevron-left" size={14} color="rgba(255,255,255,0.5)" />
-          </View>
-        </Pressable>
+        {/* ── شريط الأدوات الثابت: ترويج + بحث — يظهر في كلا القسمين ── */}
+        <View style={styles.headerUtilRow}>
+          {userRole === "artisan" ? (
+            <Pressable
+              style={styles.promoteHeaderBtn}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/promote" as any); }}
+              accessibilityLabel="روّج حسابك"
+            >
+              <Ionicons name="rocket" size={13} color={C.accent} />
+              <Text style={styles.promoteHeaderBtnText}>روّج حسابك</Text>
+            </Pressable>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
+          <Pressable
+            style={styles.searchCircleBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/search" as any); }}
+            accessibilityLabel="بحث"
+          >
+            <Feather name="search" size={18} color="rgba(255,255,255,0.9)" />
+          </Pressable>
+        </View>
 
         {/* ── Main segment: خدمات | منتجات ── */}
         <View style={styles.segmentWrap}>
@@ -558,19 +568,8 @@ export default function DashboardScreen() {
       ══════════════════════════════════════════════════════ */}
       {mainTab === "services" && (
         <>
-          {/* Category + specialty tabs — with inline "روّج حسابك" for artisans */}
+          {/* Category + specialty tabs */}
           <View style={styles.stickyBar}>
-            {userRole === "artisan" && (
-              <View style={styles.promoteRow}>
-                <Pressable
-                  style={styles.promoteRowBtn}
-                  onPress={() => router.push("/promote" as any)}
-                >
-                  <Ionicons name="rocket" size={12} color={C.accent} />
-                  <Text style={styles.promoteRowBtnText}>روّج حسابك — ظهور مميز في المقدمة</Text>
-                </Pressable>
-              </View>
-            )}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -896,18 +895,28 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center", justifyContent: "center",
   },
-  // ── Floating search button ──
-  searchIconBtn: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 11,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+  // ── Header utility row: promote + search ──
+  headerUtilRow: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16, paddingBottom: 10, gap: 10,
   },
-  searchIconLabel: {
-    flex: 1, fontSize: 13, fontFamily: "Cairo_400Regular",
-    color: "rgba(255,255,255,0.5)", textAlign: "right",
+  promoteHeaderBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(201,168,76,0.15)", borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
+    flex: 1,
   },
-  searchIconArrow: { opacity: 0.5 },
+  promoteHeaderBtnText: {
+    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent,
+  },
+  searchCircleBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+  },
   categoryTabsWrapper: { backgroundColor: "#FFF", maxHeight: 54 },
   categoryTabs: {
     paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row",
@@ -1025,19 +1034,6 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "rgba(255,255,255,0.7)" },
   segmentTextActive: { color: C.primary },
 
-  // ── Promote row (services tab) ──
-  promoteRow: {
-    paddingHorizontal: 14, paddingTop: 8, paddingBottom: 4,
-    backgroundColor: "#FFF",
-  },
-  promoteRowBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
-    alignSelf: "flex-end",
-  },
-  promoteRowBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
 
   // ── Products bar ──
   productsBar: {
