@@ -1558,6 +1558,19 @@ export const cancelProductOrder = async (orderId: string): Promise<void> => {
   await deleteDoc(doc(db, "productOrders", orderId));
 };
 
+/** Batch-delete up to 500 productOrder documents by their IDs. */
+export const bulkDeleteProductOrders = async (orderIds: string[]): Promise<void> => {
+  if (!orderIds.length) return;
+  // Firestore batch limit is 500 writes
+  const chunks: string[][] = [];
+  for (let i = 0; i < orderIds.length; i += 500) chunks.push(orderIds.slice(i, i + 500));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach((id) => batch.delete(doc(db, "productOrders", id)));
+    await batch.commit();
+  }
+};
+
 export const subscribeToSellerProductOrders = (
   sellerId: string,
   callback: (orders: ProductOrder[]) => void,

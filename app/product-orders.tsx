@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -22,8 +22,12 @@ import {
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
   respondToProductOrder,
+  bulkDeleteProductOrders,
   type ProductOrder,
 } from "@/lib/db_logic";
+
+/** Orders in these statuses may be deleted */
+const DELETABLE_STATUSES = new Set(["accepted", "rejected", "completed"]);
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -269,10 +273,14 @@ export default function ProductOrdersScreen() {
   const [loadingSales, setLoadingSales]         = useState(true);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
 
+  // ── Bulk selection ──
+  const [selectMode, setSelectMode]     = useState(false);
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
+  const [deleting, setDeleting]         = useState(false);
+
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) { router.replace("/login" as any); return; }
-
     const unsubSales = subscribeToSellerProductOrders(
       user.uid,
       (data) => { setSaleOrders(data); setLoadingSales(false); },
@@ -286,11 +294,78 @@ export default function ProductOrdersScreen() {
     return () => { unsubSales(); unsubPurchases(); };
   }, []);
 
+  // Reset selection when changing tabs
+  const switchTab = useCallback((tab: "sales" | "purchases") => {
+    Haptics.selectionAsync();
+    setActiveTab(tab);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
   const pendingSales = saleOrders.filter((o) => o.status === "pending");
   const loading = activeTab === "sales" ? loadingSales : loadingPurchases;
-  const listData = activeTab === "sales"
+  const listData: ProductOrder[] = activeTab === "sales"
     ? [...saleOrders.filter(o => o.status === "pending"), ...saleOrders.filter(o => o.status !== "pending")]
     : purchaseOrders;
+
+  // Only non-pending orders are deletable
+  const deletableInList = useMemo(
+    () => listData.filter(o => DELETABLE_STATUSES.has(o.status)),
+    [listData]
+  );
+
+  // Toggle one order in the selection set
+  const toggleSelect = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Select / deselect all deletable orders
+  const toggleSelectAll = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (selectedIds.size === deletableInList.length && deletableInList.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(deletableInList.map(o => o.id)));
+    }
+  }, [selectedIds, deletableInList]);
+
+  // Batch delete
+  const handleBulkDelete = useCallback(() => {
+    if (!selectedIds.size) return;
+    Alert.alert(
+      "تأكيد الحذف",
+      `هل تريد حذف ${selectedIds.size} طلب؟ لا يمكن التراجع عن هذا الإجراء.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            try {
+              await bulkDeleteProductOrders(Array.from(selectedIds));
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setSelectMode(false);
+              setSelectedIds(new Set());
+            } catch {
+              Alert.alert("خطأ", "تعذّر حذف الطلبات، يرجى المحاولة مجدداً.");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedIds]);
+
+  const allSelected =
+    deletableInList.length > 0 && selectedIds.size === deletableInList.length;
 
   return (
     <View style={styles.root}>
@@ -305,16 +380,25 @@ export default function ProductOrdersScreen() {
             {pendingSales.length > 0 ? `${pendingSales.length} طلب بانتظار ردك` : "إدارة طلبات البيع والشراء"}
           </Text>
         </View>
-        <View style={styles.headerIcon}>
-          <Ionicons name="bag-handle" size={24} color={C.accent} />
-        </View>
+        {/* Select-mode toggle */}
+        <TouchableOpacity
+          style={styles.selectModeBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (selectMode) { setSelectMode(false); setSelectedIds(new Set()); }
+            else setSelectMode(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <Feather name={selectMode ? "x" : "check-square"} size={20} color={selectMode ? "#EF4444" : C.accent} />
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* ── Tabs ── */}
       <View style={styles.tabsBar}>
         <Pressable
           style={[styles.tabBtn, activeTab === "purchases" && styles.tabBtnActive]}
-          onPress={() => { Haptics.selectionAsync(); setActiveTab("purchases"); }}
+          onPress={() => switchTab("purchases")}
         >
           <Feather name="shopping-bag" size={14} color={activeTab === "purchases" ? C.accent : C.textMuted} />
           <Text style={[styles.tabText, activeTab === "purchases" && styles.tabTextActive]}>طلباتي</Text>
@@ -326,7 +410,7 @@ export default function ProductOrdersScreen() {
         </Pressable>
         <Pressable
           style={[styles.tabBtn, activeTab === "sales" && styles.tabBtnActive]}
-          onPress={() => { Haptics.selectionAsync(); setActiveTab("sales"); }}
+          onPress={() => switchTab("sales")}
         >
           <Feather name="inbox" size={14} color={activeTab === "sales" ? C.accent : C.textMuted} />
           <Text style={[styles.tabText, activeTab === "sales" && styles.tabTextActive]}>منتجاتي</Text>
@@ -337,6 +421,32 @@ export default function ProductOrdersScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* ── Select-all toolbar ── */}
+      {selectMode && (
+        <View style={styles.selectToolbar}>
+          <TouchableOpacity
+            style={styles.selectAllBtn}
+            onPress={toggleSelectAll}
+            activeOpacity={0.8}
+          >
+            <Feather
+              name={allSelected ? "check-circle" : "circle"}
+              size={16}
+              color={allSelected ? C.accent : C.textMuted}
+            />
+            <Text style={styles.selectAllText}>
+              {allSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}
+            </Text>
+            {deletableInList.length > 0 && (
+              <Text style={styles.selectAllCount}>({deletableInList.length})</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.selectHint}>
+            الطلبات المعلقة غير قابلة للحذف
+          </Text>
+        </View>
+      )}
 
       {/* ── List ── */}
       {loading ? (
@@ -359,7 +469,10 @@ export default function ProductOrdersScreen() {
         <FlatList
           data={listData}
           keyExtractor={(o) => o.id}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + (selectMode && selectedIds.size > 0 ? 100 : 24) },
+          ]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             activeTab === "sales" && pendingSales.length > 0 ? (
@@ -369,8 +482,11 @@ export default function ProductOrdersScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item }) =>
-            activeTab === "sales" ? (
+          renderItem={({ item }) => {
+            const canDelete = DELETABLE_STATUSES.has(item.status);
+            const isSelected = selectedIds.has(item.id);
+
+            const cardNode = activeTab === "sales" ? (
               <SaleCard
                 order={item}
                 onAccept={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "accepted")}
@@ -378,9 +494,58 @@ export default function ProductOrdersScreen() {
               />
             ) : (
               <PurchaseCard order={item} />
-            )
-          }
+            );
+
+            if (!selectMode) return cardNode;
+
+            return (
+              <Pressable
+                onPress={() => canDelete && toggleSelect(item.id)}
+                style={[
+                  styles.selectableWrapper,
+                  isSelected && styles.selectableWrapperSelected,
+                  !canDelete && styles.selectableWrapperDisabled,
+                ]}
+              >
+                {/* Checkbox overlay */}
+                <View style={styles.checkboxOverlay} pointerEvents="none">
+                  <View style={[
+                    styles.checkbox,
+                    isSelected && styles.checkboxSelected,
+                    !canDelete && styles.checkboxDisabled,
+                  ]}>
+                    {isSelected && <Feather name="check" size={12} color="#FFF" />}
+                  </View>
+                </View>
+                {cardNode}
+              </Pressable>
+            );
+          }}
         />
+      )}
+
+      {/* ── Bottom action bar (shown only in selectMode with items selected) ── */}
+      {selectMode && selectedIds.size > 0 && (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+          <Text style={styles.bottomBarCount}>
+            {selectedIds.size} طلب محدد
+          </Text>
+          <TouchableOpacity
+            style={[styles.deleteSelectedBtn, deleting && styles.btnDisabled]}
+            activeOpacity={0.85}
+            disabled={deleting}
+            onPress={handleBulkDelete}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Feather name="trash-2" size={16} color="#FFF" />
+                <Text style={styles.deleteSelectedText}>حذف المحدد</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -427,6 +592,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   tabBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // ── Header select button ──
+  selectModeBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center", justifyContent: "center",
+  },
+
+  // ── Select-all toolbar ──
+  selectToolbar: {
+    flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: "rgba(201,168,76,0.06)",
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  selectAllBtn: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  selectAllText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text },
+  selectAllCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  selectHint: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
+
+  // ── Selectable card wrapper ──
+  selectableWrapper: {
+    borderRadius: 16, position: "relative",
+    borderWidth: 2, borderColor: "transparent",
+  },
+  selectableWrapperSelected: {
+    borderColor: C.accent,
+    backgroundColor: "rgba(201,168,76,0.04)",
+  },
+  selectableWrapperDisabled: { opacity: 0.55 },
+
+  // ── Checkbox overlay (top-left corner) ──
+  checkboxOverlay: {
+    position: "absolute", top: 10, left: 10, zIndex: 10,
+  },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: C.border,
+    backgroundColor: C.card,
+    alignItems: "center", justifyContent: "center",
+  },
+  checkboxSelected: {
+    backgroundColor: C.accent, borderColor: C.accent,
+  },
+  checkboxDisabled: {
+    borderColor: C.textMuted, backgroundColor: C.inputBg,
+  },
+
+  // ── Bottom action bar ──
+  bottomBar: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 14,
+    backgroundColor: C.card,
+    borderTopWidth: 1, borderTopColor: C.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
+  },
+  bottomBarCount: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  deleteSelectedBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#EF4444", borderRadius: 12,
+    paddingHorizontal: 20, paddingVertical: 12,
+  },
+  deleteSelectedText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
 
   // ── Misc ──
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
