@@ -784,6 +784,7 @@ export default function DashboardScreen() {
                                       productTitle: product.title,
                                       productImageUrl: product.imageUrl,
                                       sellerId: product.sellerId,
+                                      sellerName: product.sellerName,
                                       buyerId: user.uid,
                                       buyerName: selfProfile?.name || userName,
                                       buyerPhone: selfProfile?.phone || "",

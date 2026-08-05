@@ -26,6 +26,7 @@ import {
   rejectServiceRequest,
   hideServiceRequestsForUser,
   subscribeToSellerProductOrders,
+  subscribeToBuyerProductOrders,
   respondToProductOrder,
   ACTIVE_STATUSES,
   STATUS_LABELS,
@@ -38,13 +39,13 @@ import Colors from "@/constants/colors";
 
 const C = Colors.light;
 
-type Tab = "pending" | "active" | "history" | "products";
+type Tab = "services" | "myProducts" | "myOrders" | "history";
 
 const TAB_LABELS: Record<Tab, string> = {
-  pending: "الجديدة",
-  active: "النشطة",
-  history: "السجل",
-  products: "المنتجات",
+  services:   "خدماتي",
+  myProducts: "منتجاتي",
+  myOrders:   "طلباتي",
+  history:    "السجل",
 };
 
 function formatTime(iso: string): string {
@@ -214,7 +215,8 @@ export default function ReservationsScreen() {
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
-  const [tab, setTab] = useState<Tab>("pending");
+  const [buyerOrders, setBuyerOrders] = useState<ProductOrder[]>([]);
+  const [tab, setTab] = useState<Tab>("services");
   const [isArtisan, setIsArtisan] = useState(false);
   const [loading, setLoading] = useState(true);
   // History cleanup: selection mode is only ever entered from the "السجل"
@@ -300,7 +302,7 @@ export default function ReservationsScreen() {
     };
   }, []);
 
-  // Product orders subscription — runs in parallel with service requests
+  // Seller product orders subscription
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -308,6 +310,18 @@ export default function ReservationsScreen() {
       user.uid,
       (orders) => setProductOrders(orders),
       () => setProductOrders([])
+    );
+    return unsub;
+  }, []);
+
+  // Buyer product orders subscription (orders I placed on others' products)
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const unsub = subscribeToBuyerProductOrders(
+      user.uid,
+      (orders) => setBuyerOrders(orders),
+      () => setBuyerOrders([])
     );
     return unsub;
   }, []);
@@ -320,11 +334,17 @@ export default function ReservationsScreen() {
   );
 
   const filtered = useMemo(() => {
-    if (tab === "pending") return visibleRequests.filter((r) => r.status === "pending");
-    if (tab === "active") return visibleRequests.filter((r) => ACTIVE_STATUSES.includes(r.status));
-    return visibleRequests.filter((r) =>
-      ["completed", "cancelled", "rejected"].includes(r.status)
-    );
+    if (tab === "services")
+      // Merge pending + active into one "خدماتي" list, pending first
+      return [
+        ...visibleRequests.filter((r) => r.status === "pending"),
+        ...visibleRequests.filter((r) => ACTIVE_STATUSES.includes(r.status)),
+      ];
+    if (tab === "history")
+      return visibleRequests.filter((r) =>
+        ["completed", "cancelled", "rejected"].includes(r.status)
+      );
+    return []; // myProducts / myOrders rendered separately
   }, [visibleRequests, tab]);
 
   // Exit selection mode automatically if the user switches away from السجل,
@@ -337,7 +357,7 @@ export default function ReservationsScreen() {
   }, [tab]);
 
   const enterSelectionMode = (id: string) => {
-    if (tab !== "history") return; // hard gate: only السجل may enter selection mode
+    if (tab !== "history") return; // hard gate: only السجل/history may enter selection mode
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
@@ -410,18 +430,20 @@ export default function ReservationsScreen() {
 
   const counts = useMemo(
     () => ({
-      pending: visibleRequests.filter((r) => r.status === "pending").length,
-      active: visibleRequests.filter((r) => ACTIVE_STATUSES.includes(r.status)).length,
-      history: visibleRequests.filter((r) =>
+      services:   visibleRequests.filter((r) =>
+        r.status === "pending" || ACTIVE_STATUSES.includes(r.status)
+      ).length,
+      myProducts: productOrders.filter((o) => o.status === "pending").length,
+      myOrders:   buyerOrders.filter((o) => o.status === "pending").length,
+      history:    visibleRequests.filter((r) =>
         ["completed", "cancelled", "rejected"].includes(r.status)
       ).length,
-      products: productOrders.filter((o) => o.status === "pending").length,
     }),
-    [visibleRequests, productOrders]
+    [visibleRequests, productOrders, buyerOrders]
   );
 
   const pendingProductOrders = productOrders.filter((o) => o.status === "pending");
-  const otherProductOrders  = productOrders.filter((o) => o.status !== "pending");
+  const otherProductOrders   = productOrders.filter((o) => o.status !== "pending");
 
   const handleAccept = async (req: ServiceRequest) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -529,7 +551,8 @@ export default function ReservationsScreen() {
         </View>
       ) : null}
 
-      {tab !== "products" ? (
+      {/* ══ خدماتي + السجل: service requests ══ */}
+      {(tab === "services" || tab === "history") && (
         <FlatList
           data={filtered}
           keyExtractor={(r) => r.id}
@@ -569,8 +592,10 @@ export default function ReservationsScreen() {
             </View>
           }
         />
-      ) : (
-        /* ── تبويب طلبات المنتجات ── */
+      )}
+
+      {/* ══ منتجاتي: incoming orders on my products (seller view) ══ */}
+      {tab === "myProducts" && (
         <FlatList
           data={[...pendingProductOrders, ...otherProductOrders]}
           keyExtractor={(o) => o.id}
@@ -594,41 +619,33 @@ export default function ReservationsScreen() {
               order.status === "pending"
                 ? { label: "بانتظار ردك", color: "#F59E0B", bg: "rgba(245,158,11,0.1)" }
                 : order.status === "accepted"
-                ? { label: "تم القبول", color: "#22C55E", bg: "rgba(34,197,94,0.1)" }
-                : { label: "مرفوض", color: "#EF4444", bg: "rgba(239,68,68,0.1)" };
+                ? { label: "تم القبول",   color: "#22C55E", bg: "rgba(34,197,94,0.1)"  }
+                : { label: "مرفوض",       color: "#EF4444", bg: "rgba(239,68,68,0.1)"  };
             const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
               day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
             });
             return (
               <Animated.View entering={FadeInDown.springify()} style={styles.card}>
-                {/* ── Header: product title (right) ↔ buyer name (left, tappable) ── */}
                 <View style={styles.productOrderHeaderRow}>
-                  {/* Left: buyer name → profile */}
                   <TouchableOpacity
                     style={styles.buyerNameBtn}
                     activeOpacity={0.75}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({
-                        pathname: "/user-profile",
-                        params: { userId: order.buyerId, userName: order.buyerName },
-                      } as any);
+                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
                     }}
                   >
                     <Feather name="user" size={15} color={C.accent} />
                     <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
                   </TouchableOpacity>
-                  {/* Right: product title */}
                   <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
                 </View>
-                {/* ── Status badge + date ── */}
                 <View style={styles.productOrderStatusRow}>
                   <Text style={styles.cardTime}>{date}</Text>
                   <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
                     <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
                   </View>
                 </View>
-                {/* ── Phone ── */}
                 {order.buyerPhone ? (
                   <View style={styles.metaRow}>
                     <Feather name="phone" size={13} color={C.textSecondary} />
@@ -642,10 +659,8 @@ export default function ReservationsScreen() {
                       onPress={() =>
                         Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
                           { text: "إلغاء", style: "cancel" },
-                          {
-                            text: "رفض", style: "destructive",
-                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected"),
-                          },
+                          { text: "رفض", style: "destructive",
+                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected") },
                         ])
                       }
                     >
@@ -657,10 +672,8 @@ export default function ReservationsScreen() {
                       onPress={() =>
                         Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
                           { text: "إلغاء", style: "cancel" },
-                          {
-                            text: "قبول",
-                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted"),
-                          },
+                          { text: "قبول",
+                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted") },
                         ])
                       }
                     >
@@ -674,11 +687,67 @@ export default function ReservationsScreen() {
           }}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <Feather name="inbox" size={42} color={C.textMuted} />
-              </View>
+              <View style={styles.emptyIcon}><Feather name="inbox" size={42} color={C.textMuted} /></View>
               <Text style={styles.emptyTitle}>لا توجد طلبات منتجات</Text>
               <Text style={styles.emptySub}>ستظهر هنا طلبات شراء منتجاتك فور وصولها</Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* ══ طلباتي: purchases I made as a buyer ══ */}
+      {tab === "myOrders" && (
+        <FlatList
+          data={buyerOrders}
+          keyExtractor={(o) => o.id}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: bottomPad + 20 },
+            buyerOrders.length === 0 && { flex: 1 },
+          ]}
+          renderItem={({ item: order }) => {
+            const cfg =
+              order.status === "pending"
+                ? { label: "🟡 قيد المعالجة", color: "#F59E0B", bg: "rgba(245,158,11,0.1)" }
+                : order.status === "accepted"
+                ? { label: "🟢 مقبول",         color: "#22C55E", bg: "rgba(34,197,94,0.1)"  }
+                : { label: "🔴 مرفوض",         color: "#EF4444", bg: "rgba(239,68,68,0.1)"  };
+            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+              day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+            });
+            return (
+              <Animated.View entering={FadeInDown.springify()} style={styles.card}>
+                {/* Title ↔ Status */}
+                <View style={styles.productOrderStatusRow}>
+                  <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                </View>
+                {/* Seller name (tappable) */}
+                {order.sellerName ? (
+                  <TouchableOpacity
+                    style={styles.buyerNameBtn}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
+                    }}
+                  >
+                    <Feather name="shopping-bag" size={13} color={C.accent} />
+                    <Text style={styles.buyerNameText} numberOfLines={1}>{order.sellerName}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {/* Date */}
+                <Text style={[styles.cardTime, { textAlign: "left" }]}>{date}</Text>
+              </Animated.View>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}><Feather name="shopping-bag" size={42} color={C.textMuted} /></View>
+              <Text style={styles.emptyTitle}>لا توجد مشتريات بعد</Text>
+              <Text style={styles.emptySub}>ستظهر هنا الطلبات التي أرسلتها لشراء منتجات من السوق</Text>
             </View>
           }
         />

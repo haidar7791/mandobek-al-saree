@@ -1349,6 +1349,7 @@ export interface ProductOrder {
   productTitle: string;
   productImageUrl: string;
   sellerId: string;
+  sellerName?: string;
   buyerId: string;
   buyerName: string;
   buyerPhone: string;
@@ -1573,6 +1574,35 @@ export const subscribeToSellerProductOrders = (
     },
     (err) => {
       console.error("subscribeToSellerProductOrders error:", err);
+      onError?.(err);
+    }
+  );
+};
+
+export const subscribeToBuyerProductOrders = (
+  buyerId: string,
+  callback: (orders: ProductOrder[]) => void,
+  onError?: (err: Error) => void
+): (() => void) => {
+  // Single-field filter only (no orderBy) to avoid requiring a Composite Index.
+  const q = query(
+    collection(db, "productOrders"),
+    where("buyerId", "==", buyerId)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const orders = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as ProductOrder))
+        .sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+      callback(orders);
+    },
+    (err) => {
+      console.error("subscribeToBuyerProductOrders error:", err);
       onError?.(err);
     }
   );
