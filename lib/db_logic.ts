@@ -1593,10 +1593,11 @@ export const subscribeToBuyerProductOrders = (
   callback: (orders: ProductOrder[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  // Single-field filter only (no orderBy) to avoid requiring a Composite Index.
+  // Two equality filters — no composite index required (Firestore handles this natively).
   const q = query(
     collection(db, "productOrders"),
-    where("buyerId", "==", buyerId)
+    where("buyerId", "==", buyerId),
+    where("status", "==", "pending")
   );
   return onSnapshot(
     q,
