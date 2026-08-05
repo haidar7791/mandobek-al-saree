@@ -71,12 +71,17 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
           <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
-            {order.productPrice != null && (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>السعر:</Text>
               <Text style={styles.priceText}>
-                {order.productPrice.toLocaleString("ar-IQ")}{" "}
-                <Text style={styles.currencyText}>د.ع</Text>
+                {(order.productPrice ?? (order as any).price) != null
+                  ? Number(order.productPrice ?? (order as any).price).toLocaleString("ar-IQ")
+                  : "غير محدد"}
+                {(order.productPrice ?? (order as any).price) != null && (
+                  <Text style={styles.currencyText}> د.ع</Text>
+                )}
               </Text>
-            )}
+            </View>
           </View>
         </View>
 
@@ -140,12 +145,17 @@ function SaleCard({ order, onAccept, onReject }: {
           <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
-            {order.productPrice != null && (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>السعر:</Text>
               <Text style={styles.priceText}>
-                {order.productPrice.toLocaleString("ar-IQ")}{" "}
-                <Text style={styles.currencyText}>د.ع</Text>
+                {(order.productPrice ?? (order as any).price) != null
+                  ? Number(order.productPrice ?? (order as any).price).toLocaleString("ar-IQ")
+                  : "غير محدد"}
+                {(order.productPrice ?? (order as any).price) != null && (
+                  <Text style={styles.currencyText}> د.ع</Text>
+                )}
               </Text>
-            )}
+            </View>
           </View>
         </View>
 
@@ -445,8 +455,10 @@ const styles = StyleSheet.create({
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
   productInfo: { flex: 1, gap: 4, alignItems: "flex-end" },
   productTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  priceText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
-  currencyText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
+  priceRow: { flexDirection: "row-reverse", alignItems: "center", gap: 4, marginTop: 2 },
+  priceLabel: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  priceText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#16A34A", textAlign: "right" },
+  currencyText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#16A34A" },
 
   // Person button (buyer / seller)
   personBtn: {
