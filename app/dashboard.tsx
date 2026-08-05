@@ -725,31 +725,34 @@ export default function DashboardScreen() {
 
                     {/* Details */}
                     <View style={styles.productBody}>
-                      <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+                      {/* Row: product title ↔ seller name */}
+                      <View style={styles.productHeaderRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any);
+                          }}
+                          style={styles.productSellerTouchable}
+                        >
+                          <Text style={styles.productSellerName} numberOfLines={1}>{product.sellerName}</Text>
+                          {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
+                            <View style={styles.productFeaturedBadge}>
+                              <Ionicons name="star" size={10} color={C.primary} />
+                              <Text style={styles.productFeaturedText}>مميز</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                        <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+                      </View>
+                      {/* Price */}
                       <Text style={styles.productPrice}>
+                        <Text style={styles.productPriceLabel}>السعر: </Text>
                         {product.price.toLocaleString("ar-IQ")} <Text style={styles.productCurrency}>د.ع</Text>
                       </Text>
                       {product.description ? (
                         <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
                       ) : null}
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any);
-                        }}
-                      >
-                        <View style={styles.productSellerRow}>
-                          <Feather name="user" size={10} color={C.textMuted} />
-                          <Text style={styles.productSeller} numberOfLines={1}>{product.sellerName}</Text>
-                          {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
-                            <View style={styles.productFeaturedBadge}>
-                              <Ionicons name="star" size={8} color={C.primary} />
-                              <Text style={styles.productFeaturedText}>مميز</Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
                     </View>
 
                     {/* Buy button */}
@@ -1084,15 +1087,28 @@ const styles = StyleSheet.create({
   },
   soldOverlayText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
   productBody: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 6 },
-  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  // Header row: title (right) ↔ seller name (left)
+  productHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  productTitle: {
+    flex: 1, fontSize: 16, fontFamily: "Cairo_700Bold",
+    color: C.text, textAlign: "right",
+  },
+  productSellerTouchable: {
+    flexDirection: "column", alignItems: "flex-start", gap: 3, flexShrink: 0,
+  },
+  productSellerName: {
+    fontSize: 16, fontFamily: "Cairo_700Bold",
+    color: C.accent, textAlign: "left",
+  },
   productPrice: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  productPriceLabel: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   productCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.accent },
   productDesc: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
-  productSeller: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  productSellerRow: {
-    flexDirection: "row-reverse", alignItems: "center", gap: 5,
-    flexWrap: "wrap", marginTop: 4,
-  },
   productFeaturedBadge: {
     flexDirection: "row", alignItems: "center", gap: 3,
     backgroundColor: C.accent, borderRadius: 7,
