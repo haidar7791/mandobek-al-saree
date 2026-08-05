@@ -42,6 +42,10 @@ import {
   subscribeToClientServiceRequests,
   subscribeToProducts,
   createProductOrder,
+  deleteProduct,
+  cancelProductOrder,
+  subscribeToBuyerProductOrders,
+  type ProductOrder,
 } from "../lib/db_logic";
 // Note: getPromotedArtisans removed — promoted artisans now bubble to top of main list
 import Colors from "@/constants/colors";
@@ -233,6 +237,8 @@ export default function DashboardScreen() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
+  // productId → orderId for the current user's pending buy orders (prevents duplicates)
+  const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
 
   // search state — kept for filteredArtisans (search now lives in /search screen)
   const [search] = useState("");
@@ -362,6 +368,23 @@ export default function DashboardScreen() {
     );
     return unsub;
   }, []);
+
+  // Buyer: keep a live map of productId → orderId for MY pending orders
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = subscribeToBuyerProductOrders(
+      userId,
+      (orders: ProductOrder[]) => {
+        const map = new Map<string, string>();
+        orders.forEach((o) => {
+          if (o.status === "pending") map.set(o.productId, o.id);
+        });
+        setMyPendingOrders(map);
+      },
+      () => setMyPendingOrders(new Map())
+    );
+    return unsub;
+  }, [userId]);
 
   const handleMessagesPress = useCallback(async () => {
     const user = auth.currentUser;
@@ -755,71 +778,167 @@ export default function DashboardScreen() {
                       ) : null}
                     </View>
 
-                    {/* Buy button */}
-                    {!isSold && (
-                      <TouchableOpacity
-                        style={[
-                          styles.buyBtn,
-                          buyingProductId === product.id && styles.btnDisabled,
-                        ]}
-                        activeOpacity={0.85}
-                        disabled={buyingProductId === product.id}
-                        onPress={async () => {
-                          const user = auth.currentUser;
-                          if (!user) { router.replace("/login" as any); return; }
-                          const selfProfile = await getUserProfile(user.uid);
-                          Alert.alert(
-                            "تأكيد الشراء",
-                            `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
-                            [
-                              { text: "إلغاء", style: "cancel" },
-                              {
-                                text: "إرسال الطلب",
-                                onPress: async () => {
-                                  setBuyingProductId(product.id);
-                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                  try {
-                                    await createProductOrder({
-                                      productId: product.id,
-                                      productTitle: product.title,
-                                      productImageUrl: product.imageUrl,
-                                      productPrice: product.price,
-                                      sellerId: product.sellerId,
-                                      sellerName: product.sellerName,
-                                      buyerId: user.uid,
-                                      buyerName: selfProfile?.name || userName,
-                                      buyerPhone: selfProfile?.phone || "",
-                                      buyerLocation: userLocation,
-                                    });
-                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                    Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
-                                  } catch {
-                                    Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
-                                  } finally {
-                                    setBuyingProductId(null);
-                                  }
+                    {/* Action button — three states */}
+                    {!isSold && (() => {
+                      const isMine = product.sellerId === userId;
+                      const pendingOrderId = myPendingOrders.get(product.id);
+                      const isLoading = buyingProductId === product.id;
+
+                      // ── SELLER: delete own product ──
+                      if (isMine) {
+                        return (
+                          <TouchableOpacity
+                            style={[styles.buyBtn, styles.deleteBtn]}
+                            activeOpacity={0.85}
+                            disabled={isLoading}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              Alert.alert(
+                                "حذف المنتج",
+                                `هل أنت متأكد من حذف "${product.title}"؟ لا يمكن التراجع عن هذا الإجراء.`,
+                                [
+                                  { text: "إلغاء", style: "cancel" },
+                                  {
+                                    text: "حذف",
+                                    style: "destructive",
+                                    onPress: async () => {
+                                      setBuyingProductId(product.id);
+                                      try {
+                                        await deleteProduct(product.id);
+                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                      } catch {
+                                        Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً.");
+                                      } finally {
+                                        setBuyingProductId(null);
+                                      }
+                                    },
+                                  },
+                                ]
+                              );
+                            }}
+                          >
+                            <View style={styles.deleteBtnInner}>
+                              {isLoading
+                                ? <ActivityIndicator size="small" color="#FFF" />
+                                : <>
+                                    <Feather name="trash-2" size={14} color="#FFF" />
+                                    <Text style={styles.deleteBtnText}>حذف المنتج</Text>
+                                  </>
+                              }
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }
+
+                      // ── BUYER: cancel existing pending order ──
+                      if (pendingOrderId) {
+                        return (
+                          <TouchableOpacity
+                            style={[styles.buyBtn, styles.cancelOrderBtn]}
+                            activeOpacity={0.85}
+                            disabled={isLoading}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              Alert.alert(
+                                "إلغاء طلب الشراء",
+                                "هل تريد إلغاء طلبك المعلق لهذا المنتج؟",
+                                [
+                                  { text: "تراجع", style: "cancel" },
+                                  {
+                                    text: "إلغاء الطلب",
+                                    style: "destructive",
+                                    onPress: async () => {
+                                      setBuyingProductId(product.id);
+                                      try {
+                                        await cancelProductOrder(pendingOrderId);
+                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                      } catch {
+                                        Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً.");
+                                      } finally {
+                                        setBuyingProductId(null);
+                                      }
+                                    },
+                                  },
+                                ]
+                              );
+                            }}
+                          >
+                            <View style={styles.cancelOrderBtnInner}>
+                              {isLoading
+                                ? <ActivityIndicator size="small" color="#FFF" />
+                                : <>
+                                    <Feather name="x-circle" size={14} color="#FFF" />
+                                    <Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text>
+                                  </>
+                              }
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }
+
+                      // ── BUYER: send new order ──
+                      return (
+                        <TouchableOpacity
+                          style={[styles.buyBtn, isLoading && styles.btnDisabled]}
+                          activeOpacity={0.85}
+                          disabled={isLoading}
+                          onPress={async () => {
+                            const user = auth.currentUser;
+                            if (!user) { router.replace("/login" as any); return; }
+                            const selfProfile = await getUserProfile(user.uid);
+                            Alert.alert(
+                              "تأكيد الشراء",
+                              `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
+                              [
+                                { text: "إلغاء", style: "cancel" },
+                                {
+                                  text: "إرسال الطلب",
+                                  onPress: async () => {
+                                    setBuyingProductId(product.id);
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                    try {
+                                      await createProductOrder({
+                                        productId: product.id,
+                                        productTitle: product.title,
+                                        productImageUrl: product.imageUrl,
+                                        productPrice: product.price,
+                                        sellerId: product.sellerId,
+                                        sellerName: product.sellerName,
+                                        buyerId: user.uid,
+                                        buyerName: selfProfile?.name || userName,
+                                        buyerPhone: selfProfile?.phone || "",
+                                        buyerLocation: userLocation,
+                                      });
+                                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                      Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
+                                    } catch {
+                                      Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
+                                    } finally {
+                                      setBuyingProductId(null);
+                                    }
+                                  },
                                 },
-                              },
-                            ]
-                          );
-                        }}
-                      >
-                        <LinearGradient
-                          colors={[C.accent, C.accentLight]}
-                          style={styles.buyBtnGradient}
-                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                              ]
+                            );
+                          }}
                         >
-                          {buyingProductId === product.id ? (
-                            <ActivityIndicator size="small" color={C.primary} />
-                          ) : (
-                            <>
-                              <Ionicons name="cart-outline" size={14} color={C.primary} />
-                              <Text style={styles.buyBtnText}>شراء</Text>
-                            </>
-                          )}
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    )}
+                          <LinearGradient
+                            colors={[C.accent, C.accentLight]}
+                            style={styles.buyBtnGradient}
+                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                          >
+                            {isLoading ? (
+                              <ActivityIndicator size="small" color={C.primary} />
+                            ) : (
+                              <>
+                                <Ionicons name="cart-outline" size={14} color={C.primary} />
+                                <Text style={styles.buyBtnText}>شراء</Text>
+                              </>
+                            )}
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      );
+                    })()}
                   </View>
                 );
               }}
@@ -1123,6 +1242,24 @@ const styles = StyleSheet.create({
     paddingVertical: 13, gap: 6,
   },
   buyBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // Delete button (seller view)
+  deleteBtn: { backgroundColor: "transparent" },
+  deleteBtnInner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 13, gap: 6,
+    backgroundColor: "#EF4444", borderRadius: 12,
+  },
+  deleteBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+
+  // Cancel-order button (buyer with pending order)
+  cancelOrderBtn: { backgroundColor: "transparent" },
+  cancelOrderBtnInner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 13, gap: 6,
+    backgroundColor: "#F59E0B", borderRadius: 12,
+  },
+  cancelOrderBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
 
   // ── Fullscreen viewer ──
   fullscreenOverlay: {

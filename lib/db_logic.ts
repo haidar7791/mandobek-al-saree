@@ -1550,6 +1550,14 @@ export const respondToProductOrder = async (
   }
 };
 
+export const deleteProduct = async (productId: string): Promise<void> => {
+  await deleteDoc(doc(db, "products", productId));
+};
+
+export const cancelProductOrder = async (orderId: string): Promise<void> => {
+  await deleteDoc(doc(db, "productOrders", orderId));
+};
+
 export const subscribeToSellerProductOrders = (
   sellerId: string,
   callback: (orders: ProductOrder[]) => void,
