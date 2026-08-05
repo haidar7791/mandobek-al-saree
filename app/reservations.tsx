@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   Linking,
+  TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -600,23 +601,40 @@ export default function ReservationsScreen() {
             });
             return (
               <Animated.View entering={FadeInDown.springify()} style={styles.card}>
-                <View style={styles.productOrderTop}>
+                {/* ── Header: product title (right) ↔ buyer name (left, tappable) ── */}
+                <View style={styles.productOrderHeaderRow}>
+                  {/* Left: buyer name → profile */}
+                  <TouchableOpacity
+                    style={styles.buyerNameBtn}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({
+                        pathname: "/user-profile",
+                        params: { userId: order.buyerId, userName: order.buyerName },
+                      } as any);
+                    }}
+                  >
+                    <Feather name="user" size={15} color={C.accent} />
+                    <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
+                  </TouchableOpacity>
+                  {/* Right: product title */}
+                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                </View>
+                {/* ── Status badge + date ── */}
+                <View style={styles.productOrderStatusRow}>
+                  <Text style={styles.cardTime}>{date}</Text>
                   <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
                     <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
                   </View>
-                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
                 </View>
-                <View style={styles.metaRow}>
-                  <Feather name="user" size={13} color={C.textSecondary} />
-                  <Text style={styles.metaText}>{order.buyerName}</Text>
-                </View>
+                {/* ── Phone ── */}
                 {order.buyerPhone ? (
                   <View style={styles.metaRow}>
                     <Feather name="phone" size={13} color={C.textSecondary} />
                     <Text style={styles.metaText}>{order.buyerPhone}</Text>
                   </View>
                 ) : null}
-                <Text style={styles.cardTime}>{date}</Text>
                 {order.status === "pending" && (
                   <View style={styles.actionRow}>
                     <Pressable
@@ -817,8 +835,28 @@ const styles = StyleSheet.create({
   },
   pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
   productOrdersHeaderText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
-  productOrderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  productOrderTitle: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  // Header row: buyer name (left) ↔ product title (right)
+  productOrderHeaderRow: {
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "flex-start", gap: 10,
+  },
+  buyerNameBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    flexShrink: 0, maxWidth: "42%",
+  },
+  buyerNameText: {
+    fontSize: 18, fontFamily: "Cairo_700Bold",
+    color: C.accent, flexShrink: 1,
+  },
+  productOrderTitle: {
+    flex: 1, fontSize: 18, fontFamily: "Cairo_700Bold",
+    color: C.text, textAlign: "right",
+  },
+  // Status row: date (left) ↔ badge (right)
+  productOrderStatusRow: {
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "center",
+  },
   productOrderStatus: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
   productOrderStatusText: { fontSize: 11, fontFamily: "Cairo_600SemiBold" },
 });
