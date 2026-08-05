@@ -54,31 +54,49 @@ function OrderCard({ order, onAccept, onReject }: {
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
-        {/* Product image + title */}
-        <View style={styles.cardTop}>
-          {order.productImageUrl ? (
-            <Image source={{ uri: order.productImageUrl }} style={styles.productThumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.productThumb, styles.thumbFallback]}>
-              <Feather name="image" size={22} color={C.textMuted} />
-            </View>
-          )}
-          <View style={styles.productInfo}>
+
+        {/* ── Header row: product title (right) ↔ buyer name (left, tappable) ── */}
+        <View style={styles.cardHeaderRow}>
+          {/* Left: buyer name — tappable → buyer profile */}
+          <TouchableOpacity
+            style={styles.buyerNameBtn}
+            activeOpacity={0.75}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push({
+                pathname: "/user-profile",
+                params: { userId: order.buyerId, userName: order.buyerName },
+              } as any);
+            }}
+          >
+            <Feather name="user" size={15} color={C.accent} />
+            <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
+          </TouchableOpacity>
+
+          {/* Right: thumbnail + product title */}
+          <View style={styles.productTitleGroup}>
+            {order.productImageUrl ? (
+              <Image source={{ uri: order.productImageUrl }} style={styles.productThumb} resizeMode="cover" />
+            ) : (
+              <View style={[styles.productThumb, styles.thumbFallback]}>
+                <Feather name="image" size={18} color={C.textMuted} />
+              </View>
+            )}
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-              <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
-            </View>
-            <Text style={styles.dateText}>{date}</Text>
           </View>
         </View>
 
-        {/* Buyer info */}
-        <View style={styles.buyerSection}>
-          <Text style={styles.sectionLabel}>بيانات المشتري</Text>
-          <View style={styles.buyerRow}>
-            <Feather name="user" size={14} color={C.textSecondary} />
-            <Text style={styles.buyerText}>{order.buyerName}</Text>
+        {/* ── Status badge + date ── */}
+        <View style={styles.statusRow}>
+          <Text style={styles.dateText}>{date}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+            <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
+        </View>
+
+        {/* ── Buyer contact details ── */}
+        <View style={styles.buyerSection}>
+          <Text style={styles.sectionLabel}>بيانات التواصل</Text>
           <View style={styles.buyerRow}>
             <Feather name="phone" size={14} color={C.textSecondary} />
             <Text style={styles.buyerText}>{order.buyerPhone || "غير متوفر"}</Text>
@@ -271,16 +289,39 @@ const styles = StyleSheet.create({
   pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
   sectionHeaderText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
   card: {
-    backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 14,
+    backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 12,
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
   },
-  cardTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  productThumb: { width: 70, height: 70, borderRadius: 12 },
+  // Header: buyer name (left) ↔ thumbnail + product title (right)
+  cardHeaderRow: {
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "flex-start", gap: 10,
+  },
+  buyerNameBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    flexShrink: 0, maxWidth: "40%",
+  },
+  buyerNameText: {
+    fontSize: 16, fontFamily: "Cairo_700Bold",
+    color: C.accent, textAlign: "left", flexShrink: 1,
+  },
+  productTitleGroup: {
+    flex: 1, flexDirection: "row", alignItems: "flex-start",
+    gap: 10, justifyContent: "flex-end",
+  },
+  productThumb: { width: 60, height: 60, borderRadius: 10 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
-  productInfo: { flex: 1, gap: 4, alignItems: "flex-end" },
-  productTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, alignSelf: "flex-end" },
+  productTitle: {
+    flex: 1, fontSize: 16, fontFamily: "Cairo_700Bold",
+    color: C.text, textAlign: "right",
+  },
+  // Status row: date (left) ↔ status badge (right)
+  statusRow: {
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "center",
+  },
+  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
   statusText: { fontSize: 12, fontFamily: "Cairo_600SemiBold" },
   dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
   buyerSection: {
