@@ -1348,6 +1348,7 @@ export interface ProductOrder {
   productId: string;
   productTitle: string;
   productImageUrl: string;
+  productPrice?: number;
   sellerId: string;
   sellerName?: string;
   buyerId: string;

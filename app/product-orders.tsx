@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
 import {
   subscribeToSellerProductOrders,
+  subscribeToBuyerProductOrders,
   respondToProductOrder,
   type ProductOrder,
 } from "@/lib/db_logic";
@@ -27,19 +28,99 @@ import Colors from "@/constants/colors";
 
 const C = Colors.light;
 
-const STATUS_CONFIG = {
-  pending:  { label: "بانتظار ردك", color: "#F59E0B", bg: "rgba(245,158,11,0.1)"  },
-  accepted: { label: "تم القبول",   color: "#22C55E", bg: "rgba(34,197,94,0.1)"   },
-  rejected: { label: "مرفوض",       color: "#EF4444", bg: "rgba(239,68,68,0.1)"   },
+const SELLER_STATUS = {
+  pending:  { label: "بانتظار ردك", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  accepted: { label: "تم القبول",   color: "#22C55E", bg: "rgba(34,197,94,0.12)"  },
+  rejected: { label: "مرفوض",       color: "#EF4444", bg: "rgba(239,68,68,0.12)"  },
 };
 
-function OrderCard({ order, onAccept, onReject }: {
+const BUYER_STATUS = {
+  pending:  { label: "🟡 قيد المعالجة", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  accepted: { label: "🟢 مقبول",         color: "#22C55E", bg: "rgba(34,197,94,0.12)"  },
+  rejected: { label: "🔴 مرفوض",         color: "#EF4444", bg: "rgba(239,68,68,0.12)"  },
+};
+
+/* ─────────────────────────────────────────────
+   ProductThumb — shared image/fallback helper
+───────────────────────────────────────────── */
+function ProductThumb({ uri }: { uri?: string }) {
+  if (uri) {
+    return <Image source={{ uri }} style={styles.productThumb} resizeMode="cover" />;
+  }
+  return (
+    <View style={[styles.productThumb, styles.thumbFallback]}>
+      <Feather name="image" size={18} color={C.textMuted} />
+    </View>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SellerCard — for "طلباتي" (My Purchases) tab
+───────────────────────────────────────────── */
+function PurchaseCard({ order }: { order: ProductOrder }) {
+  const cfg = BUYER_STATUS[order.status];
+  const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+    day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+  });
+
+  return (
+    <Animated.View entering={FadeInDown.springify()}>
+      <View style={styles.card}>
+        {/* ── Top row: thumbnail + product info ── */}
+        <View style={styles.cardTopRow}>
+          <ProductThumb uri={order.productImageUrl} />
+          <View style={styles.productInfo}>
+            <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
+            {order.productPrice != null && (
+              <Text style={styles.priceText}>
+                {order.productPrice.toLocaleString("ar-IQ")}{" "}
+                <Text style={styles.currencyText}>د.ع</Text>
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* ── Seller name (tappable) ── */}
+        {order.sellerName ? (
+          <TouchableOpacity
+            style={styles.personBtn}
+            activeOpacity={0.75}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push({
+                pathname: "/user-profile",
+                params: { userId: order.sellerId, userName: order.sellerName },
+              } as any);
+            }}
+          >
+            <Text style={styles.personBtnText} numberOfLines={1}>{order.sellerName}</Text>
+            <Feather name="user" size={14} color={C.accent} />
+            <Text style={styles.personBtnLabel}>البائع:</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* ── Date + status badge ── */}
+        <View style={styles.statusRow}>
+          <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+            <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          </View>
+          <Text style={styles.dateText}>{date}</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SaleCard — for "منتجاتي" (My Sales) tab
+───────────────────────────────────────────── */
+function SaleCard({ order, onAccept, onReject }: {
   order: ProductOrder;
   onAccept: () => void;
   onReject: () => void;
 }) {
   const [acting, setActing] = useState(false);
-  const cfg = STATUS_CONFIG[order.status];
+  const cfg = SELLER_STATUS[order.status];
   const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
@@ -54,68 +135,67 @@ function OrderCard({ order, onAccept, onReject }: {
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
-
-        {/* ── Header row: product title (right) ↔ buyer name (left, tappable) ── */}
-        <View style={styles.cardHeaderRow}>
-          {/* Left: buyer name — tappable → buyer profile */}
-          <TouchableOpacity
-            style={styles.buyerNameBtn}
-            activeOpacity={0.75}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push({
-                pathname: "/user-profile",
-                params: { userId: order.buyerId, userName: order.buyerName },
-              } as any);
-            }}
-          >
-            <Feather name="user" size={15} color={C.accent} />
-            <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
-          </TouchableOpacity>
-
-          {/* Right: thumbnail + product title */}
-          <View style={styles.productTitleGroup}>
-            {order.productImageUrl ? (
-              <Image source={{ uri: order.productImageUrl }} style={styles.productThumb} resizeMode="cover" />
-            ) : (
-              <View style={[styles.productThumb, styles.thumbFallback]}>
-                <Feather name="image" size={18} color={C.textMuted} />
-              </View>
-            )}
+        {/* ── Top row: thumbnail + product info ── */}
+        <View style={styles.cardTopRow}>
+          <ProductThumb uri={order.productImageUrl} />
+          <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
+            {order.productPrice != null && (
+              <Text style={styles.priceText}>
+                {order.productPrice.toLocaleString("ar-IQ")}{" "}
+                <Text style={styles.currencyText}>د.ع</Text>
+              </Text>
+            )}
           </View>
         </View>
 
-        {/* ── Status badge + date ── */}
+        {/* ── Buyer name (tappable) ── */}
+        <TouchableOpacity
+          style={styles.personBtn}
+          activeOpacity={0.75}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({
+              pathname: "/user-profile",
+              params: { userId: order.buyerId, userName: order.buyerName },
+            } as any);
+          }}
+        >
+          <Text style={styles.personBtnText} numberOfLines={1}>{order.buyerName}</Text>
+          <Feather name="user" size={14} color={C.accent} />
+          <Text style={styles.personBtnLabel}>المشتري:</Text>
+        </TouchableOpacity>
+
+        {/* ── Date + status badge ── */}
         <View style={styles.statusRow}>
-          <Text style={styles.dateText}>{date}</Text>
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
             <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
+          <Text style={styles.dateText}>{date}</Text>
         </View>
 
-        {/* ── Buyer contact details ── */}
-        <View style={styles.buyerSection}>
-          <Text style={styles.sectionLabel}>بيانات التواصل</Text>
-          <View style={styles.buyerRow}>
-            <Feather name="phone" size={14} color={C.textSecondary} />
-            <Text style={styles.buyerText}>{order.buyerPhone || "غير متوفر"}</Text>
+        {/* ── Contact details ── */}
+        <View style={styles.contactSection}>
+          <Text style={styles.contactLabel}>بيانات التواصل</Text>
+          <View style={styles.contactRow}>
+            <Feather name="phone" size={13} color={C.textSecondary} />
+            <Text style={styles.contactText}>{order.buyerPhone || "غير متوفر"}</Text>
           </View>
           {order.buyerLocation && (
-            <View style={styles.buyerRow}>
-              <Feather name="map-pin" size={14} color={C.accent} />
-              <Text style={[styles.buyerText, { color: C.accent }]}>
+            <View style={styles.contactRow}>
+              <Feather name="map-pin" size={13} color={C.accent} />
+              <Text style={[styles.contactText, { color: C.accent }]}>
                 {order.buyerLocation.lat.toFixed(4)}, {order.buyerLocation.lng.toFixed(4)}
               </Text>
             </View>
           )}
         </View>
 
-        {/* Action buttons — only shown for pending orders */}
+        {/* ── Action buttons (pending only) ── */}
         {order.status === "pending" && (
           <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.actionBtn, styles.rejectBtn, acting && styles.btnDisabled]}
+              style={[styles.rejectBtn, acting && styles.btnDisabled]}
               onPress={() =>
                 Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
                   { text: "إلغاء", style: "cancel" },
@@ -129,14 +209,14 @@ function OrderCard({ order, onAccept, onReject }: {
                 <ActivityIndicator size="small" color="#EF4444" />
               ) : (
                 <>
-                  <Feather name="x" size={15} color="#EF4444" />
+                  <Feather name="x" size={14} color="#EF4444" />
                   <Text style={styles.rejectBtnText}>رفض</Text>
                 </>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionBtn, styles.acceptBtn, acting && styles.btnDisabled]}
+              style={[styles.acceptBtn, acting && styles.btnDisabled]}
               onPress={() =>
                 Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب وتحديد المنتج كـ مباع؟", [
                   { text: "إلغاء", style: "cancel" },
@@ -152,10 +232,9 @@ function OrderCard({ order, onAccept, onReject }: {
                 <LinearGradient
                   colors={["#22C55E", "#16A34A"]}
                   style={styles.acceptGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 >
-                  <Feather name="check" size={15} color="#FFF" />
+                  <Feather name="check" size={14} color="#FFF" />
                   <Text style={styles.acceptBtnText}>قبول</Text>
                 </LinearGradient>
               )}
@@ -167,43 +246,53 @@ function OrderCard({ order, onAccept, onReject }: {
   );
 }
 
+/* ─────────────────────────────────────────────
+   Main screen
+───────────────────────────────────────────── */
 export default function ProductOrdersScreen() {
   const insets = useSafeAreaInsets();
-  const [orders, setOrders] = useState<ProductOrder[]>([]);
-  const [loading, setLoading] = useState(true);
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+
+  const [activeTab, setActiveTab] = useState<"sales" | "purchases">("sales");
+  const [saleOrders, setSaleOrders]         = useState<ProductOrder[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<ProductOrder[]>([]);
+  const [loadingSales, setLoadingSales]         = useState(true);
+  const [loadingPurchases, setLoadingPurchases] = useState(true);
 
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) { router.replace("/login" as any); return; }
-    const unsub = subscribeToSellerProductOrders(
+
+    const unsubSales = subscribeToSellerProductOrders(
       user.uid,
-      (data) => {
-        setOrders(data);
-        setLoading(false);
-      },
-      (_err) => {
-        // PERMISSION_DENIED or network error — stop spinner, show empty state
-        setLoading(false);
-        setOrders([]);
-      }
+      (data) => { setSaleOrders(data); setLoadingSales(false); },
+      ()     => { setLoadingSales(false); setSaleOrders([]); }
     );
-    return unsub;
+    const unsubPurchases = subscribeToBuyerProductOrders(
+      user.uid,
+      (data) => { setPurchaseOrders(data); setLoadingPurchases(false); },
+      ()     => { setLoadingPurchases(false); setPurchaseOrders([]); }
+    );
+    return () => { unsubSales(); unsubPurchases(); };
   }, []);
 
-  const pending = orders.filter((o) => o.status === "pending");
-  const others  = orders.filter((o) => o.status !== "pending");
+  const pendingSales = saleOrders.filter((o) => o.status === "pending");
+  const loading = activeTab === "sales" ? loadingSales : loadingPurchases;
+  const listData = activeTab === "sales"
+    ? [...saleOrders.filter(o => o.status === "pending"), ...saleOrders.filter(o => o.status !== "pending")]
+    : purchaseOrders;
 
   return (
     <View style={styles.root}>
+      {/* ── Header ── */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 10 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>طلبات شراء منتجاتك</Text>
+          <Text style={styles.headerTitle}>طلبات المنتجات</Text>
           <Text style={styles.headerSub}>
-            {pending.length > 0 ? `${pending.length} طلب بانتظار ردك` : "لا طلبات جديدة"}
+            {pendingSales.length > 0 ? `${pendingSales.length} طلب بانتظار ردك` : "إدارة طلبات البيع والشراء"}
           </Text>
         </View>
         <View style={styles.headerIcon}>
@@ -211,48 +300,76 @@ export default function ProductOrdersScreen() {
         </View>
       </LinearGradient>
 
+      {/* ── Tabs ── */}
+      <View style={styles.tabsBar}>
+        <Pressable
+          style={[styles.tabBtn, activeTab === "purchases" && styles.tabBtnActive]}
+          onPress={() => { Haptics.selectionAsync(); setActiveTab("purchases"); }}
+        >
+          <Feather name="shopping-bag" size={14} color={activeTab === "purchases" ? C.accent : C.textMuted} />
+          <Text style={[styles.tabText, activeTab === "purchases" && styles.tabTextActive]}>طلباتي</Text>
+          {purchaseOrders.filter(o => o.status === "pending").length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{purchaseOrders.filter(o => o.status === "pending").length}</Text>
+            </View>
+          )}
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, activeTab === "sales" && styles.tabBtnActive]}
+          onPress={() => { Haptics.selectionAsync(); setActiveTab("sales"); }}
+        >
+          <Feather name="inbox" size={14} color={activeTab === "sales" ? C.accent : C.textMuted} />
+          <Text style={[styles.tabText, activeTab === "sales" && styles.tabTextActive]}>منتجاتي</Text>
+          {pendingSales.length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{pendingSales.length}</Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
+
+      {/* ── List ── */}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={C.accent} />
         </View>
-      ) : orders.length === 0 ? (
+      ) : listData.length === 0 ? (
         <View style={styles.center}>
           <Feather name="inbox" size={52} color={C.textMuted} />
-          <Text style={styles.emptyTitle}>لا توجد طلبات بعد</Text>
-          <Text style={styles.emptySub}>ستظهر هنا طلبات شراء منتجاتك</Text>
+          <Text style={styles.emptyTitle}>
+            {activeTab === "sales" ? "لا توجد طلبات بعد" : "لم تقم بأي طلب شراء بعد"}
+          </Text>
+          <Text style={styles.emptySub}>
+            {activeTab === "sales"
+              ? "ستظهر هنا طلبات شراء منتجاتك"
+              : "تصفّح السوق وأرسل طلب شراء"}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={[...pending, ...others]}
+          data={listData}
           keyExtractor={(o) => o.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
-            pending.length > 0 ? (
+            activeTab === "sales" && pendingSales.length > 0 ? (
               <View style={styles.sectionHeader}>
                 <View style={styles.pendingDot} />
-                <Text style={styles.sectionHeaderText}>طلبات بانتظار ردك ({pending.length})</Text>
+                <Text style={styles.sectionHeaderText}>طلبات بانتظار ردك ({pendingSales.length})</Text>
               </View>
             ) : null
           }
-          renderItem={({ item }) => {
-            const user = auth.currentUser!;
-            return (
-              <OrderCard
+          renderItem={({ item }) =>
+            activeTab === "sales" ? (
+              <SaleCard
                 order={item}
-                onAccept={() =>
-                  respondToProductOrder(
-                    item.id, item.productId, item.productTitle, item.buyerId, "accepted"
-                  )
-                }
-                onReject={() =>
-                  respondToProductOrder(
-                    item.id, item.productId, item.productTitle, item.buyerId, "rejected"
-                  )
-                }
+                onAccept={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "accepted")}
+                onReject={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "rejected")}
               />
-            );
-          }}
+            ) : (
+              <PurchaseCard order={item} />
+            )
+          }
         />
       )}
     </View>
@@ -261,6 +378,8 @@ export default function ProductOrdersScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
+
+  // ── Header ──
   header: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 20, paddingBottom: 18, gap: 12,
@@ -278,69 +397,93 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.18)",
     alignItems: "center", justifyContent: "center",
   },
+
+  // ── Tabs ──
+  tabsBar: {
+    flexDirection: "row", backgroundColor: C.card,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 13, gap: 6,
+    borderBottomWidth: 2, borderBottomColor: "transparent",
+  },
+  tabBtnActive: { borderBottomColor: C.accent },
+  tabText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textMuted },
+  tabTextActive: { color: C.accent },
+  tabBadge: {
+    backgroundColor: C.accent, borderRadius: 8,
+    minWidth: 18, height: 18, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  tabBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // ── Misc ──
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   emptyTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text },
-  emptySub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  emptySub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center" },
   listContent: { padding: 16, gap: 12 },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    marginBottom: 8, justifyContent: "flex-end",
+    marginBottom: 4, justifyContent: "flex-end",
   },
   pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
   sectionHeaderText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+
+  // ── Card ──
   card: {
     backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 12,
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
   },
-  // Header: buyer name (left) ↔ thumbnail + product title (right)
-  cardHeaderRow: {
-    flexDirection: "row", justifyContent: "space-between",
-    alignItems: "flex-start", gap: 10,
+
+  // Top row: thumbnail + product info
+  cardTopRow: {
+    flexDirection: "row-reverse", alignItems: "flex-start", gap: 12,
   },
-  buyerNameBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    flexShrink: 0, maxWidth: "40%",
-  },
-  buyerNameText: {
-    fontSize: 16, fontFamily: "Cairo_700Bold",
-    color: C.accent, textAlign: "left", flexShrink: 1,
-  },
-  productTitleGroup: {
-    flex: 1, flexDirection: "row", alignItems: "flex-start",
-    gap: 10, justifyContent: "flex-end",
-  },
-  productThumb: { width: 60, height: 60, borderRadius: 10 },
+  productThumb: { width: 60, height: 60, borderRadius: 12 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
-  productTitle: {
-    flex: 1, fontSize: 16, fontFamily: "Cairo_700Bold",
-    color: C.text, textAlign: "right",
+  productInfo: { flex: 1, gap: 4, alignItems: "flex-end" },
+  productTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  priceText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  currencyText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
+
+  // Person button (buyer / seller)
+  personBtn: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(201,168,76,0.08)",
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.2)",
   },
-  // Status row: date (left) ↔ status badge (right)
+  personBtnLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  personBtnText: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+
+  // Status row
   statusRow: {
-    flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center",
   },
   statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
   statusText: { fontSize: 12, fontFamily: "Cairo_600SemiBold" },
   dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  buyerSection: {
+
+  // Contact section
+  contactSection: {
     backgroundColor: C.inputBg, borderRadius: 12, padding: 12, gap: 8,
   },
-  sectionLabel: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.primary, textAlign: "right" },
-  buyerRow: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "flex-end" },
-  buyerText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text },
+  contactLabel: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary, textAlign: "right" },
+  contactRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  contactText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text },
+
+  // Actions
   actions: { flexDirection: "row", gap: 10 },
-  actionBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
   rejectBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: 12,
     borderWidth: 1.5, borderColor: "rgba(239,68,68,0.4)",
-    backgroundColor: "rgba(239,68,68,0.06)",
-    borderRadius: 12,
+    backgroundColor: "rgba(239,68,68,0.06)", borderRadius: 12,
   },
   rejectBtnText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: "#EF4444" },
-  acceptBtn: { borderRadius: 12, overflow: "hidden" },
+  acceptBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
   acceptGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: 12,

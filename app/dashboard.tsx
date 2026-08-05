@@ -783,6 +783,7 @@ export default function DashboardScreen() {
                                       productId: product.id,
                                       productTitle: product.title,
                                       productImageUrl: product.imageUrl,
+                                      productPrice: product.price,
                                       sellerId: product.sellerId,
                                       sellerName: product.sellerName,
                                       buyerId: user.uid,
