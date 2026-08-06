@@ -1471,7 +1471,7 @@ export const promoteUser = async (
   }
 };
 
-const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
 export const subscribeToProducts = (
   callback: (products: Product[]) => void,
@@ -1482,13 +1482,32 @@ export const subscribeToProducts = (
     q,
     (snap) => {
       const now = Date.now();
+      const expired: string[] = [];
+
       const products = snap.docs
         .map((d) => ({ id: d.id, ...d.data() } as Product))
         .filter((p) => {
           if (p.status !== "sold") return true;
-          if (!p.soldAt) return false;
-          return now - new Date(p.soldAt).getTime() < TWENTY_FOUR_HOURS_MS;
+          if (!p.soldAt) {
+            // No soldAt — treat as expired and remove
+            expired.push(p.id);
+            return false;
+          }
+          const soldTime = new Date(p.soldAt).getTime();
+          const isExpired = now - soldTime > FIVE_MINUTES_MS;
+          if (isExpired) expired.push(p.id);
+          return !isExpired;
         });
+
+      // Fire-and-forget: delete expired sold products from Firestore
+      if (expired.length > 0) {
+        const batch = writeBatch(db);
+        expired.forEach((id) => batch.delete(doc(db, "products", id)));
+        batch.commit().catch((err) =>
+          console.error("subscribeToProducts: failed to delete expired sold products", err)
+        );
+      }
+
       callback(products);
     },
     (err) => {
