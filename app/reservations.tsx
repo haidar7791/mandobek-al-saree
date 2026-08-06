@@ -374,6 +374,13 @@ export default function ReservationsScreen() {
     setSelectedIds(new Set([id]));
   };
 
+  /** Long-press entry point for product-order tabs (myProducts / myOrders). */
+  const enterProductSelectMode = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setProductSelectMode(true);
+    setSelectedOrderIds(new Set([id]));
+  };
+
   const toggleSelect = (id: string) => {
     Haptics.selectionAsync();
     setSelectedIds((prev) => {
@@ -573,32 +580,9 @@ export default function ReservationsScreen() {
             {isArtisan ? "طلبات الخدمات والمنتجات" : "تتبّع طلباتك"}
           </Text>
         </View>
-        {/* Select-mode toggle — only shown on product tabs */}
-        {(tab === "myProducts" || tab === "myOrders") ? (
-          <TouchableOpacity
-            style={styles.iconBadge}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (productSelectMode) {
-                setProductSelectMode(false);
-                setSelectedOrderIds(new Set());
-              } else {
-                setProductSelectMode(true);
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Feather
-              name={productSelectMode ? "x" : "check-square"}
-              size={20}
-              color={productSelectMode ? "#EF4444" : C.accent}
-            />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.iconBadge}>
-            <Ionicons name="calendar" size={20} color={C.accent} />
-          </View>
-        )}
+        <View style={styles.iconBadge}>
+          <Ionicons name="calendar" size={20} color={C.accent} />
+        </View>
       </LinearGradient>
 
       <View style={styles.tabsRow}>
@@ -609,7 +593,7 @@ export default function ReservationsScreen() {
             <Pressable
               key={t}
               style={[styles.tab, active && styles.tabActive]}
-              disabled={selectionMode}
+              disabled={selectionMode || productSelectMode}
               onPress={() => {
                 Haptics.selectionAsync();
                 setTab(t);
@@ -835,11 +819,12 @@ export default function ReservationsScreen() {
               </Animated.View>
             );
 
-            if (!productSelectMode) return cardNode;
             return (
               <Pressable
-                onPress={() => canDelete && toggleOrderSelect(order.id)}
-                style={{ opacity: !canDelete && productSelectMode ? 0.6 : 1 }}
+                onPress={() => productSelectMode && canDelete && toggleOrderSelect(order.id)}
+                onLongPress={() => canDelete && enterProductSelectMode(order.id)}
+                delayLongPress={400}
+                style={{ opacity: !canDelete && productSelectMode ? 0.55 : 1 }}
               >
                 {cardNode}
               </Pressable>
@@ -928,11 +913,12 @@ export default function ReservationsScreen() {
               </Animated.View>
             );
 
-            if (!productSelectMode) return cardNode;
             return (
               <Pressable
-                onPress={() => canDelete && toggleOrderSelect(order.id)}
-                style={{ opacity: !canDelete && productSelectMode ? 0.6 : 1 }}
+                onPress={() => productSelectMode && canDelete && toggleOrderSelect(order.id)}
+                onLongPress={() => canDelete && enterProductSelectMode(order.id)}
+                delayLongPress={400}
+                style={{ opacity: !canDelete && productSelectMode ? 0.55 : 1 }}
               >
                 {cardNode}
               </Pressable>
