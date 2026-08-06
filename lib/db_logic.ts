@@ -1357,6 +1357,10 @@ export interface ProductOrder {
   buyerLocation?: GeoLocation | null;
   status: "pending" | "accepted" | "rejected";
   createdAt: string;
+  /** UIDs of sellers who hid this order from their view (soft delete) */
+  hiddenForSeller?: string[];
+  /** UIDs of buyers who hid this order from their view (soft delete) */
+  hiddenForBuyer?: string[];
 }
 
 export const uploadProductImage = async (
@@ -1558,15 +1562,31 @@ export const cancelProductOrder = async (orderId: string): Promise<void> => {
   await deleteDoc(doc(db, "productOrders", orderId));
 };
 
-/** Batch-delete up to 500 productOrder documents by their IDs. */
-export const bulkDeleteProductOrders = async (orderIds: string[]): Promise<void> => {
+/**
+ * Soft-delete productOrder documents by hiding them for the given user.
+ *
+ * Hard deletion is blocked by Firestore rules for sellers (and for buyers on
+ * non-pending orders). Instead we set hiddenForSeller / hiddenForBuyer so the
+ * order disappears from the caller's view while the document stays intact.
+ *
+ * Firestore batch limit is 500 writes; large lists are split automatically.
+ */
+export const bulkDeleteProductOrders = async (
+  orderIds: string[],
+  userId: string,
+  role: "seller" | "buyer"
+): Promise<void> => {
   if (!orderIds.length) return;
-  // Firestore batch limit is 500 writes
+  const field = role === "seller" ? "hiddenForSeller" : "hiddenForBuyer";
   const chunks: string[][] = [];
   for (let i = 0; i < orderIds.length; i += 500) chunks.push(orderIds.slice(i, i + 500));
   for (const chunk of chunks) {
     const batch = writeBatch(db);
-    chunk.forEach((id) => batch.delete(doc(db, "productOrders", id)));
+    chunk.forEach((id) =>
+      batch.update(doc(db, "productOrders", id), {
+        [field]: arrayUnion(userId),
+      })
+    );
     await batch.commit();
   }
 };
@@ -1578,6 +1598,7 @@ export const subscribeToSellerProductOrders = (
 ): (() => void) => {
   // Single-field filter only (no orderBy) to avoid requiring a Composite Index.
   // Results are sorted in-memory by createdAt descending.
+  // Orders soft-deleted by this seller (hiddenForSeller contains sellerId) are excluded.
   const q = query(
     collection(db, "productOrders"),
     where("sellerId", "==", sellerId)
@@ -1587,6 +1608,7 @@ export const subscribeToSellerProductOrders = (
     (snap) => {
       const orders = snap.docs
         .map((d) => ({ id: d.id, ...d.data() } as ProductOrder))
+        .filter((o) => !o.hiddenForSeller?.includes(sellerId))
         .sort((a, b) => {
           const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1606,17 +1628,18 @@ export const subscribeToBuyerProductOrders = (
   callback: (orders: ProductOrder[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  // Two equality filters — no composite index required (Firestore handles this natively).
+  // Filter by buyerId only (no status filter) so the buyer can see all their orders
+  // (pending, accepted, rejected) and soft-deleted ones are excluded client-side.
   const q = query(
     collection(db, "productOrders"),
-    where("buyerId", "==", buyerId),
-    where("status", "==", "pending")
+    where("buyerId", "==", buyerId)
   );
   return onSnapshot(
     q,
     (snap) => {
       const orders = snap.docs
         .map((d) => ({ id: d.id, ...d.data() } as ProductOrder))
+        .filter((o) => !o.hiddenForBuyer?.includes(buyerId))
         .sort((a, b) => {
           const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;

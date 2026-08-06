@@ -151,8 +151,11 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && request.resource.data.buyerId == request.auth.uid;
       // البائع أو المشرف يُعدّل الحالة (قبول / رفض)
+      // المشتري يعدّل حقل hiddenForBuyer فقط (إخفاء ناعم بدلاً من الحذف)
       allow update: if isSignedIn() && (
                       resource.data.sellerId == request.auth.uid
+                      || (resource.data.buyerId == request.auth.uid
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hiddenForBuyer"]))
                       || isAdmin()
                     );
       // المشتري يحذف طلبه المعلق فقط (إلغاء)؛ المشرف يحذف أي طلب

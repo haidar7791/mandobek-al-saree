@@ -507,7 +507,9 @@ export default function ReservationsScreen() {
             setProductDeleting(true);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
             try {
-              await bulkDeleteProductOrders(Array.from(selectedOrderIds));
+              const uid = auth.currentUser?.uid ?? "";
+              const role = tab === "myProducts" ? "seller" : "buyer";
+              await bulkDeleteProductOrders(Array.from(selectedOrderIds), uid, role);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setProductSelectMode(false);
               setSelectedOrderIds(new Set());

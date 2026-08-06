@@ -349,7 +349,9 @@ export default function ProductOrdersScreen() {
             setDeleting(true);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
             try {
-              await bulkDeleteProductOrders(Array.from(selectedIds));
+              const uid = auth.currentUser?.uid ?? "";
+              const role = activeTab === "sales" ? "seller" : "buyer";
+              await bulkDeleteProductOrders(Array.from(selectedIds), uid, role);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setSelectMode(false);
               setSelectedIds(new Set());
