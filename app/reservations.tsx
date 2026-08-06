@@ -15,6 +15,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { auth } from "../lib/firebase";
@@ -751,29 +752,47 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Header row: buyer name ↔ product title */}
-                  <View style={styles.productOrderHeaderRow}>
-                    <TouchableOpacity
-                      style={styles.buyerNameBtn}
-                      activeOpacity={0.75}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
-                      }}
-                    >
-                      <Feather name="user" size={15} color={C.accent} />
-                      <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                  {/* Product row: thumbnail (right) + name & price */}
+                  <View style={styles.poProductRow}>
+                    <View style={styles.poProductInfo}>
+                      <Text style={styles.poInfoLine} numberOfLines={2}>
+                        <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
+                        <Text style={styles.poFieldValue}>{order.productTitle}</Text>
+                      </Text>
+                      <Text style={styles.poInfoLine}>
+                        <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
+                        <Text style={styles.poPriceValue}>
+                          {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
+                        </Text>
+                      </Text>
+                    </View>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                   </View>
-                  {/* Price */}
-                  <View style={styles.orderPriceRow}>
-                    <Text style={styles.orderPriceValue}>
-                      {price != null ? price.toLocaleString("ar-IQ") : "غير محدد"}
-                      {price != null ? <Text style={styles.orderPriceCurrency}> د.ع</Text> : null}
+
+                  {/* Buyer name */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
+                    }}
+                  >
+                    <Text style={styles.poInfoLine} numberOfLines={1}>
+                      <Text style={styles.poFieldLabel}>{"اسم المشتري: "}</Text>
+                      <Text style={styles.poPersonValue}>{order.buyerName}</Text>
                     </Text>
-                    <Text style={styles.orderPriceLabel}>السعر:</Text>
-                  </View>
+                  </TouchableOpacity>
+
                   {/* Status + date */}
                   <View style={styles.productOrderStatusRow}>
                     <Text style={styles.cardTime}>{date}</Text>
@@ -781,12 +800,8 @@ export default function ReservationsScreen() {
                       <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
                     </View>
                   </View>
-                  {order.buyerPhone ? (
-                    <View style={styles.metaRow}>
-                      <Feather name="phone" size={13} color={C.textSecondary} />
-                      <Text style={styles.metaText}>{order.buyerPhone}</Text>
-                    </View>
-                  ) : null}
+
+                  {/* Accept / Reject for pending */}
                   {order.status === "pending" && (
                     <View style={styles.actionRow}>
                       <Pressable
@@ -817,6 +832,19 @@ export default function ReservationsScreen() {
                       </Pressable>
                     </View>
                   )}
+
+                  {/* Contact buyer button */}
+                  <TouchableOpacity
+                    style={styles.poContactBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/chat", params: { peerId: order.buyerId, peerName: order.buyerName } } as any);
+                    }}
+                  >
+                    <Feather name="message-circle" size={16} color="#FFF" />
+                    <Text style={styles.poContactBtnText}>تواصل مع المشتري</Text>
+                  </TouchableOpacity>
                 </View>
               </Animated.View>
             );
@@ -880,37 +908,69 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Title ↔ Status */}
-                  <View style={styles.productOrderStatusRow}>
-                    <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
-                      <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                  {/* Product row: thumbnail (right) + name & price */}
+                  <View style={styles.poProductRow}>
+                    <View style={styles.poProductInfo}>
+                      <Text style={styles.poInfoLine} numberOfLines={2}>
+                        <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
+                        <Text style={styles.poFieldValue}>{order.productTitle}</Text>
+                      </Text>
+                      <Text style={styles.poInfoLine}>
+                        <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
+                        <Text style={styles.poPriceValue}>
+                          {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
+                        </Text>
+                      </Text>
                     </View>
-                    <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                   </View>
-                  {/* Price */}
-                  <View style={styles.orderPriceRow}>
-                    <Text style={styles.orderPriceValue}>
-                      {price != null ? price.toLocaleString("ar-IQ") : "غير محدد"}
-                      {price != null ? <Text style={styles.orderPriceCurrency}> د.ع</Text> : null}
-                    </Text>
-                    <Text style={styles.orderPriceLabel}>السعر:</Text>
-                  </View>
-                  {/* Seller name (tappable) */}
+
+                  {/* Seller name */}
                   {order.sellerName ? (
                     <TouchableOpacity
-                      style={styles.buyerNameBtn}
                       activeOpacity={0.75}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
                       }}
                     >
-                      <Feather name="shopping-bag" size={13} color={C.accent} />
-                      <Text style={styles.buyerNameText} numberOfLines={1}>{order.sellerName}</Text>
+                      <Text style={styles.poInfoLine} numberOfLines={1}>
+                        <Text style={styles.poFieldLabel}>{"اسم البائع: "}</Text>
+                        <Text style={styles.poPersonValue}>{order.sellerName}</Text>
+                      </Text>
                     </TouchableOpacity>
                   ) : null}
-                  {/* Date */}
-                  <Text style={[styles.cardTime, { textAlign: "left" }]}>{date}</Text>
+
+                  {/* Status + date */}
+                  <View style={styles.productOrderStatusRow}>
+                    <Text style={styles.cardTime}>{date}</Text>
+                    <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
+                      <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                    </View>
+                  </View>
+
+                  {/* Contact seller button */}
+                  <TouchableOpacity
+                    style={styles.poContactBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/chat", params: { peerId: order.sellerId, peerName: order.sellerName } } as any);
+                    }}
+                  >
+                    <Feather name="message-circle" size={16} color="#FFF" />
+                    <Text style={styles.poContactBtnText}>تواصل مع البائع</Text>
+                  </TouchableOpacity>
                 </View>
               </Animated.View>
             );
@@ -1141,6 +1201,69 @@ const styles = StyleSheet.create({
   },
   orderPriceCurrency: {
     fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#16A34A",
+  },
+
+  // ── Product-order redesigned card ──
+  poProductRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  poThumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+  },
+  poThumbnailPlaceholder: {
+    backgroundColor: C.inputBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  poProductInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  poInfoLine: {
+    textAlign: "right",
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    lineHeight: 22,
+  },
+  poFieldLabel: {
+    fontSize: 13,
+    fontFamily: "Cairo_700Bold",
+    color: C.accent,
+  },
+  poFieldValue: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.text,
+  },
+  poPriceValue: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: "#16A34A",
+  },
+  poPersonValue: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.text,
+  },
+  poContactBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  poContactBtnText: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: "#FFF",
   },
 
   // ── Card checkbox row ──
