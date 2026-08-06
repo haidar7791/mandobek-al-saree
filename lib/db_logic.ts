@@ -1677,28 +1677,45 @@ export const subscribeToBuyerProductOrders = (
 
 export const ensureUserDocument = async (
   userId: string,
-  email: string,
+  email: string, // E.164 phone (+964...), old @sanad.app email, or real email address
   role: "client" | "artisan" = "client",
-  extraData?: { name?: string; specialty?: string; location?: GeoLocation | null }
+  extraData?: { name?: string; specialty?: string; location?: GeoLocation | null; phone?: string }
 ): Promise<void> => {
   try {
     const ref = doc(db, "users", userId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      const isPhone = email.endsWith("@sanad.app");
-      const fallbackName = isPhone
-        ? email.replace("@sanad.app", "")
-        : email.split("@")[0];
-      // Use the explicitly supplied name when available, otherwise fall back to derived value
+      // Determine how to store phone/email based on the identifier format
+      const isE164Phone = email.startsWith("+");         // new Phone Auth accounts
+      const isOldPhoneEmail = email.endsWith("@sanad.app"); // legacy fake-email accounts
+
+      let storedPhone: string;
+      let storedEmail: string;
+      let fallbackName: string;
+
+      if (isE164Phone) {
+        storedPhone = email; // already E.164
+        storedEmail = "";
+        fallbackName = email;
+      } else if (isOldPhoneEmail) {
+        storedPhone = email.replace("@sanad.app", ""); // raw local number
+        storedEmail = "";
+        fallbackName = email.replace("@sanad.app", "");
+      } else {
+        storedPhone = extraData?.phone ?? "";
+        storedEmail = email;
+        fallbackName = email.split("@")[0];
+      }
+
       const displayName = extraData?.name?.trim() || fallbackName;
       await setDoc(
         ref,
         {
           name: displayName,
-          email,
+          email: storedEmail,
           role,
           balance: 0,
-          phone: isPhone ? email.replace("@sanad.app", "") : "",
+          phone: storedPhone,
           photoUri: null,
           location: extraData?.location ?? null,
           // Always persist specialty (including "client") so profile screen renders correctly
@@ -1712,6 +1729,7 @@ export const ensureUserDocument = async (
       if (extraData?.location !== undefined) updates.location = extraData.location;
       if (extraData?.specialty) updates.specialty = extraData.specialty;
       if (extraData?.name?.trim()) updates.name = extraData.name.trim();
+      if (extraData?.phone) updates.phone = extraData.phone;
       if (Object.keys(updates).length > 0) {
         await updateDoc(ref, updates);
       }

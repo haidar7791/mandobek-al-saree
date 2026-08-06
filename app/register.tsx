@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Alert,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,13 +19,19 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-na
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  signInWithPhoneNumber,
+  type ConfirmationResult,
+  type ApplicationVerifier,
+  RecaptchaVerifier,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import FirebaseRecaptcha, { type FirebaseRecaptchaHandle } from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
   createOrUpdateArtisan,
   getCategoryForSpecialty,
-  ALL_SPECIALTIES,
   HOME_SERVICES,
   CAR_SERVICES,
   GENERAL_SERVICES,
@@ -32,6 +39,8 @@ import {
   type GeoLocation,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Returns true if the input looks like a phone number (starts with digit or +, no @) */
 function isPhoneInput(s: string): boolean {
@@ -44,17 +53,26 @@ function isValidContact(s: string): boolean {
   const t = s.trim();
   if (!t) return false;
   if (isPhoneInput(t)) return /[\d]{7,}/.test(t); // at least 7 digits
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);    // classic email regex
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t); // classic email regex
 }
 
-/** Convert phone or email to Firebase-compatible email (mirrors login.tsx) */
-function toFirebaseEmail(contact: string): string {
-  const t = contact.trim().toLowerCase();
-  if (t.includes("@")) return t;
-  return `${t}@sanad.app`;
+/**
+ * Converts an Iraqi phone number to E.164 format.
+ * 07xxxxxxxx → +9647xxxxxxxx
+ */
+function toE164(phone: string): string {
+  const t = phone.trim().replace(/[\s\-]/g, "");
+  if (t.startsWith("+")) return t;
+  if (t.startsWith("00964")) return "+" + t.slice(2);
+  if (t.startsWith("964")) return "+" + t;
+  if (t.startsWith("07")) return "+964" + t.slice(1);
+  if (t.startsWith("7")) return "+964" + t;
+  return "+964" + t;
 }
 
 const C = Colors.light;
+
+// ─── InputField ───────────────────────────────────────────────────────────────
 
 function InputField({
   label,
@@ -114,6 +132,49 @@ function InputField({
   );
 }
 
+// ─── OTP digit boxes ──────────────────────────────────────────────────────────
+
+function OtpInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const inputRef = useRef<TextInput>(null);
+  return (
+    <Pressable onPress={() => inputRef.current?.focus()} style={styles.otpRow}>
+      {Array.from({ length: 6 }).map((_, i) => {
+        const char = value[i] ?? "";
+        const active = value.length === i;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.otpBox,
+              char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
+            ]}
+          >
+            <Text style={styles.otpChar}>{char}</Text>
+          </View>
+        );
+      })}
+      <TextInput
+        ref={inputRef}
+        value={value}
+        onChangeText={(v) => onChange(v.replace(/[^0-9]/g, "").slice(0, 6))}
+        keyboardType="number-pad"
+        maxLength={6}
+        style={styles.otpHiddenInput}
+        caretHidden
+        autoFocus
+      />
+    </Pressable>
+  );
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const CLIENT_OPTION = { key: "client", label: "زبون", icon: "user" };
 
 const SPECIALTY_SECTIONS = [
@@ -126,22 +187,38 @@ const SPECIALTY_SECTIONS = [
 
 const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
 
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [contact, setContact] = useState(""); // phone or email
   const [password, setPassword] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
+  // ── Phone OTP registration flow ──
+  const [regOtpStep, setRegOtpStep] = useState<"form" | "otp">("form");
+  const [regOtpCode, setRegOtpCode] = useState("");
+  const [regOtpSending, setRegOtpSending] = useState(false);
+  const [regOtpVerifying, setRegOtpVerifying] = useState(false);
+  const [regConfirmation, setRegConfirmation] = useState<ConfirmationResult | null>(null);
+  const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
+
+  // ── reCAPTCHA (native + web) ──
+  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
+  const webVerifierRef = useRef<ApplicationVerifier | null>(null);
 
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
+
+  const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
+  const isPhone = isPhoneInput(contact);
+  const contactKeyboardType: "phone-pad" | "email-address" = isPhone ? "phone-pad" : "email-address";
 
   const requestLocation = async (): Promise<GeoLocation | null> => {
     try {
@@ -154,13 +231,15 @@ export default function RegisterScreen() {
     }
   };
 
+  // ─── Register handler ──────────────────────────────────────────────────────
+
   const handleRegister = async () => {
     const trimmedName = fullName.trim();
     if (!trimmedName) {
       Alert.alert("خطأ", "يرجى إدخال الاسم الكامل");
       return;
     }
-    const rawContact = email.trim();
+    const rawContact = contact.trim();
     if (!isValidContact(rawContact)) {
       Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح أو رقم هاتف صحيح");
       return;
@@ -169,77 +248,190 @@ export default function RegisterScreen() {
       Alert.alert("خطأ", "يرجى اختيار نوع الحساب أو التخصص");
       return;
     }
-    if (password.length < 6) {
-      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-      return;
-    }
 
-    // Convert phone → Firebase-compatible email (e.g. 0781234567 → 0781234567@sanad.app)
-    const firebaseEmail = toFirebaseEmail(rawContact);
-    const isPhone = isPhoneInput(rawContact);
-
-    btnScale.value = withSpring(0.96, { damping: 12 }, () => { btnScale.value = withSpring(1); });
+    btnScale.value = withSpring(0.96, { damping: 12 }, () => {
+      btnScale.value = withSpring(1);
+    });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setLoading(true);
+
+    if (isPhoneInput(rawContact)) {
+      // ── Phone registration: send OTP via Firebase Phone Auth ──
+      setRegOtpSending(true);
+      try {
+        const location = await requestLocation();
+        setSavedLocation(location);
+
+        const e164 = toE164(rawContact);
+
+        let verifier: ApplicationVerifier;
+        if (Platform.OS === "web") {
+          let container = document.getElementById("reg-recaptcha-container");
+          if (!container) {
+            container = document.createElement("div");
+            container.id = "reg-recaptcha-container";
+            container.style.display = "none";
+            document.body.appendChild(container);
+          }
+          if (!webVerifierRef.current) {
+            webVerifierRef.current = new RecaptchaVerifier(
+              auth,
+              "reg-recaptcha-container",
+              { size: "invisible" }
+            );
+          }
+          verifier = webVerifierRef.current;
+        } else {
+          if (!recaptchaRef.current) {
+            Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
+            return;
+          }
+          verifier = recaptchaRef.current.verifier;
+        }
+
+        const confirmation = await signInWithPhoneNumber(auth, e164, verifier);
+        setRegConfirmation(confirmation);
+        setRegOtpCode("");
+        setRegOtpStep("otp");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const code: string = err?.code ?? "";
+        if (code === "auth/invalid-phone-number") {
+          Alert.alert("خطأ", "صيغة رقم الهاتف غير صحيحة");
+        } else if (code === "auth/too-many-requests") {
+          Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً، يرجى المحاولة لاحقاً");
+        } else {
+          Alert.alert("خطأ", "تعذّر إرسال رمز التحقق — يرجى المحاولة لاحقاً");
+        }
+        // Reset verifier so next attempt gets a fresh one
+        webVerifierRef.current = null;
+      } finally {
+        setRegOtpSending(false);
+      }
+    } else {
+      // ── Email registration: create with email + password ──
+      if (password.length < 6) {
+        Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+        return;
+      }
+      setLoading(true);
+      try {
+        const location = await requestLocation();
+        const credential = await createUserWithEmailAndPassword(auth, rawContact, password);
+        const uid = credential.user.uid;
+
+        await ensureUserDocument(uid, rawContact, role, {
+          name: trimmedName,
+          specialty,
+          location,
+        });
+
+        if (role === "artisan" && specialty) {
+          const category = getCategoryForSpecialty(specialty);
+          await createOrUpdateArtisan(uid, {
+            name: trimmedName,
+            phone: "",
+            photoUri: null,
+            specialty,
+            category,
+            location,
+            bio: "",
+            isAvailable: true,
+          });
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
+          { text: "تسجيل الدخول", onPress: () => router.replace("/login") },
+        ]);
+      } catch (err: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const code = err?.code || "";
+        if (code === "auth/email-already-in-use") {
+          Alert.alert("خطأ", "هذا البريد مسجل مسبقاً");
+        } else if (code === "auth/weak-password") {
+          Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
+        } else if (code === "auth/invalid-email") {
+          Alert.alert("خطأ", "صيغة البريد الإلكتروني غير صحيحة");
+        } else {
+          Alert.alert("خطأ", "حدث خطأ أثناء إنشاء الحساب");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // ─── Verify OTP and create Phone Auth account ─────────────────────────────
+
+  const handleVerifyRegisterOtp = async () => {
+    if (regOtpCode.length !== 6 || !regConfirmation) return;
+
+    const trimmedName = fullName.trim();
+    const rawContact = contact.trim();
+    const e164 = toE164(rawContact);
+
+    setRegOtpVerifying(true);
     try {
-      const location = await requestLocation();
-      const credential = await createUserWithEmailAndPassword(auth, firebaseEmail, password);
+      const credential = await regConfirmation.confirm(regOtpCode);
       const uid = credential.user.uid;
 
-      // Save name + specialty (including "client") so profile screen shows correct data immediately
-      await ensureUserDocument(uid, firebaseEmail, role, {
+      // Save Firestore document keyed by the Phone Auth UID with phone in E.164
+      await ensureUserDocument(uid, e164, role, {
         name: trimmedName,
-        specialty,          // always persist — clients get "client", artisans get their specialty key
-        location,
+        specialty,
+        location: savedLocation,
       });
 
       if (role === "artisan" && specialty) {
         const category = getCategoryForSpecialty(specialty);
         await createOrUpdateArtisan(uid, {
           name: trimmedName,
-          phone: isPhone ? rawContact : "",
+          phone: e164,
           photoUri: null,
           specialty,
           category,
-          location,
+          location: savedLocation,
           bio: "",
           isAvailable: true,
         });
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
-        { text: "تسجيل الدخول", onPress: () => router.replace("/login") },
-      ]);
+      // User is already signed in via Phone Auth — go directly to dashboard
+      router.replace("/dashboard" as any);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const code = err?.code || "";
-      if (code === "auth/email-already-in-use") {
-        Alert.alert("خطأ", isPhone ? "رقم الهاتف هذا مسجّل مسبقاً" : "هذا البريد مسجل مسبقاً");
-      } else if (code === "auth/weak-password") {
-        Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
-      } else if (code === "auth/invalid-email") {
-        Alert.alert("خطأ", "صيغة البريد الإلكتروني غير صحيحة");
+      const code: string = err?.code ?? "";
+      if (code === "auth/invalid-verification-code") {
+        Alert.alert("رمز خاطئ", "الرمز الذي أدخلته غير صحيح — تحقق وأعد المحاولة");
+      } else if (code === "auth/code-expired") {
+        Alert.alert("رمز منتهي الصلاحية", "انتهت صلاحية الرمز — اطلب رمزاً جديداً");
+      } else if (
+        code === "auth/account-exists-with-different-credential" ||
+        code === "auth/credential-already-in-use"
+      ) {
+        Alert.alert("خطأ", "رقم الهاتف هذا مسجّل مسبقاً — يرجى تسجيل الدخول بدلاً من ذلك");
       } else {
-        Alert.alert("خطأ", "حدث خطأ أثناء إنشاء الحساب");
+        Alert.alert("خطأ", "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
       }
     } finally {
-      setLoading(false);
+      setRegOtpVerifying(false);
     }
   };
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
-
   const selectedSpecialtyLabel = ALL_OPTIONS.find((s) => s.key === specialty)?.label ?? "";
+  const anyLoading = loading || regOtpSending;
 
-  // Dynamic keyboard: phone-pad when input starts with digit/+, else email-address
-  const contactKeyboardType: "phone-pad" | "email-address" = isPhoneInput(email)
-    ? "phone-pad"
-    : "email-address";
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.root}>
+      {/* Hidden reCAPTCHA for native phone auth */}
+      {Platform.OS !== "web" && <FirebaseRecaptcha ref={recaptchaRef} />}
+
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -262,50 +454,51 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-              {/* 1 ── الاسم الكامل */}
-              <InputField
-                label="الاسم الكامل"
-                placeholder="أدخل اسمك الكامل"
-                value={fullName}
-                onChangeText={setFullName}
-                icon={<Feather name="user" size={18} color={C.textSecondary} />}
-                keyboardType="default"
-                onSubmitEditing={() => contactRef.current?.focus()}
-              />
+            {/* 1 ── الاسم الكامل */}
+            <InputField
+              label="الاسم الكامل"
+              placeholder="أدخل اسمك الكامل"
+              value={fullName}
+              onChangeText={setFullName}
+              icon={<Feather name="user" size={18} color={C.textSecondary} />}
+              keyboardType="default"
+              onSubmitEditing={() => contactRef.current?.focus()}
+            />
 
-              {/* 2 ── رقم الهاتف أو البريد */}
-              <InputField
-                label="رقم الهاتف أو البريد الإلكتروني"
-                placeholder="07xxxxxxxx أو example@email.com"
-                value={email}
-                onChangeText={setEmail}
-                icon={<Feather name="phone" size={18} color={C.textSecondary} />}
-                keyboardType={contactKeyboardType}
-                innerRef={contactRef}
-                onSubmitEditing={() => passwordRef.current?.focus()}
-              />
+            {/* 2 ── رقم الهاتف أو البريد */}
+            <InputField
+              label="رقم الهاتف أو البريد الإلكتروني"
+              placeholder="07xxxxxxxx أو example@email.com"
+              value={contact}
+              onChangeText={setContact}
+              icon={<Feather name="phone" size={18} color={C.textSecondary} />}
+              keyboardType={contactKeyboardType}
+              innerRef={contactRef}
+              onSubmitEditing={() => isPhone ? undefined : passwordRef.current?.focus()}
+            />
 
-              {/* 3 ── نوع الحساب / التخصص */}
-              <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>نوع الحساب / التخصص</Text>
-                <Pressable
-                  style={[styles.inputRow, styles.pickerRow]}
-                  onPress={() => setSpecialtyModal(true)}
-                >
-                  <Feather name="chevron-down" size={16} color={C.textMuted} />
-                  <Text style={[styles.input, { paddingVertical: 13, color: specialty ? C.text : C.textMuted }]}>
-                    {selectedSpecialtyLabel || "اختر زبون أو تخصصك المهني"}
-                  </Text>
-                  <View style={styles.inputIcon}>
-                    <Feather name="briefcase" size={15} color={C.textMuted} />
-                  </View>
-                </Pressable>
-                <Text style={styles.helperText}>
-                  يمكنك تغيير التخصص لاحقاً من ملفك الشخصي
+            {/* 3 ── نوع الحساب / التخصص */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>نوع الحساب / التخصص</Text>
+              <Pressable
+                style={[styles.inputRow, styles.pickerRow]}
+                onPress={() => setSpecialtyModal(true)}
+              >
+                <Feather name="chevron-down" size={16} color={C.textMuted} />
+                <Text style={[styles.input, { paddingVertical: 13, color: specialty ? C.text : C.textMuted }]}>
+                  {selectedSpecialtyLabel || "اختر زبون أو تخصصك المهني"}
                 </Text>
-              </View>
+                <View style={styles.inputIcon}>
+                  <Feather name="briefcase" size={15} color={C.textMuted} />
+                </View>
+              </Pressable>
+              <Text style={styles.helperText}>
+                يمكنك تغيير التخصص لاحقاً من ملفك الشخصي
+              </Text>
+            </View>
 
-              {/* 4 ── كلمة المرور */}
+            {/* 4 ── كلمة المرور (email only) */}
+            {!isPhone && (
               <InputField
                 label="كلمة المرور"
                 placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
@@ -317,31 +510,49 @@ export default function RegisterScreen() {
                 returnKeyType="done"
                 onSubmitEditing={handleRegister}
               />
+            )}
 
-              <Animated.View style={btnStyle}>
-                <Pressable
-                  style={[styles.registerBtn, loading && styles.btnDisabled]}
-                  onPress={handleRegister}
-                  disabled={loading}
+            {/* Phone auth note */}
+            {isPhone && (
+              <View style={styles.phoneNote}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={C.accent} />
+                <Text style={styles.phoneNoteText}>
+                  سيتم إرسال رمز تحقق إلى رقمك عبر SMS
+                </Text>
+              </View>
+            )}
+
+            <Animated.View style={btnStyle}>
+              <Pressable
+                style={[styles.registerBtn, anyLoading && styles.btnDisabled]}
+                onPress={handleRegister}
+                disabled={anyLoading}
+              >
+                <LinearGradient
+                  colors={[C.accent, C.accentLight]}
+                  style={styles.registerGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
-                  <LinearGradient
-                    colors={[C.accent, C.accentLight]}
-                    style={styles.registerGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {loading ? (
-                      <Text style={styles.registerBtnText}>جارٍ إنشاء الحساب...</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.registerBtnText}>إنشاء حساب</Text>
-                        <Feather name="check" size={18} color={C.primary} />
-                      </>
-                    )}
-                  </LinearGradient>
-                </Pressable>
-              </Animated.View>
-            </View>
+                  {anyLoading ? (
+                    <>
+                      <ActivityIndicator size="small" color={C.primary} />
+                      <Text style={styles.registerBtnText}>
+                        {regOtpSending ? "جارٍ الإرسال..." : "جارٍ إنشاء الحساب..."}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.registerBtnText}>
+                        {isPhone ? "إرسال رمز التحقق" : "إنشاء حساب"}
+                      </Text>
+                      <Feather name={isPhone ? "send" : "check"} size={18} color={C.primary} />
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </Animated.View>
+          </View>
 
           <Pressable onPress={() => router.push("/login")} style={styles.loginLink}>
             <Text style={styles.loginLinkText}>
@@ -352,6 +563,7 @@ export default function RegisterScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* ── Specialty picker modal ── */}
       <Modal visible={specialtyModal} transparent animationType="slide" onRequestClose={() => setSpecialtyModal(false)}>
         <View style={modalStyles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setSpecialtyModal(false)} />
@@ -396,9 +608,66 @@ export default function RegisterScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── OTP verification modal (phone registration) ── */}
+      <Modal
+        visible={regOtpStep === "otp"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRegOtpStep("form")}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => {}}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconCircle}>
+                <Ionicons name="shield-checkmark" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.modalTitle}>رمز التحقق</Text>
+            </View>
+
+            <Text style={styles.modalDesc}>
+              أُرسل رمز تحقق مكون من 6 أرقام إلى الرقم{"\n"}
+              <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
+            </Text>
+
+            <OtpInput value={regOtpCode} onChange={setRegOtpCode} />
+
+            <Pressable
+              style={[styles.modalSendBtn, (regOtpVerifying || regOtpCode.length < 6) && styles.btnDisabled]}
+              onPress={handleVerifyRegisterOtp}
+              disabled={regOtpVerifying || regOtpCode.length < 6}
+            >
+              <LinearGradient
+                colors={[C.accent, C.accentLight]}
+                style={styles.modalSendGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {regOtpVerifying ? (
+                  <ActivityIndicator size="small" color={C.primary} />
+                ) : (
+                  <>
+                    <Text style={styles.modalSendText}>تحقق وإنشاء الحساب</Text>
+                    <Ionicons name="checkmark" size={18} color={C.primary} />
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalCancelBtn}
+              onPress={() => setRegOtpStep("form")}
+            >
+              <Text style={styles.modalCancelText}>إلغاء وتعديل الرقم</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
@@ -431,17 +700,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
   },
-  roleSection: { gap: 8 },
-  sectionLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
-  roleRow: { flexDirection: "row", gap: 10 },
-  roleBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 12, borderRadius: 12,
-    backgroundColor: C.inputBg, borderWidth: 1.5, borderColor: "transparent",
-  },
-  roleBtnActive: { backgroundColor: C.primary, borderColor: C.primary },
-  roleBtnText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
-  roleBtnTextActive: { color: C.card },
   fieldWrap: { gap: 6 },
   fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
   helperText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 4 },
@@ -459,14 +717,14 @@ const styles = StyleSheet.create({
     color: C.text, paddingVertical: 13, textAlign: "right",
   },
   eyeBtn: { padding: 6 },
-  locationNote: {
-    flexDirection: "row", alignItems: "flex-start", gap: 8,
+  phoneNote: {
+    flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "rgba(201,168,76,0.08)",
     borderRadius: 10, padding: 12,
   },
-  locationNoteText: {
+  phoneNoteText: {
     flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
-    color: C.textSecondary, textAlign: "right", lineHeight: 20,
+    color: C.textSecondary, textAlign: "right",
   },
   registerBtn: { borderRadius: 14, overflow: "hidden", marginTop: 6 },
   registerGradient: {
@@ -477,6 +735,60 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.6 },
   loginLink: { alignItems: "center", paddingVertical: 8 },
   loginLinkText: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+
+  // ── OTP Modal ──
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: "100%", backgroundColor: C.card, borderRadius: 20,
+    padding: 24, gap: 16,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2, shadowRadius: 20, elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center",
+    gap: 12, justifyContent: "flex-end",
+  },
+  modalIconCircle: {
+    width: 42, height: 42, borderRadius: 12,
+    backgroundColor: "rgba(201,168,76,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  modalTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  modalDesc: {
+    fontSize: 13, fontFamily: "Cairo_400Regular",
+    color: C.textSecondary, textAlign: "right", lineHeight: 22,
+  },
+  modalPhoneHighlight: { fontFamily: "Cairo_700Bold", color: C.accent, fontSize: 14 },
+  modalSendBtn: { borderRadius: 12, overflow: "hidden" },
+  modalSendGradient: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 14, gap: 8,
+  },
+  modalSendText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary },
+  modalCancelBtn: {
+    borderRadius: 12, borderWidth: 1.5, borderColor: C.border || "#E5E7EB",
+    alignItems: "center", justifyContent: "center", paddingVertical: 12,
+  },
+  modalCancelText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+
+  // ── OTP boxes ──
+  otpRow: {
+    flexDirection: "row", justifyContent: "center",
+    gap: 10, marginVertical: 4, position: "relative",
+  },
+  otpBox: {
+    width: 44, height: 52, borderRadius: 10,
+    backgroundColor: C.inputBg,
+    borderWidth: 1.5, borderColor: "transparent",
+    alignItems: "center", justifyContent: "center",
+  },
+  otpBoxActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.06)" },
+  otpBoxFilled: { borderColor: C.accent, backgroundColor: "#FFF" },
+  otpChar: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text },
+  otpHiddenInput: { position: "absolute", opacity: 0, width: 1, height: 1 },
 });
 
 const modalStyles = StyleSheet.create({
@@ -516,4 +828,3 @@ const modalStyles = StyleSheet.create({
   itemText: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   itemTextSelected: { color: C.accent, fontFamily: "Cairo_600SemiBold" },
 });
-

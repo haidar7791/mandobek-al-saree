@@ -34,7 +34,7 @@ import {
   type ApplicationVerifier,
   RecaptchaVerifier,
 } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -448,17 +448,33 @@ export default function LoginScreen() {
 
     setOtpSending(true);
     try {
-      // 1. Check Firestore for a registered account with this phone
-      const usersSnap = await getDocs(
-        query(collection(db, "users"), where("phone", "==", phone))
-      );
+      // 1. Normalise to E.164 for Firebase and build legacy search variants
+      const e164 = toE164(phone);
 
-      if (usersSnap.empty) {
+      // Derive raw local number (07xxxxxxxx) from any input format
+      const rawLocal = e164.startsWith("+964")
+        ? "0" + e164.slice(4)
+        : phone.startsWith("0") ? phone : phone;
+      const legacyEmail = rawLocal + "@sanad.app"; // old fake-email format
+
+      // 2. Search Firestore for the account in both new (E.164 phone field)
+      //    and old (@sanad.app email field) formats to support legacy accounts
+      const [byPhoneSnap, byLegacyEmailSnap] = await Promise.all([
+        getDocs(
+          query(collection(db, "users"), where("phone", "in", [e164, rawLocal]))
+        ),
+        getDocs(
+          query(collection(db, "users"), where("email", "==", legacyEmail))
+        ),
+      ]);
+
+      if (byPhoneSnap.empty && byLegacyEmailSnap.empty) {
         Alert.alert("خطأ", "رقم الهاتف غير مسجل لدينا");
+        setOtpSending(false);
         return;
       }
 
-      // 2. Resolve ApplicationVerifier
+      // 3. Resolve ApplicationVerifier
       let verifier: ApplicationVerifier;
       if (Platform.OS === "web") {
         // On web: use Firebase's built-in RecaptchaVerifier
@@ -481,13 +497,13 @@ export default function LoginScreen() {
         // On native: use our WebView-backed verifier
         if (!recaptchaRef.current) {
           Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
+          setOtpSending(false);
           return;
         }
         verifier = recaptchaRef.current.verifier;
       }
 
-      // 3. Send OTP
-      const e164 = toE164(phone);
+      // 4. Send OTP to the E.164 number
       const result = await signInWithPhoneNumber(auth, e164, verifier);
       setConfirmationResult(result);
       setOtpPhone(phone);
@@ -498,6 +514,7 @@ export default function LoginScreen() {
     } catch (err: any) {
       console.error("OTP send error:", err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setOtpSending(false); // explicit reset before finally for UI responsiveness
       const code: string = err?.code ?? "";
       if (code === "auth/invalid-phone-number") {
         Alert.alert("خطأ", "صيغة رقم الهاتف غير صحيحة");
@@ -506,6 +523,8 @@ export default function LoginScreen() {
       } else {
         Alert.alert("خطأ", "تعذّر إرسال رمز التحقق — يرجى المحاولة لاحقاً");
       }
+      // Reset verifier so next attempt gets a fresh one
+      webVerifierRef.current = null;
     } finally {
       setOtpSending(false);
     }
@@ -522,11 +541,27 @@ export default function LoginScreen() {
     setOtpVerifying(true);
     try {
       const credential = await confirmationResult.confirm(otpCode);
-      // Get idToken from the phone-auth user to prove identity to the server
-      const token = await credential.user.getIdToken();
-      setPhoneToken(token);
-      setOtpStep("newpass");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const phoneUid = credential.user.uid;
+
+      // Check if this Phone Auth UID owns a Firestore user document.
+      // If it does, this is a native Phone Auth account (registered without password)
+      // and the user is already signed in — send them straight to the dashboard.
+      // If not, this is the password-reset flow for an old email+password account
+      // and we need to collect the new password.
+      const userDocSnap = await getDoc(doc(db, "users", phoneUid));
+
+      if (userDocSnap.exists()) {
+        // Phone Auth user — already signed in
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        resetOtpFlow();
+        router.replace("/dashboard" as any);
+      } else {
+        // Old email+password account — show new-password step
+        const token = await credential.user.getIdToken();
+        setPhoneToken(token);
+        setOtpStep("newpass");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const code: string = err?.code ?? "";
