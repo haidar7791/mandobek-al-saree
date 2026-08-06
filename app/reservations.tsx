@@ -752,8 +752,19 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Product row: thumbnail (right) + name & price */}
+                  {/* Product row: thumbnail (left) + name & price */}
                   <View style={styles.poProductRow}>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                     <View style={styles.poProductInfo}>
                       <Text style={styles.poInfoLine} numberOfLines={2}>
                         <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
@@ -766,17 +777,6 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
                   </View>
 
                   {/* Buyer name */}
@@ -839,7 +839,7 @@ export default function ReservationsScreen() {
                     activeOpacity={0.85}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/chat", params: { peerId: order.buyerId, peerName: order.buyerName } } as any);
+                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
                     }}
                   >
                     <Feather name="message-circle" size={16} color="#FFF" />
@@ -908,8 +908,19 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Product row: thumbnail (right) + name & price */}
+                  {/* Product row: thumbnail (left) + name & price */}
                   <View style={styles.poProductRow}>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                     <View style={styles.poProductInfo}>
                       <Text style={styles.poInfoLine} numberOfLines={2}>
                         <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
@@ -922,17 +933,6 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
                   </View>
 
                   {/* Seller name */}
@@ -965,7 +965,7 @@ export default function ReservationsScreen() {
                     activeOpacity={0.85}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/chat", params: { peerId: order.sellerId, peerName: order.sellerName } } as any);
+                      router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
                     }}
                   >
                     <Feather name="message-circle" size={16} color="#FFF" />
