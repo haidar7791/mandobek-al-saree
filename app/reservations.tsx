@@ -9,6 +9,7 @@ import {
   Alert,
   Linking,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +29,7 @@ import {
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
   respondToProductOrder,
+  bulkDeleteProductOrders,
   ACTIVE_STATUSES,
   STATUS_LABELS,
   getSpecialtyLabel,
@@ -226,6 +228,11 @@ export default function ReservationsScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
+  // ── Product-order bulk selection (shared for myProducts + myOrders tabs) ──
+  const [productSelectMode, setProductSelectMode] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [productDeleting, setProductDeleting] = useState(false);
+
   const currentUid = auth.currentUser?.uid;
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -347,12 +354,16 @@ export default function ReservationsScreen() {
     return []; // myProducts / myOrders rendered separately
   }, [visibleRequests, tab]);
 
-  // Exit selection mode automatically if the user switches away from السجل,
-  // so a stray toolbar can never linger over the pending/active tabs.
+  // Exit service-request selection mode when leaving السجل tab
   useEffect(() => {
     if (tab !== "history") {
       setSelectionMode(false);
       setSelectedIds(new Set());
+    }
+    // Exit product-order selection mode when leaving product tabs
+    if (tab !== "myProducts" && tab !== "myOrders") {
+      setProductSelectMode(false);
+      setSelectedOrderIds(new Set());
     }
   }, [tab]);
 
@@ -442,8 +453,67 @@ export default function ReservationsScreen() {
     [visibleRequests, productOrders, buyerOrders]
   );
 
-  const pendingProductOrders = productOrders.filter((o) => o.status === "pending");
-  const otherProductOrders   = productOrders.filter((o) => o.status !== "pending");
+  const pendingProductOrders  = productOrders.filter((o) => o.status === "pending");
+  const otherProductOrders    = productOrders.filter((o) => o.status !== "pending");
+
+  /** IDs eligible for deletion in the current product tab */
+  const deletableOrderIds = useMemo(() => {
+    const source = tab === "myProducts" ? productOrders : buyerOrders;
+    return source
+      .filter((o) => o.status === "accepted" || o.status === "rejected")
+      .map((o) => o.id);
+  }, [tab, productOrders, buyerOrders]);
+
+  const allProductsSelected =
+    deletableOrderIds.length > 0 &&
+    deletableOrderIds.every((id) => selectedOrderIds.has(id));
+
+  const toggleOrderSelect = (id: string) => {
+    Haptics.selectionAsync();
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllOrders = () => {
+    Haptics.selectionAsync();
+    if (allProductsSelected) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(deletableOrderIds));
+    }
+  };
+
+  const handleDeleteSelectedOrders = () => {
+    if (!selectedOrderIds.size) return;
+    Alert.alert(
+      "تأكيد الحذف",
+      `هل تريد حذف ${selectedOrderIds.size} طلب؟ لا يمكن التراجع عن هذا الإجراء.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            setProductDeleting(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            try {
+              await bulkDeleteProductOrders(Array.from(selectedOrderIds));
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setProductSelectMode(false);
+              setSelectedOrderIds(new Set());
+            } catch {
+              Alert.alert("خطأ", "تعذّر حذف الطلبات، حاول مرة أخرى.");
+            } finally {
+              setProductDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleAccept = async (req: ServiceRequest) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -503,9 +573,32 @@ export default function ReservationsScreen() {
             {isArtisan ? "طلبات الخدمات والمنتجات" : "تتبّع طلباتك"}
           </Text>
         </View>
-        <View style={styles.iconBadge}>
-          <Ionicons name="calendar" size={20} color={C.accent} />
-        </View>
+        {/* Select-mode toggle — only shown on product tabs */}
+        {(tab === "myProducts" || tab === "myOrders") ? (
+          <TouchableOpacity
+            style={styles.iconBadge}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (productSelectMode) {
+                setProductSelectMode(false);
+                setSelectedOrderIds(new Set());
+              } else {
+                setProductSelectMode(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Feather
+              name={productSelectMode ? "x" : "check-square"}
+              size={20}
+              color={productSelectMode ? "#EF4444" : C.accent}
+            />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.iconBadge}>
+            <Ionicons name="calendar" size={20} color={C.accent} />
+          </View>
+        )}
       </LinearGradient>
 
       <View style={styles.tabsRow}>
@@ -546,6 +639,36 @@ export default function ReservationsScreen() {
           </Pressable>
           <Text style={styles.selectionCount}>تم تحديد {selectedIds.size} طلب</Text>
           <Pressable style={styles.selectionCancelBtn} onPress={handleCancelSelection} hitSlop={8}>
+            <Feather name="x" size={20} color={C.textSecondary} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* ── Product-order selection toolbar ── */}
+      {(tab === "myProducts" || tab === "myOrders") && productSelectMode ? (
+        <View style={styles.selectionBar}>
+          <Pressable
+            style={[styles.selectionTrashBtn, (productDeleting || selectedOrderIds.size === 0) && { opacity: 0.5 }]}
+            onPress={handleDeleteSelectedOrders}
+            disabled={productDeleting || selectedOrderIds.size === 0}
+          >
+            {productDeleting
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Feather name="trash-2" size={18} color="#FFF" />}
+          </Pressable>
+          <Pressable style={styles.selectAllBtn} onPress={handleSelectAllOrders}>
+            <Text style={styles.selectAllText}>
+              {allProductsSelected ? "إلغاء تحديد الكل" : `تحديد الكل (${deletableOrderIds.length})`}
+            </Text>
+          </Pressable>
+          <Text style={styles.selectionCount}>
+            {selectedOrderIds.size > 0 ? `تم تحديد ${selectedOrderIds.size}` : "الطلبات المعلقة غير قابلة للحذف"}
+          </Text>
+          <Pressable
+            style={styles.selectionCancelBtn}
+            onPress={() => { setProductSelectMode(false); setSelectedOrderIds(new Set()); }}
+            hitSlop={8}
+          >
             <Feather name="x" size={20} color={C.textSecondary} />
           </Pressable>
         </View>
@@ -624,65 +747,102 @@ export default function ReservationsScreen() {
             const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
               day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
             });
-            return (
-              <Animated.View entering={FadeInDown.springify()} style={styles.card}>
-                <View style={styles.productOrderHeaderRow}>
-                  <TouchableOpacity
-                    style={styles.buyerNameBtn}
-                    activeOpacity={0.75}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
-                    }}
-                  >
-                    <Feather name="user" size={15} color={C.accent} />
-                    <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
-                </View>
-                <View style={styles.productOrderStatusRow}>
-                  <Text style={styles.cardTime}>{date}</Text>
-                  <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
-                    <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
-                  </View>
-                </View>
-                {order.buyerPhone ? (
-                  <View style={styles.metaRow}>
-                    <Feather name="phone" size={13} color={C.textSecondary} />
-                    <Text style={styles.metaText}>{order.buyerPhone}</Text>
-                  </View>
-                ) : null}
-                {order.status === "pending" && (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      style={[styles.actionBtn, styles.rejectBtn]}
-                      onPress={() =>
-                        Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
-                          { text: "إلغاء", style: "cancel" },
-                          { text: "رفض", style: "destructive",
-                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected") },
-                        ])
-                      }
+            const canDelete = order.status === "accepted" || order.status === "rejected";
+            const isSelected = selectedOrderIds.has(order.id);
+            const price = (order.productPrice ?? (order as any).price) as number | undefined;
+
+            const cardNode = (
+              <Animated.View entering={FadeInDown.springify()}>
+                <View style={[styles.card, isSelected && styles.cardSelected]}>
+                  {/* Checkbox (select mode only) */}
+                  {productSelectMode && (
+                    <View style={styles.cardCheckboxRow}>
+                      <View style={[styles.checkbox, isSelected && styles.checkboxChecked, !canDelete && { opacity: 0.35 }]}>
+                        {isSelected && <Feather name="check" size={11} color="#FFF" />}
+                      </View>
+                      {!canDelete && (
+                        <Text style={styles.checkboxHint}>طلب معلّق — غير قابل للحذف</Text>
+                      )}
+                    </View>
+                  )}
+                  {/* Header row: buyer name ↔ product title */}
+                  <View style={styles.productOrderHeaderRow}>
+                    <TouchableOpacity
+                      style={styles.buyerNameBtn}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
+                      }}
                     >
-                      <Feather name="x" size={16} color="#FFF" />
-                      <Text style={styles.actionBtnText}>رفض</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.actionBtn, styles.acceptBtn]}
-                      onPress={() =>
-                        Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
-                          { text: "إلغاء", style: "cancel" },
-                          { text: "قبول",
-                            onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted") },
-                        ])
-                      }
-                    >
-                      <Feather name="check" size={16} color="#FFF" />
-                      <Text style={styles.actionBtnText}>قبول</Text>
-                    </Pressable>
+                      <Feather name="user" size={15} color={C.accent} />
+                      <Text style={styles.buyerNameText} numberOfLines={1}>{order.buyerName}</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
                   </View>
-                )}
+                  {/* Price */}
+                  <View style={styles.orderPriceRow}>
+                    <Text style={styles.orderPriceValue}>
+                      {price != null ? price.toLocaleString("ar-IQ") : "غير محدد"}
+                      {price != null ? <Text style={styles.orderPriceCurrency}> د.ع</Text> : null}
+                    </Text>
+                    <Text style={styles.orderPriceLabel}>السعر:</Text>
+                  </View>
+                  {/* Status + date */}
+                  <View style={styles.productOrderStatusRow}>
+                    <Text style={styles.cardTime}>{date}</Text>
+                    <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
+                      <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                    </View>
+                  </View>
+                  {order.buyerPhone ? (
+                    <View style={styles.metaRow}>
+                      <Feather name="phone" size={13} color={C.textSecondary} />
+                      <Text style={styles.metaText}>{order.buyerPhone}</Text>
+                    </View>
+                  ) : null}
+                  {order.status === "pending" && (
+                    <View style={styles.actionRow}>
+                      <Pressable
+                        style={[styles.actionBtn, styles.rejectBtn]}
+                        onPress={() =>
+                          Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
+                            { text: "إلغاء", style: "cancel" },
+                            { text: "رفض", style: "destructive",
+                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected") },
+                          ])
+                        }
+                      >
+                        <Feather name="x" size={16} color="#FFF" />
+                        <Text style={styles.actionBtnText}>رفض</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.actionBtn, styles.acceptBtn]}
+                        onPress={() =>
+                          Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
+                            { text: "إلغاء", style: "cancel" },
+                            { text: "قبول",
+                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted") },
+                          ])
+                        }
+                      >
+                        <Feather name="check" size={16} color="#FFF" />
+                        <Text style={styles.actionBtnText}>قبول</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
               </Animated.View>
+            );
+
+            if (!productSelectMode) return cardNode;
+            return (
+              <Pressable
+                onPress={() => canDelete && toggleOrderSelect(order.id)}
+                style={{ opacity: !canDelete && productSelectMode ? 0.6 : 1 }}
+              >
+                {cardNode}
+              </Pressable>
             );
           }}
           ListEmptyComponent={
@@ -702,7 +862,7 @@ export default function ReservationsScreen() {
           keyExtractor={(o) => o.id}
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: bottomPad + 20 },
+            { paddingBottom: bottomPad + (productSelectMode && selectedOrderIds.size > 0 ? 100 : 20) },
             buyerOrders.length === 0 && { flex: 1 },
           ]}
           renderItem={({ item: order }) => {
@@ -715,32 +875,67 @@ export default function ReservationsScreen() {
             const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
               day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
             });
-            return (
-              <Animated.View entering={FadeInDown.springify()} style={styles.card}>
-                {/* Title ↔ Status */}
-                <View style={styles.productOrderStatusRow}>
-                  <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
-                    <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+            const canDelete = order.status === "accepted" || order.status === "rejected";
+            const isSelected = selectedOrderIds.has(order.id);
+            const price = (order.productPrice ?? (order as any).price) as number | undefined;
+
+            const cardNode = (
+              <Animated.View entering={FadeInDown.springify()}>
+                <View style={[styles.card, isSelected && styles.cardSelected]}>
+                  {/* Checkbox (select mode only) */}
+                  {productSelectMode && (
+                    <View style={styles.cardCheckboxRow}>
+                      <View style={[styles.checkbox, isSelected && styles.checkboxChecked, !canDelete && { opacity: 0.35 }]}>
+                        {isSelected && <Feather name="check" size={11} color="#FFF" />}
+                      </View>
+                      {!canDelete && (
+                        <Text style={styles.checkboxHint}>طلب معلّق — غير قابل للحذف</Text>
+                      )}
+                    </View>
+                  )}
+                  {/* Title ↔ Status */}
+                  <View style={styles.productOrderStatusRow}>
+                    <View style={[styles.productOrderStatus, { backgroundColor: cfg.bg }]}>
+                      <Text style={[styles.productOrderStatusText, { color: cfg.color }]}>{cfg.label}</Text>
+                    </View>
+                    <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
                   </View>
-                  <Text style={styles.productOrderTitle} numberOfLines={2}>{order.productTitle}</Text>
+                  {/* Price */}
+                  <View style={styles.orderPriceRow}>
+                    <Text style={styles.orderPriceValue}>
+                      {price != null ? price.toLocaleString("ar-IQ") : "غير محدد"}
+                      {price != null ? <Text style={styles.orderPriceCurrency}> د.ع</Text> : null}
+                    </Text>
+                    <Text style={styles.orderPriceLabel}>السعر:</Text>
+                  </View>
+                  {/* Seller name (tappable) */}
+                  {order.sellerName ? (
+                    <TouchableOpacity
+                      style={styles.buyerNameBtn}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
+                      }}
+                    >
+                      <Feather name="shopping-bag" size={13} color={C.accent} />
+                      <Text style={styles.buyerNameText} numberOfLines={1}>{order.sellerName}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {/* Date */}
+                  <Text style={[styles.cardTime, { textAlign: "left" }]}>{date}</Text>
                 </View>
-                {/* Seller name (tappable) */}
-                {order.sellerName ? (
-                  <TouchableOpacity
-                    style={styles.buyerNameBtn}
-                    activeOpacity={0.75}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
-                    }}
-                  >
-                    <Feather name="shopping-bag" size={13} color={C.accent} />
-                    <Text style={styles.buyerNameText} numberOfLines={1}>{order.sellerName}</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {/* Date */}
-                <Text style={[styles.cardTime, { textAlign: "left" }]}>{date}</Text>
               </Animated.View>
+            );
+
+            if (!productSelectMode) return cardNode;
+            return (
+              <Pressable
+                onPress={() => canDelete && toggleOrderSelect(order.id)}
+                style={{ opacity: !canDelete && productSelectMode ? 0.6 : 1 }}
+              >
+                {cardNode}
+              </Pressable>
             );
           }}
           ListEmptyComponent={
@@ -751,6 +946,23 @@ export default function ReservationsScreen() {
             </View>
           }
         />
+      )}
+
+      {/* ── Bottom delete bar (product orders) ── */}
+      {(tab === "myProducts" || tab === "myOrders") && productSelectMode && selectedOrderIds.size > 0 && (
+        <View style={[styles.orderDeleteBar, { paddingBottom: bottomPad + 12 }]}>
+          <Text style={styles.orderDeleteBarCount}>{selectedOrderIds.size} طلب محدد</Text>
+          <TouchableOpacity
+            style={[styles.orderDeleteBarBtn, productDeleting && { opacity: 0.6 }]}
+            onPress={handleDeleteSelectedOrders}
+            disabled={productDeleting}
+            activeOpacity={0.85}
+          >
+            {productDeleting
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <><Feather name="trash-2" size={16} color="#FFF" /><Text style={styles.orderDeleteBarBtnText}>حذف المحدد</Text></>}
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -928,4 +1140,50 @@ const styles = StyleSheet.create({
   },
   productOrderStatus: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
   productOrderStatusText: { fontSize: 11, fontFamily: "Cairo_600SemiBold" },
+
+  // ── Price row ──
+  orderPriceRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 6,
+  },
+  orderPriceLabel: {
+    fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary,
+  },
+  orderPriceValue: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: "#16A34A",
+  },
+  orderPriceCurrency: {
+    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#16A34A",
+  },
+
+  // ── Card checkbox row ──
+  cardCheckboxRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 8,
+    marginBottom: 2,
+  },
+  checkboxHint: {
+    fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted,
+  },
+
+  // ── Bottom delete bar (product orders) ──
+  orderDeleteBar: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 14,
+    backgroundColor: C.card,
+    borderTopWidth: 1, borderTopColor: C.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
+  },
+  orderDeleteBarCount: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text,
+  },
+  orderDeleteBarBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#EF4444", borderRadius: 12,
+    paddingHorizontal: 20, paddingVertical: 12,
+  },
+  orderDeleteBarBtnText: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF",
+  },
 });
