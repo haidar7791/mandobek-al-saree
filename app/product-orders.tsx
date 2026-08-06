@@ -59,7 +59,22 @@ function ProductThumb({ uri }: { uri?: string }) {
 }
 
 /* ─────────────────────────────────────────────
-   SellerCard — for "طلباتي" (My Purchases) tab
+   PriceDisplay — shared formatted price helper
+───────────────────────────────────────────── */
+function PriceDisplay({ order }: { order: ProductOrder }) {
+  const raw = order.productPrice ?? (order as any).price;
+  return (
+    <View style={styles.pricePill}>
+      <Text style={styles.pricePillText}>
+        {raw != null ? Number(raw).toLocaleString("ar-IQ") : "غير محدد"}
+      </Text>
+      {raw != null && <Text style={styles.pricePillCurrency}>د.ع</Text>}
+    </View>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   PurchaseCard — "طلباتي" (My Orders) tab
 ───────────────────────────────────────────── */
 function PurchaseCard({ order }: { order: ProductOrder }) {
   const cfg = BUYER_STATUS[order.status];
@@ -67,61 +82,72 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
 
+  const goToProfile = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: "/user-profile",
+      params: { userId: order.sellerId, userName: order.sellerName ?? "" },
+    } as any);
+  };
+
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
-        {/* ── Top row: thumbnail + product info ── */}
+
+        {/* ── Top section: thumbnail + name + price ── */}
         <View style={styles.cardTopRow}>
           <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>السعر:</Text>
-              <Text style={styles.priceText}>
-                {(order.productPrice ?? (order as any).price) != null
-                  ? Number(order.productPrice ?? (order as any).price).toLocaleString("ar-IQ")
-                  : "غير محدد"}
-                {(order.productPrice ?? (order as any).price) != null && (
-                  <Text style={styles.currencyText}> د.ع</Text>
-                )}
-              </Text>
-            </View>
+            <PriceDisplay order={order} />
           </View>
         </View>
 
-        {/* ── Seller name (tappable) ── */}
-        {order.sellerName ? (
-          <TouchableOpacity
-            style={styles.personBtn}
-            activeOpacity={0.75}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push({
-                pathname: "/user-profile",
-                params: { userId: order.sellerId, userName: order.sellerName },
-              } as any);
-            }}
-          >
-            <Text style={styles.personBtnText} numberOfLines={1}>{order.sellerName}</Text>
-            <Feather name="user" size={14} color={C.accent} />
-            <Text style={styles.personBtnLabel}>البائع:</Text>
-          </TouchableOpacity>
-        ) : null}
+        {/* ── Divider ── */}
+        <View style={styles.divider} />
 
-        {/* ── Date + status badge ── */}
-        <View style={styles.statusRow}>
+        {/* ── Seller info row ── */}
+        <View style={styles.personRow}>
+          <View style={styles.personAvatar}>
+            <Feather name="user" size={15} color={C.accent} />
+          </View>
+          <View style={styles.personMeta}>
+            <Text style={styles.personRoleLabel}>البائع</Text>
+            <Text style={styles.personName} numberOfLines={1}>
+              {order.sellerName || "—"}
+            </Text>
+          </View>
+          {/* ── Status badge inline ── */}
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
             <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
-          <Text style={styles.dateText}>{date}</Text>
         </View>
+
+        <Text style={styles.dateText}>{date}</Text>
+
+        {/* ── Full-width contact button ── */}
+        <TouchableOpacity
+          style={styles.contactBtn}
+          activeOpacity={0.82}
+          onPress={goToProfile}
+        >
+          <LinearGradient
+            colors={[C.accent, "#B8952A"]}
+            style={styles.contactBtnGradient}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          >
+            <Feather name="message-circle" size={16} color={C.primary} />
+            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
       </View>
     </Animated.View>
   );
 }
 
 /* ─────────────────────────────────────────────
-   SaleCard — for "منتجاتي" (My Sales) tab
+   SaleCard — "منتجاتي" (My Products) tab
 ───────────────────────────────────────────── */
 function SaleCard({ order, onAccept, onReject }: {
   order: ProductOrder;
@@ -141,71 +167,65 @@ function SaleCard({ order, onAccept, onReject }: {
     finally { setActing(false); }
   };
 
+  const goToProfile = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: "/user-profile",
+      params: { userId: order.buyerId, userName: order.buyerName },
+    } as any);
+  };
+
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
-        {/* ── Top row: thumbnail + product info ── */}
+
+        {/* ── Top section: thumbnail + title + price ── */}
         <View style={styles.cardTopRow}>
           <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>السعر:</Text>
-              <Text style={styles.priceText}>
-                {(order.productPrice ?? (order as any).price) != null
-                  ? Number(order.productPrice ?? (order as any).price).toLocaleString("ar-IQ")
-                  : "غير محدد"}
-                {(order.productPrice ?? (order as any).price) != null && (
-                  <Text style={styles.currencyText}> د.ع</Text>
-                )}
-              </Text>
-            </View>
+            <PriceDisplay order={order} />
           </View>
         </View>
 
-        {/* ── Buyer name (tappable) ── */}
-        <TouchableOpacity
-          style={styles.personBtn}
-          activeOpacity={0.75}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push({
-              pathname: "/user-profile",
-              params: { userId: order.buyerId, userName: order.buyerName },
-            } as any);
-          }}
-        >
-          <Text style={styles.personBtnText} numberOfLines={1}>{order.buyerName}</Text>
-          <Feather name="user" size={14} color={C.accent} />
-          <Text style={styles.personBtnLabel}>المشتري:</Text>
-        </TouchableOpacity>
+        {/* ── Divider ── */}
+        <View style={styles.divider} />
 
-        {/* ── Date + status badge ── */}
-        <View style={styles.statusRow}>
+        {/* ── Buyer info row ── */}
+        <View style={styles.personRow}>
+          <View style={styles.personAvatar}>
+            <Feather name="user" size={15} color={C.accent} />
+          </View>
+          <View style={styles.personMeta}>
+            <Text style={styles.personRoleLabel}>المشتري</Text>
+            <Text style={styles.personName} numberOfLines={1}>{order.buyerName}</Text>
+          </View>
+          {/* ── Status badge inline ── */}
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
             <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
-          <Text style={styles.dateText}>{date}</Text>
         </View>
 
-        {/* ── Contact details ── */}
-        <View style={styles.contactSection}>
-          <Text style={styles.contactLabel}>بيانات التواصل</Text>
-          <View style={styles.contactRow}>
+        {/* ── Date + contact details ── */}
+        <Text style={styles.dateText}>{date}</Text>
+
+        {order.buyerPhone ? (
+          <View style={styles.phoneRow}>
             <Feather name="phone" size={13} color={C.textSecondary} />
-            <Text style={styles.contactText}>{order.buyerPhone || "غير متوفر"}</Text>
+            <Text style={styles.phoneText}>{order.buyerPhone}</Text>
           </View>
-          {order.buyerLocation && (
-            <View style={styles.contactRow}>
-              <Feather name="map-pin" size={13} color={C.accent} />
-              <Text style={[styles.contactText, { color: C.accent }]}>
-                {order.buyerLocation.lat.toFixed(4)}, {order.buyerLocation.lng.toFixed(4)}
-              </Text>
-            </View>
-          )}
-        </View>
+        ) : null}
 
-        {/* ── Action buttons (pending only) ── */}
+        {order.buyerLocation && (
+          <View style={styles.phoneRow}>
+            <Feather name="map-pin" size={13} color={C.accent} />
+            <Text style={[styles.phoneText, { color: C.accent }]}>
+              {order.buyerLocation.lat.toFixed(4)}, {order.buyerLocation.lng.toFixed(4)}
+            </Text>
+          </View>
+        )}
+
+        {/* ── Accept / Reject (pending only) ── */}
         {order.status === "pending" && (
           <View style={styles.actions}>
             <TouchableOpacity
@@ -255,6 +275,23 @@ function SaleCard({ order, onAccept, onReject }: {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* ── Full-width contact button ── */}
+        <TouchableOpacity
+          style={styles.contactBtn}
+          activeOpacity={0.82}
+          onPress={goToProfile}
+        >
+          <LinearGradient
+            colors={[C.accent, "#B8952A"]}
+            style={styles.contactBtnGradient}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          >
+            <Feather name="message-circle" size={16} color={C.primary} />
+            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
       </View>
     </Animated.View>
   );
@@ -675,51 +712,67 @@ const styles = StyleSheet.create({
 
   // ── Card ──
   card: {
-    backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 12,
+    backgroundColor: C.card, borderRadius: 18, padding: 16, gap: 12,
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    shadowOpacity: 0.08, shadowRadius: 10, elevation: 4,
   },
 
   // Top row: thumbnail + product info
   cardTopRow: {
     flexDirection: "row-reverse", alignItems: "flex-start", gap: 12,
   },
-  productThumb: { width: 60, height: 60, borderRadius: 12 },
+  productThumb: { width: 68, height: 68, borderRadius: 14 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
-  productInfo: { flex: 1, gap: 4, alignItems: "flex-end" },
-  productTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  priceRow: { flexDirection: "row-reverse", alignItems: "center", gap: 4, marginTop: 2 },
-  priceLabel: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
-  priceText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#16A34A", textAlign: "right" },
-  currencyText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#16A34A" },
+  productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
+  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
 
-  // Person button (buyer / seller)
-  personBtn: {
-    flexDirection: "row-reverse", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(201,168,76,0.08)",
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: "rgba(201,168,76,0.2)",
+  // Price pill
+  pricePill: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 4,
+    alignSelf: "flex-end",
+    backgroundColor: "rgba(22,163,74,0.1)",
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
   },
-  personBtnLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-  personBtnText: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  pricePillText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: "#16A34A" },
+  pricePillCurrency: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: "#16A34A" },
 
-  // Status row
-  statusRow: {
-    flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center",
+  // Divider
+  divider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
+
+  // Person info row
+  personRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 10,
   },
-  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
+  personAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.25)",
+  },
+  personMeta: { flex: 1, alignItems: "flex-end" },
+  personRoleLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  personName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+
+  // Status badge
+  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   statusText: { fontSize: 12, fontFamily: "Cairo_600SemiBold" },
-  dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
 
-  // Contact section
-  contactSection: {
-    backgroundColor: C.inputBg, borderRadius: 12, padding: 12, gap: 8,
+  // Phone / location rows
+  phoneRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  phoneText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+
+  // Full-width contact button
+  contactBtn: { borderRadius: 14, overflow: "hidden", marginTop: 2 },
+  contactBtnGradient: {
+    flexDirection: "row-reverse", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 14,
   },
-  contactLabel: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary, textAlign: "right" },
-  contactRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
-  contactText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text },
+  contactBtnText: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
+  },
 
-  // Actions
+  // Actions (accept / reject)
   actions: { flexDirection: "row", gap: 10 },
   rejectBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
