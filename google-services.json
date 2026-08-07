@@ -15,14 +15,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "911663879269-2dojsaalt8n57fjh19q0laeqspmmvu0c.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.haidar.forus",
-            "certificate_hash": "477476fc89a2ca47e1ec889a1b98450d7d30fb31"
-          }
-        },
-        {
           "client_id": "911663879269-mnbsr6beobcai4doemos48askj71b9ml.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -34,6 +34,12 @@ import { firebaseConfig } from "@/lib/firebase";
 export interface FirebaseRecaptchaHandle {
   /** Implements ApplicationVerifier — pass to signInWithPhoneNumber */
   readonly verifier: ApplicationVerifier;
+  /**
+   * Flush the cached token/error and force the WebView to remount so a fresh
+   * reCAPTCHA token is generated on the next verify() call.
+   * Call this in the catch block after a failed signInWithPhoneNumber attempt.
+   */
+  reset(): void;
 }
 
 // ─── Internal verifier class ──────────────────────────────────────────────────
@@ -207,6 +213,11 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
 
   useImperativeHandle(ref, () => ({
     verifier: verifierRef.current,
+    reset() {
+      console.log("[FirebaseRecaptcha] reset() called — flushing verifier and remounting WebView");
+      verifierRef.current.reset();
+      setWebviewKey((k) => k + 1);
+    },
   }));
 
   const handleMessage = useCallback((event: WebViewMessageEvent) => {

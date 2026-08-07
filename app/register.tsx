@@ -329,21 +329,45 @@ export default function RegisterScreen() {
       } catch (err: any) {
         const code: string = err?.code ?? "unknown";
         const msg: string = err?.message ?? String(err);
-        console.error("[OTP-Register] ERROR — code:", code, "message:", msg);
+        // ── سجّل الخطأ الكامل القادم من Firebase لمعرفة السبب الفعلي ──
+        console.error("[OTP-Register] ERROR ▼");
+        console.error("  code   :", code);
+        console.error("  message:", msg);
+        console.error("  raw    :", err);
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        // Reset verifier so next attempt gets a fresh one
+
+        // ── إعادة تهيئة الـ verifier لضمان نجاح المحاولة التالية ──
+        // Web verifier
         webVerifierRef.current = null;
+        // Native verifier — استدعاء آمن يتحقق من وجود الدالة أولاً
+        if (
+          recaptchaRef.current !== null &&
+          typeof (recaptchaRef.current as any).reset === "function"
+        ) {
+          (recaptchaRef.current as any).reset();
+        }
 
         if (code === "auth/invalid-phone-number") {
-          Alert.alert("خطأ في الرقم", "صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07");
+          Alert.alert(
+            "خطأ في الرقم",
+            `صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07\n\n(${code})`
+          );
         } else if (code === "auth/too-many-requests") {
-          Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة");
+          Alert.alert(
+            "محاولات كثيرة",
+            `تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة\n\n(${code})`
+          );
         } else if (code === "timeout") {
-          Alert.alert("انتهى الوقت", "لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً");
+          Alert.alert(
+            "انتهى الوقت",
+            `لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً\n\n(${code})`
+          );
         } else {
+          // عرض رسالة Firebase الأصلية كاملةً لتشخيص أي خطأ غير معروف
           Alert.alert(
             "تعذّر إرسال رمز التحقق",
-            `يرجى المحاولة لاحقاً\n\n(${code})`
+            `${msg}\n\n(${code})`
           );
         }
       } finally {
