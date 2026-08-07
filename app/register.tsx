@@ -337,10 +337,6 @@ export default function RegisterScreen() {
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
-        // ── إعادة تهيئة الـ verifier لضمان نجاح المحاولة التالية ──
-        // يكفي إعادة تعيين الـ ref إلى null ليُنشأ verifier جديد في المحاولة القادمة
-        webVerifierRef.current = null;
-
         if (code === "auth/invalid-phone-number") {
           Alert.alert(
             "خطأ في الرقم",
