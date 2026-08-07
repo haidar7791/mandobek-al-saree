@@ -79,6 +79,22 @@ function toE164(phone: string): string {
   return "+964" + t;
 }
 
+/**
+ * Wraps a Promise with a hard timeout so it can never hang indefinitely.
+ * Throws an Error with code "timeout" if the promise doesn't settle in time.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
+      const err: any = new Error(`[${label}] timed out after ${ms / 1000}s`);
+      err.code = "timeout";
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 interface SavedCreds {
   contact: string;
   password: string;
@@ -448,8 +464,9 @@ export default function LoginScreen() {
 
     setOtpSending(true);
     try {
-      // 1. Normalise to E.164 for Firebase and build legacy search variants
+      // 1. Normalise to E.164 — log both raw and formatted for diagnosis
       const e164 = toE164(phone);
+      console.log("[OTP-Login] step 1 — phone input:", phone, "→ E.164:", e164);
 
       // Derive raw local number (07xxxxxxxx) from any input format
       const rawLocal = e164.startsWith("+964")
@@ -459,6 +476,7 @@ export default function LoginScreen() {
 
       // 2. Search Firestore for the account in both new (E.164 phone field)
       //    and old (@sanad.app email field) formats to support legacy accounts
+      console.log("[OTP-Login] step 2 — querying Firestore for:", e164, rawLocal);
       const [byPhoneSnap, byLegacyEmailSnap] = await Promise.all([
         getDocs(
           query(collection(db, "users"), where("phone", "in", [e164, rawLocal]))
@@ -467,17 +485,17 @@ export default function LoginScreen() {
           query(collection(db, "users"), where("email", "==", legacyEmail))
         ),
       ]);
+      console.log("[OTP-Login] step 2 — byPhone:", byPhoneSnap.size, "byLegacy:", byLegacyEmailSnap.size);
 
       if (byPhoneSnap.empty && byLegacyEmailSnap.empty) {
         Alert.alert("خطأ", "رقم الهاتف غير مسجل لدينا");
-        setOtpSending(false);
-        return;
+        return; // finally will reset setOtpSending
       }
 
       // 3. Resolve ApplicationVerifier
+      console.log("[OTP-Login] step 3 — resolving verifier, platform:", Platform.OS);
       let verifier: ApplicationVerifier;
       if (Platform.OS === "web") {
-        // On web: use Firebase's built-in RecaptchaVerifier
         let container = document.getElementById(webRecaptchaContainerId);
         if (!container) {
           container = document.createElement("div");
@@ -494,17 +512,27 @@ export default function LoginScreen() {
         }
         verifier = webVerifierRef.current;
       } else {
-        // On native: use our WebView-backed verifier
         if (!recaptchaRef.current) {
           Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
-          setOtpSending(false);
-          return;
+          return; // finally will reset setOtpSending
         }
         verifier = recaptchaRef.current.verifier;
+        console.log("[OTP-Login] step 3 — native verifier type:", verifier?.type ?? "MISSING");
+        if (!verifier) {
+          Alert.alert("خطأ", "خطأ داخلي في reCAPTCHA — يرجى إغلاق التطبيق وإعادة فتحه");
+          return;
+        }
       }
 
-      // 4. Send OTP to the E.164 number
-      const result = await signInWithPhoneNumber(auth, e164, verifier);
+      // 4. Send OTP — with a 30-second hard timeout so it can never hang
+      console.log("[OTP-Login] step 4 — calling signInWithPhoneNumber for", e164);
+      const result = await withTimeout(
+        signInWithPhoneNumber(auth, e164, verifier),
+        30_000,
+        "signInWithPhoneNumber"
+      );
+      console.log("[OTP-Login] step 4 — OTP sent successfully ✓");
+
       setConfirmationResult(result);
       setOtpPhone(phone);
       setOtpCode("");
@@ -512,19 +540,25 @@ export default function LoginScreen() {
       setCountdown(RESEND_COUNTDOWN);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
-      console.error("OTP send error:", err);
+      const code: string = err?.code ?? "unknown";
+      const msg: string = err?.message ?? String(err);
+      console.error("[OTP-Login] ERROR — code:", code, "message:", msg);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setOtpSending(false); // explicit reset before finally for UI responsiveness
-      const code: string = err?.code ?? "";
-      if (code === "auth/invalid-phone-number") {
-        Alert.alert("خطأ", "صيغة رقم الهاتف غير صحيحة");
-      } else if (code === "auth/too-many-requests") {
-        Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً، يرجى المحاولة لاحقاً");
-      } else {
-        Alert.alert("خطأ", "تعذّر إرسال رمز التحقق — يرجى المحاولة لاحقاً");
-      }
-      // Reset verifier so next attempt gets a fresh one
+      // Reset web verifier so next attempt gets a fresh one
       webVerifierRef.current = null;
+
+      if (code === "auth/invalid-phone-number") {
+        Alert.alert("خطأ في الرقم", "صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07");
+      } else if (code === "auth/too-many-requests") {
+        Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة");
+      } else if (code === "timeout") {
+        Alert.alert("انتهى الوقت", "لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً");
+      } else {
+        Alert.alert(
+          "تعذّر إرسال رمز التحقق",
+          `يرجى المحاولة لاحقاً\n\n(${code})`
+        );
+      }
     } finally {
       setOtpSending(false);
     }

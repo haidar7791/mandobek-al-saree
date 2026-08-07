@@ -6,12 +6,20 @@
  * we render an invisible reCAPTCHA inside a hidden WebView that communicates
  * the token back via postMessage.
  *
- * On web (Platform.OS === 'web') we use Firebase's native RecaptchaVerifier
- * and this component is not needed.
+ * Root-cause fix (v2):
+ *   The WebView auto-fires reCAPTCHA on load and posts the token immediately.
+ *   Previously, _resolve was still null at that moment so the token was silently
+ *   dropped, leaving every subsequent verify() Promise hanging forever.
+ *   Now we cache the token (or error) so verify() can return it instantly, and
+ *   we reload the WebView whenever a fresh token is needed (e.g. resend).
+ *
+ * On web (Platform.OS === 'web') use Firebase's native RecaptchaVerifier instead.
  */
 
 import React, {
   useRef,
+  useState,
+  useEffect,
   forwardRef,
   useImperativeHandle,
   useCallback,
@@ -33,10 +41,43 @@ export interface FirebaseRecaptchaHandle {
 class WebViewRecaptchaVerifier implements ApplicationVerifier {
   readonly type = "recaptcha";
 
+  // Pending verify() callbacks
   private _resolve: ((token: string) => void) | null = null;
   private _reject: ((err: Error) => void) | null = null;
 
+  // Cache for tokens/errors that arrive before verify() is called
+  private _cachedToken: string | null = null;
+  private _cachedError: string | null = null;
+
+  /**
+   * Called by the component when it needs to reload the WebView to
+   * generate a new reCAPTCHA token (e.g. resend scenario).
+   */
+  _onNeedRefresh: (() => void) | null = null;
+
   verify(): Promise<string> {
+    console.log("[RecaptchaVerifier] verify() called");
+
+    // ── Case 1: token already arrived before verify() was called ──
+    if (this._cachedToken) {
+      const token = this._cachedToken;
+      this._cachedToken = null;
+      console.log("[RecaptchaVerifier] returning cached token ✓");
+      return Promise.resolve(token);
+    }
+
+    // ── Case 2: error already arrived before verify() was called ──
+    if (this._cachedError) {
+      const msg = this._cachedError;
+      this._cachedError = null;
+      console.warn("[RecaptchaVerifier] returning cached error:", msg);
+      return Promise.reject(new Error(msg));
+    }
+
+    // ── Case 3: no token yet — reload WebView to trigger a fresh one ──
+    console.log("[RecaptchaVerifier] no cached token; requesting WebView refresh");
+    this._onNeedRefresh?.();
+
     return new Promise<string>((resolve, reject) => {
       this._resolve = resolve;
       this._reject = reject;
@@ -44,19 +85,36 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
   }
 
   _onToken(token: string) {
+    console.log("[RecaptchaVerifier] _onToken received, length:", token.length);
     if (this._resolve) {
+      // verify() is already waiting — resolve it immediately
       this._resolve(token);
       this._resolve = null;
       this._reject = null;
+    } else {
+      // verify() hasn't been called yet — cache for when it is
+      console.log("[RecaptchaVerifier] caching early token for later use");
+      this._cachedToken = token;
     }
   }
 
   _onError(message: string) {
+    console.warn("[RecaptchaVerifier] _onError:", message);
     if (this._reject) {
       this._reject(new Error(message));
       this._resolve = null;
       this._reject = null;
+    } else {
+      this._cachedError = message;
     }
+  }
+
+  /** Flush all pending state (call before reloading WebView) */
+  reset() {
+    this._resolve = null;
+    this._reject = null;
+    this._cachedToken = null;
+    this._cachedError = null;
   }
 }
 
@@ -75,6 +133,9 @@ function buildHtml(config: typeof firebaseConfig): string {
 <body>
   <div id="recaptcha-container"></div>
   <script>
+    function postMsg(obj) {
+      try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {}
+    }
     try {
       var apps = firebase.apps;
       var app = apps.length > 0
@@ -88,14 +149,10 @@ function buildHtml(config: typeof firebaseConfig): string {
         {
           size: 'invisible',
           callback: function(token) {
-            window.ReactNativeWebView.postMessage(
-              JSON.stringify({ type: 'token', token: token })
-            );
+            postMsg({ type: 'token', token: token });
           },
           'expired-callback': function() {
-            window.ReactNativeWebView.postMessage(
-              JSON.stringify({ type: 'error', message: 'reCAPTCHA expired — please try again' })
-            );
+            postMsg({ type: 'error', message: 'reCAPTCHA expired — please try again' });
           }
         }
       );
@@ -103,18 +160,12 @@ function buildHtml(config: typeof firebaseConfig): string {
       verifier.render().then(function() {
         return verifier.verify();
       }).then(function(token) {
-        window.ReactNativeWebView.postMessage(
-          JSON.stringify({ type: 'token', token: token })
-        );
+        postMsg({ type: 'token', token: token });
       }).catch(function(err) {
-        window.ReactNativeWebView.postMessage(
-          JSON.stringify({ type: 'error', message: err.message || 'reCAPTCHA failed' })
-        );
+        postMsg({ type: 'error', message: err.message || 'reCAPTCHA failed' });
       });
     } catch(e) {
-      window.ReactNativeWebView.postMessage(
-        JSON.stringify({ type: 'error', message: e.message || 'init error' })
-      );
+      postMsg({ type: 'error', message: e.message || 'init error' });
     }
   </script>
 </body>
@@ -138,6 +189,21 @@ function buildHtml(config: typeof firebaseConfig): string {
  */
 const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
   const verifierRef = useRef(new WebViewRecaptchaVerifier());
+  // Incrementing this key forces the WebView to fully remount and re-fire reCAPTCHA
+  const [webviewKey, setWebviewKey] = useState(0);
+
+  // Wire the refresh callback into the verifier
+  useEffect(() => {
+    const v = verifierRef.current;
+    v._onNeedRefresh = () => {
+      console.log("[FirebaseRecaptcha] remounting WebView for fresh token");
+      v.reset();
+      setWebviewKey((k) => k + 1);
+    };
+    return () => {
+      v._onNeedRefresh = null;
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     verifier: verifierRef.current,
@@ -163,11 +229,11 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
   return (
     <View style={styles.hidden} pointerEvents="none">
       <WebView
+        key={webviewKey}
         style={styles.webview}
         source={{ html: buildHtml(firebaseConfig) }}
         onMessage={handleMessage}
         javaScriptEnabled
-        // Don't let the WebView steal focus
         focusable={false}
         accessible={false}
       />

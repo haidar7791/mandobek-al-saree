@@ -70,6 +70,22 @@ function toE164(phone: string): string {
   return "+964" + t;
 }
 
+/**
+ * Wraps a Promise with a hard timeout so it can never hang indefinitely.
+ * Throws an Error with code "timeout" if the promise doesn't settle in time.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
+      const err: any = new Error(`[${label}] timed out after ${ms / 1000}s`);
+      err.code = "timeout";
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const C = Colors.light;
 
 // ─── InputField ───────────────────────────────────────────────────────────────
@@ -258,11 +274,15 @@ export default function RegisterScreen() {
       // ── Phone registration: send OTP via Firebase Phone Auth ──
       setRegOtpSending(true);
       try {
+        // 1. Normalise to E.164 — log both raw and formatted for diagnosis
+        const e164 = toE164(rawContact);
+        console.log("[OTP-Register] step 1 — phone input:", rawContact, "→ E.164:", e164);
+
         const location = await requestLocation();
         setSavedLocation(location);
 
-        const e164 = toE164(rawContact);
-
+        // 2. Resolve ApplicationVerifier
+        console.log("[OTP-Register] step 2 — resolving verifier, platform:", Platform.OS);
         let verifier: ApplicationVerifier;
         if (Platform.OS === "web") {
           let container = document.getElementById("reg-recaptcha-container");
@@ -283,28 +303,49 @@ export default function RegisterScreen() {
         } else {
           if (!recaptchaRef.current) {
             Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
-            return;
+            return; // finally will reset setRegOtpSending
           }
           verifier = recaptchaRef.current.verifier;
+          console.log("[OTP-Register] step 2 — native verifier type:", verifier?.type ?? "MISSING");
+          if (!verifier) {
+            Alert.alert("خطأ", "خطأ داخلي في reCAPTCHA — يرجى إغلاق التطبيق وإعادة فتحه");
+            return;
+          }
         }
 
-        const confirmation = await signInWithPhoneNumber(auth, e164, verifier);
+        // 3. Send OTP — with a 30-second hard timeout so it can never hang
+        console.log("[OTP-Register] step 3 — calling signInWithPhoneNumber for", e164);
+        const confirmation = await withTimeout(
+          signInWithPhoneNumber(auth, e164, verifier),
+          30_000,
+          "signInWithPhoneNumber"
+        );
+        console.log("[OTP-Register] step 3 — OTP sent successfully ✓");
+
         setRegConfirmation(confirmation);
         setRegOtpCode("");
         setRegOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err: any) {
+        const code: string = err?.code ?? "unknown";
+        const msg: string = err?.message ?? String(err);
+        console.error("[OTP-Register] ERROR — code:", code, "message:", msg);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const code: string = err?.code ?? "";
-        if (code === "auth/invalid-phone-number") {
-          Alert.alert("خطأ", "صيغة رقم الهاتف غير صحيحة");
-        } else if (code === "auth/too-many-requests") {
-          Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً، يرجى المحاولة لاحقاً");
-        } else {
-          Alert.alert("خطأ", "تعذّر إرسال رمز التحقق — يرجى المحاولة لاحقاً");
-        }
         // Reset verifier so next attempt gets a fresh one
         webVerifierRef.current = null;
+
+        if (code === "auth/invalid-phone-number") {
+          Alert.alert("خطأ في الرقم", "صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07");
+        } else if (code === "auth/too-many-requests") {
+          Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة");
+        } else if (code === "timeout") {
+          Alert.alert("انتهى الوقت", "لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً");
+        } else {
+          Alert.alert(
+            "تعذّر إرسال رمز التحقق",
+            `يرجى المحاولة لاحقاً\n\n(${code})`
+          );
+        }
       } finally {
         setRegOtpSending(false);
       }
