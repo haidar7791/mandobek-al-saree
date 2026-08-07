@@ -43,36 +43,30 @@ import Colors from "@/constants/colors";
 /**
  * Returns the base URL of the Express server.
  * Priority:
- *  1. EXPO_PUBLIC_DOMAIN env var (if set)
- *  2. Metro packager host from expo-constants (works on physical devices via Replit proxy)
- *  3. Relative "/" (web fallback)
+ *  1. replitDomain baked into app.config.js extra at Metro startup (most reliable)
+ *  2. EXPO_PUBLIC_DOMAIN env var (if explicitly set)
+ *  3. Relative "/" (web fallback — works via Vite/Express proxy on web)
+ *
+ * NOTE: We intentionally do NOT use Constants.expoConfig.hostUri because
+ * Metro is started with --localhost, making hostUri always "127.0.0.1".
  */
 function getServerUrl(): string {
-  // 1. Explicit env var
+  // 1. Baked-in Replit domain from app.config.js (process.env.REPLIT_DEV_DOMAIN at Metro start)
+  const replitDomain: string | null = (Constants.expoConfig as any)?.extra?.replitDomain;
+  if (replitDomain) {
+    console.log("[getServerUrl] using baked replitDomain:", replitDomain);
+    return `https://${replitDomain}/`;
+  }
+
+  // 2. EXPO_PUBLIC_DOMAIN env var fallback
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   if (envDomain) {
     const clean = envDomain.replace(/\/$/, "");
     return clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
   }
 
-  // 2. Derive from Metro packager host (baked in by Expo at bundle time)
-  const hostUri: string | undefined =
-    (Constants.expoConfig as any)?.hostUri ??
-    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ??
-    (Constants as any).manifest?.debuggerHost;
-
-  if (hostUri) {
-    // hostUri looks like "abc.pike.replit.dev" or "192.168.1.x:8081"
-    const hostname = hostUri.split(":")[0];
-    if (hostname.includes("replit.dev") || hostname.includes("repl.co")) {
-      // Replit proxies all traffic through HTTPS on standard port — no :5000 needed
-      return `https://${hostname}/`;
-    }
-    // Local network: Metro runs on :8081, Express on :5000
-    return `http://${hostname}:5000/`;
-  }
-
-  // 3. Web fallback — relative URL works via Vite/Express proxy
+  // 3. Web fallback
+  console.warn("[getServerUrl] no domain found, falling back to relative URL");
   return "/";
 }
 
