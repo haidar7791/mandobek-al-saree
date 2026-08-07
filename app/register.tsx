@@ -338,15 +338,8 @@ export default function RegisterScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
         // ── إعادة تهيئة الـ verifier لضمان نجاح المحاولة التالية ──
-        // Web verifier
+        // يكفي إعادة تعيين الـ ref إلى null ليُنشأ verifier جديد في المحاولة القادمة
         webVerifierRef.current = null;
-        // Native verifier — استدعاء آمن يتحقق من وجود الدالة أولاً
-        if (
-          recaptchaRef.current !== null &&
-          typeof (recaptchaRef.current as any).reset === "function"
-        ) {
-          (recaptchaRef.current as any).reset();
-        }
 
         if (code === "auth/invalid-phone-number") {
           Alert.alert(
