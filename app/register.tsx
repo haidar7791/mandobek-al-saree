@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
+import { fetch } from "expo/fetch";
+import { getApiUrl } from "@/lib/query-client";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
@@ -253,13 +255,21 @@ export default function RegisterScreen() {
         const location = await requestLocation();
         setSavedLocation(location);
 
-        console.log("[OTP-Register] sending WhatsApp OTP to:", rawContact);
-        const res = await fetch("/api/send-whatsapp-otp", {
+        const endpoint = `${getApiUrl()}api/send-whatsapp-otp`;
+        console.log("[OTP-Register] sending WhatsApp OTP to:", rawContact, "→", endpoint);
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone: rawContact }),
         });
+        const ct = res.headers.get("content-type") ?? "";
+        if (!ct.includes("application/json")) {
+          const text = await res.text();
+          console.error("[OTP-Register] non-JSON response:", text.slice(0, 300));
+          throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
+        }
         const data = await res.json() as { ok?: boolean; error?: string };
+        console.log("[OTP-Register] server response:", data);
 
         if (!res.ok || !data.ok) {
           throw new Error(data.error ?? "فشل إرسال رمز التحقق");
@@ -342,13 +352,21 @@ export default function RegisterScreen() {
     setRegOtpVerifying(true);
     try {
       // 1. Verify OTP on server — returns a Firebase custom token
-      console.log("[OTP-Register] verifying WhatsApp OTP for", e164);
-      const res = await fetch("/api/verify-whatsapp-otp", {
+      const endpoint = `${getApiUrl()}api/verify-whatsapp-otp`;
+      console.log("[OTP-Register] verifying WhatsApp OTP for", e164, "→", endpoint);
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: rawContact, code: regOtpCode }),
       });
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        const text = await res.text();
+        console.error("[OTP-Register] non-JSON verify response:", text.slice(0, 300));
+        throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
+      }
       const data = await res.json() as { ok?: boolean; customToken?: string; uid?: string; e164?: string; error?: string };
+      console.log("[OTP-Register] verify response:", { ok: data.ok, uid: data.uid });
 
       if (!res.ok || !data.ok || !data.customToken) {
         throw new Error(data.error ?? "الرمز غير صحيح أو منتهي الصلاحية");
