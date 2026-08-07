@@ -154,6 +154,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── WhatsApp OTP via UltraMsg ───────────────────────────────────────────────
+
+  /** In-memory OTP store: E.164 phone → { code, expiresAt } (5-min TTL) */
+  const otpStore = new Map<string, { code: string; expiresAt: number }>();
+
+  function generateOtp(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  /** Convert any Iraqi phone input to E.164 (+9647xxxxxxxx) */
+  function toE164Server(phone: string): string {
+    const t = phone.trim().replace(/[\s\-]/g, "");
+    if (t.startsWith("+")) return t;
+    if (t.startsWith("00964")) return "+" + t.slice(2);
+    if (t.startsWith("964"))   return "+" + t;
+    if (t.startsWith("07"))    return "+964" + t.slice(1);
+    if (t.startsWith("7"))     return "+964" + t;
+    return "+964" + t;
+  }
+
+  /**
+   * POST /api/send-whatsapp-otp
+   * Body: { phone: string }
+   * Generates a 6-digit OTP, stores it for 5 minutes, and sends it via UltraMsg.
+   */
+  app.post("/api/send-whatsapp-otp", async (req: Request, res: Response) => {
+    const { phone } = req.body as { phone?: string };
+    if (!phone) {
+      res.status(400).json({ error: "phone is required" });
+      return;
+    }
+
+    const e164   = toE164Server(phone);
+    const waPhone = e164.replace(/^\+/, ""); // UltraMsg wants no leading +
+
+    // Clean stale entries then generate fresh OTP
+    const now = Date.now();
+    for (const [k, v] of otpStore) if (v.expiresAt < now) otpStore.delete(k);
+
+    const code = generateOtp();
+    otpStore.set(e164, { code, expiresAt: now + 5 * 60 * 1000 });
+
+    const instanceId = process.env.ULTRAMSG_INSTANCE_ID ?? "instance187756";
+    const token      = process.env.ULTRAMSG_TOKEN      ?? "us2d3muaswe5s4kp";
+
+    console.log(`[WhatsApp OTP] sending to ${e164} (wa: ${waPhone})`);
+    try {
+      const response = await fetch(
+        `https://api.ultramsg.com/${instanceId}/messages/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            token,
+            to:   waPhone,
+            body: `رمز التحقق الخاص بك هو: ${code}\nصالح لمدة 5 دقائق`,
+          }).toString(),
+        }
+      );
+      const data = await response.json() as any;
+      console.log("[WhatsApp OTP] UltraMsg response:", data);
+
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error ?? `UltraMsg HTTP ${response.status}`);
+      }
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[WhatsApp OTP] send error:", err);
+      otpStore.delete(e164);
+      res.status(500).json({ error: err.message ?? "فشل إرسال رمز التحقق" });
+    }
+  });
+
+  /**
+   * POST /api/verify-whatsapp-otp
+   * Body: { phone: string, code: string }
+   * Validates the OTP, then gets-or-creates a Firebase Auth user and returns a custom token.
+   */
+  app.post("/api/verify-whatsapp-otp", async (req: Request, res: Response) => {
+    const { phone, code } = req.body as { phone?: string; code?: string };
+    if (!phone || !code) {
+      res.status(400).json({ error: "phone and code are required" });
+      return;
+    }
+
+    const e164  = toE164Server(phone);
+    const entry = otpStore.get(e164);
+
+    if (!entry) {
+      res.status(400).json({ error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
+      return;
+    }
+    if (Date.now() > entry.expiresAt) {
+      otpStore.delete(e164);
+      res.status(400).json({ error: "انتهت صلاحية الرمز — اطلب رمزاً جديداً" });
+      return;
+    }
+    if (entry.code !== code.trim()) {
+      res.status(400).json({ error: "الرمز غير صحيح — تحقق وأعد المحاولة" });
+      return;
+    }
+
+    // OTP valid — consume it (single-use)
+    otpStore.delete(e164);
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+
+      // Get existing Firebase Auth user or create a new one for this phone
+      let uid: string;
+      try {
+        const existing = await getAuth(admin).getUserByPhoneNumber(e164);
+        uid = existing.uid;
+      } catch {
+        const created = await getAuth(admin).createUser({ phoneNumber: e164 });
+        uid = created.uid;
+      }
+
+      const customToken = await getAuth(admin).createCustomToken(uid);
+      res.json({ ok: true, customToken, uid, e164 });
+    } catch (err: any) {
+      console.error("[WhatsApp OTP] verify error:", err);
+      res.status(500).json({ error: err.message ?? "فشل التحقق من الرمز" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

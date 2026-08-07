@@ -21,13 +21,9 @@ import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import {
   createUserWithEmailAndPassword,
-  signInWithPhoneNumber,
-  type ConfirmationResult,
-  type ApplicationVerifier,
-  RecaptchaVerifier,
+  signInWithCustomToken,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import FirebaseRecaptcha, { type FirebaseRecaptchaHandle } from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
   createOrUpdateArtisan,
@@ -70,36 +66,6 @@ function toE164(phone: string): string {
   return "+964" + t;
 }
 
-/**
- * Wraps a Promise with a hard timeout so it can never hang indefinitely.
- * Throws an Error with code "timeout" if the promise doesn't settle in time.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => {
-      const err: any = new Error(`[${label}] timed out after ${ms / 1000}s`);
-      err.code = "timeout";
-      reject(err);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-/**
- * Wraps any ApplicationVerifier in a safe proxy that adds no-op implementations
- * for reset() and _reset() — methods the Firebase JS SDK may call internally
- * after signInWithPhoneNumber (success or failure). Without these no-ops,
- * Firebase throws "TypeError: verifier._reset is not a function".
- */
-function makeSafeVerifier(base: ApplicationVerifier): ApplicationVerifier {
-  return {
-    type: base.type,
-    verify: () => base.verify(),
-    reset: () => {},   // Firebase compat SDK calls this
-    _reset: () => {},  // Firebase modular SDK calls this internally
-  } as ApplicationVerifier;
-}
 
 const C = Colors.light;
 
@@ -229,16 +195,12 @@ export default function RegisterScreen() {
   const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ── Phone OTP registration flow ──
+  // ── WhatsApp OTP registration flow ──
   const [regOtpStep, setRegOtpStep] = useState<"form" | "otp">("form");
   const [regOtpCode, setRegOtpCode] = useState("");
   const [regOtpSending, setRegOtpSending] = useState(false);
   const [regOtpVerifying, setRegOtpVerifying] = useState(false);
-  const [regConfirmation, setRegConfirmation] = useState<ConfirmationResult | null>(null);
   const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
-
-  // ── reCAPTCHA (native + web) ──
-  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -285,61 +247,31 @@ export default function RegisterScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (isPhoneInput(rawContact)) {
-      // ── Phone registration: send OTP via Firebase Phone Auth ──
+      // ── Phone registration: send OTP via WhatsApp (UltraMsg) ──
       setRegOtpSending(true);
       try {
-        // 1. تحويل الرقم إلى E.164
-        const e164 = toE164(rawContact);
-        console.log("[OTP-Register] phone:", rawContact, "→", e164);
-
         const location = await requestLocation();
         setSavedLocation(location);
 
-        // 2. الحصول على base verifier حسب المنصة
-        let baseVerifier: ApplicationVerifier;
-        if (Platform.OS === "web") {
-          // إنشاء RecaptchaVerifier مباشرةً بدون تخزين مؤقت
-          let container = document.getElementById("reg-recaptcha-container");
-          if (!container) {
-            container = document.createElement("div");
-            container.id = "reg-recaptcha-container";
-            container.style.display = "none";
-            document.body.appendChild(container);
-          }
-          baseVerifier = new RecaptchaVerifier(auth, "reg-recaptcha-container", { size: "invisible" });
-        } else {
-          if (!recaptchaRef.current) {
-            Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
-            return; // finally يُلغي setRegOtpSending
-          }
-          baseVerifier = recaptchaRef.current.verifier;
+        console.log("[OTP-Register] sending WhatsApp OTP to:", rawContact);
+        const res = await fetch("/api/send-whatsapp-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: rawContact }),
+        });
+        const data = await res.json() as { ok?: boolean; error?: string };
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "فشل إرسال رمز التحقق");
         }
 
-        // 3. تصفير أي خطأ مخزّن سابقاً (مثل فشل reCAPTCHA Enterprise) قبل كل محاولة
-        (baseVerifier as any)._cachedError = null;
-        console.log("[OTP-Register] _cachedError flushed");
-
-        // 4. تغليف الـ verifier لمنع أي crash من reset/_reset الداخلي لـ Firebase
-        const safeVerifier = makeSafeVerifier(baseVerifier);
-        console.log("[OTP-Register] calling signInWithPhoneNumber for", e164);
-
-        // 4. إرسال OTP مع timeout 30 ثانية
-        const confirmation = await withTimeout(
-          signInWithPhoneNumber(auth, e164, safeVerifier),
-          30_000,
-          "signInWithPhoneNumber"
-        );
-        console.log("[OTP-Register] OTP sent ✓");
-
-        setRegConfirmation(confirmation);
+        console.log("[OTP-Register] WhatsApp OTP sent ✓");
         setRegOtpCode("");
         setRegOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err: any) {
-        // طباعة الخطأ الأصلي من Firebase كاملاً للتشخيص
-        console.error("[OTP-Register] ERROR — code:", err?.code, "| message:", err?.message, "| raw:", err);
+        console.error("[OTP-Register] send error:", err?.message ?? err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        // عرض رسالة Firebase الأصلية مباشرةً — لا إعادة تعيين لأي verifier
         Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
       } finally {
         setRegOtpSending(false);
@@ -398,21 +330,36 @@ export default function RegisterScreen() {
     }
   };
 
-  // ─── Verify OTP and create Phone Auth account ─────────────────────────────
+  // ─── Verify WhatsApp OTP and complete registration ────────────────────────
 
   const handleVerifyRegisterOtp = async () => {
-    if (regOtpCode.length !== 6 || !regConfirmation) return;
+    if (regOtpCode.length !== 6) return;
 
     const trimmedName = fullName.trim();
-    const rawContact = contact.trim();
-    const e164 = toE164(rawContact);
+    const rawContact  = contact.trim();
+    const e164        = toE164(rawContact);
 
     setRegOtpVerifying(true);
     try {
-      const credential = await regConfirmation.confirm(regOtpCode);
-      const uid = credential.user.uid;
+      // 1. Verify OTP on server — returns a Firebase custom token
+      console.log("[OTP-Register] verifying WhatsApp OTP for", e164);
+      const res = await fetch("/api/verify-whatsapp-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: rawContact, code: regOtpCode }),
+      });
+      const data = await res.json() as { ok?: boolean; customToken?: string; uid?: string; e164?: string; error?: string };
 
-      // Save Firestore document keyed by the Phone Auth UID with phone in E.164
+      if (!res.ok || !data.ok || !data.customToken) {
+        throw new Error(data.error ?? "الرمز غير صحيح أو منتهي الصلاحية");
+      }
+
+      // 2. Sign in to Firebase with the custom token
+      const credential = await signInWithCustomToken(auth, data.customToken);
+      const uid = credential.user.uid;
+      console.log("[OTP-Register] signed in with custom token, uid:", uid);
+
+      // 3. Create Firestore user document + artisan record
       await ensureUserDocument(uid, e164, role, {
         name: trimmedName,
         specialty,
@@ -434,23 +381,11 @@ export default function RegisterScreen() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // User is already signed in via Phone Auth — go directly to dashboard
       router.replace("/dashboard" as any);
     } catch (err: any) {
+      console.error("[OTP-Register] verify error:", err?.message ?? err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const code: string = err?.code ?? "";
-      if (code === "auth/invalid-verification-code") {
-        Alert.alert("رمز خاطئ", "الرمز الذي أدخلته غير صحيح — تحقق وأعد المحاولة");
-      } else if (code === "auth/code-expired") {
-        Alert.alert("رمز منتهي الصلاحية", "انتهت صلاحية الرمز — اطلب رمزاً جديداً");
-      } else if (
-        code === "auth/account-exists-with-different-credential" ||
-        code === "auth/credential-already-in-use"
-      ) {
-        Alert.alert("خطأ", "رقم الهاتف هذا مسجّل مسبقاً — يرجى تسجيل الدخول بدلاً من ذلك");
-      } else {
-        Alert.alert("خطأ", "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
-      }
+      Alert.alert("خطأ", err?.message ?? "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
     } finally {
       setRegOtpVerifying(false);
     }
@@ -465,9 +400,6 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Hidden reCAPTCHA for native phone auth */}
-      {Platform.OS !== "web" && <FirebaseRecaptcha ref={recaptchaRef} />}
-
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -662,7 +594,9 @@ export default function RegisterScreen() {
             </View>
 
             <Text style={styles.modalDesc}>
-              أُرسل رمز تحقق مكون من 6 أرقام إلى الرقم{"\n"}
+              أُرسل رمز تحقق مكون من 6 أرقام عبر{" "}
+              <Text style={styles.modalPhoneHighlight}>واتساب</Text>
+              {" "}إلى الرقم{"\n"}
               <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
             </Text>
 
