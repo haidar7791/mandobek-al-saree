@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { fetch } from "expo/fetch";
-import { getApiUrl } from "@/lib/query-client";
+import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
@@ -39,6 +39,42 @@ import {
 import Colors from "@/constants/colors";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the base URL of the Express server.
+ * Priority:
+ *  1. EXPO_PUBLIC_DOMAIN env var (if set)
+ *  2. Metro packager host from expo-constants (works on physical devices via Replit proxy)
+ *  3. Relative "/" (web fallback)
+ */
+function getServerUrl(): string {
+  // 1. Explicit env var
+  const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (envDomain) {
+    const clean = envDomain.replace(/\/$/, "");
+    return clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
+  }
+
+  // 2. Derive from Metro packager host (baked in by Expo at bundle time)
+  const hostUri: string | undefined =
+    (Constants.expoConfig as any)?.hostUri ??
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ??
+    (Constants as any).manifest?.debuggerHost;
+
+  if (hostUri) {
+    // hostUri looks like "abc.pike.replit.dev" or "192.168.1.x:8081"
+    const hostname = hostUri.split(":")[0];
+    if (hostname.includes("replit.dev") || hostname.includes("repl.co")) {
+      // Replit proxies all traffic through HTTPS on standard port — no :5000 needed
+      return `https://${hostname}/`;
+    }
+    // Local network: Metro runs on :8081, Express on :5000
+    return `http://${hostname}:5000/`;
+  }
+
+  // 3. Web fallback — relative URL works via Vite/Express proxy
+  return "/";
+}
 
 /** Returns true if the input looks like a phone number (starts with digit or +, no @) */
 function isPhoneInput(s: string): boolean {
@@ -255,7 +291,7 @@ export default function RegisterScreen() {
         const location = await requestLocation();
         setSavedLocation(location);
 
-        const endpoint = `${getApiUrl()}api/send-whatsapp-otp`;
+        const endpoint = `${getServerUrl()}api/send-whatsapp-otp`;
         console.log("[OTP-Register] sending WhatsApp OTP to:", rawContact, "→", endpoint);
         const res = await fetch(endpoint, {
           method: "POST",
@@ -352,7 +388,7 @@ export default function RegisterScreen() {
     setRegOtpVerifying(true);
     try {
       // 1. Verify OTP on server — returns a Firebase custom token
-      const endpoint = `${getApiUrl()}api/verify-whatsapp-otp`;
+      const endpoint = `${getServerUrl()}api/verify-whatsapp-otp`;
       console.log("[OTP-Register] verifying WhatsApp OTP for", e164, "→", endpoint);
       const res = await fetch(endpoint, {
         method: "POST",
