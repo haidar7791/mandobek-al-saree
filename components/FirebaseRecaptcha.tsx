@@ -157,12 +157,17 @@ function buildHtml(config: typeof firebaseConfig): string {
         }
       );
 
-      verifier.render().then(function() {
-        return verifier.verify();
-      }).then(function(token) {
-        postMsg({ type: 'token', token: token });
-      }).catch(function(err) {
-        postMsg({ type: 'error', message: err.message || 'reCAPTCHA failed' });
+      // render() فقط — التوكن يصل عبر callback أعلاه، لا عبر verify()
+      // هذا يتجنب أخطاء "Failed to initialize reCAPTCHA Enterprise config"
+      // التي تُفشل سلسلة verify() لكن لا تمنع callback من الاستجابة
+      verifier.render().catch(function(err) {
+        var msg = (err && err.message) ? err.message : String(err);
+        // أخطاء Enterprise تحذيرية فقط وليست فادحة — تجاهلها
+        if (msg.indexOf('Enterprise') !== -1 || msg.indexOf('enterprise') !== -1) {
+          console.warn('[reCAPTCHA] Enterprise init warning (ignored):', msg);
+          return;
+        }
+        postMsg({ type: 'error', message: msg });
       });
     } catch(e) {
       postMsg({ type: 'error', message: e.message || 'init error' });

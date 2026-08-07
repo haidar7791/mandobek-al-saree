@@ -315,7 +315,11 @@ export default function RegisterScreen() {
           baseVerifier = recaptchaRef.current.verifier;
         }
 
-        // 3. تغليف الـ verifier لمنع أي crash من reset/_reset الداخلي لـ Firebase
+        // 3. تصفير أي خطأ مخزّن سابقاً (مثل فشل reCAPTCHA Enterprise) قبل كل محاولة
+        (baseVerifier as any)._cachedError = null;
+        console.log("[OTP-Register] _cachedError flushed");
+
+        // 4. تغليف الـ verifier لمنع أي crash من reset/_reset الداخلي لـ Firebase
         const safeVerifier = makeSafeVerifier(baseVerifier);
         console.log("[OTP-Register] calling signInWithPhoneNumber for", e164);
 
