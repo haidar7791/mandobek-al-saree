@@ -86,6 +86,21 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Wraps any ApplicationVerifier in a safe proxy that adds no-op implementations
+ * for reset() and _reset() — methods the Firebase JS SDK may call internally
+ * after signInWithPhoneNumber (success or failure). Without these no-ops,
+ * Firebase throws "TypeError: verifier._reset is not a function".
+ */
+function makeSafeVerifier(base: ApplicationVerifier): ApplicationVerifier {
+  return {
+    type: base.type,
+    verify: () => base.verify(),
+    reset: () => {},   // Firebase compat SDK calls this
+    _reset: () => {},  // Firebase modular SDK calls this internally
+  } as ApplicationVerifier;
+}
+
 const C = Colors.light;
 
 // ─── InputField ───────────────────────────────────────────────────────────────
@@ -224,7 +239,6 @@ export default function RegisterScreen() {
 
   // ── reCAPTCHA (native + web) ──
   const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
-  const webVerifierRef = useRef<ApplicationVerifier | null>(null);
 
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -274,17 +288,17 @@ export default function RegisterScreen() {
       // ── Phone registration: send OTP via Firebase Phone Auth ──
       setRegOtpSending(true);
       try {
-        // 1. Normalise to E.164 — log both raw and formatted for diagnosis
+        // 1. تحويل الرقم إلى E.164
         const e164 = toE164(rawContact);
-        console.log("[OTP-Register] step 1 — phone input:", rawContact, "→ E.164:", e164);
+        console.log("[OTP-Register] phone:", rawContact, "→", e164);
 
         const location = await requestLocation();
         setSavedLocation(location);
 
-        // 2. Resolve ApplicationVerifier
-        console.log("[OTP-Register] step 2 — resolving verifier, platform:", Platform.OS);
-        let verifier: ApplicationVerifier;
+        // 2. الحصول على base verifier حسب المنصة
+        let baseVerifier: ApplicationVerifier;
         if (Platform.OS === "web") {
+          // إنشاء RecaptchaVerifier مباشرةً بدون تخزين مؤقت
           let container = document.getElementById("reg-recaptcha-container");
           if (!container) {
             container = document.createElement("div");
@@ -292,73 +306,37 @@ export default function RegisterScreen() {
             container.style.display = "none";
             document.body.appendChild(container);
           }
-          if (!webVerifierRef.current) {
-            webVerifierRef.current = new RecaptchaVerifier(
-              auth,
-              "reg-recaptcha-container",
-              { size: "invisible" }
-            );
-          }
-          verifier = webVerifierRef.current;
+          baseVerifier = new RecaptchaVerifier(auth, "reg-recaptcha-container", { size: "invisible" });
         } else {
           if (!recaptchaRef.current) {
             Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
-            return; // finally will reset setRegOtpSending
+            return; // finally يُلغي setRegOtpSending
           }
-          verifier = recaptchaRef.current.verifier;
-          console.log("[OTP-Register] step 2 — native verifier type:", verifier?.type ?? "MISSING");
-          if (!verifier) {
-            Alert.alert("خطأ", "خطأ داخلي في reCAPTCHA — يرجى إغلاق التطبيق وإعادة فتحه");
-            return;
-          }
+          baseVerifier = recaptchaRef.current.verifier;
         }
 
-        // 3. Send OTP — with a 30-second hard timeout so it can never hang
-        console.log("[OTP-Register] step 3 — calling signInWithPhoneNumber for", e164);
+        // 3. تغليف الـ verifier لمنع أي crash من reset/_reset الداخلي لـ Firebase
+        const safeVerifier = makeSafeVerifier(baseVerifier);
+        console.log("[OTP-Register] calling signInWithPhoneNumber for", e164);
+
+        // 4. إرسال OTP مع timeout 30 ثانية
         const confirmation = await withTimeout(
-          signInWithPhoneNumber(auth, e164, verifier),
+          signInWithPhoneNumber(auth, e164, safeVerifier),
           30_000,
           "signInWithPhoneNumber"
         );
-        console.log("[OTP-Register] step 3 — OTP sent successfully ✓");
+        console.log("[OTP-Register] OTP sent ✓");
 
         setRegConfirmation(confirmation);
         setRegOtpCode("");
         setRegOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err: any) {
-        const code: string = err?.code ?? "unknown";
-        const msg: string = err?.message ?? String(err);
-        // ── سجّل الخطأ الكامل القادم من Firebase لمعرفة السبب الفعلي ──
-        console.error("[OTP-Register] ERROR ▼");
-        console.error("  code   :", code);
-        console.error("  message:", msg);
-        console.error("  raw    :", err);
-
+        // طباعة الخطأ الأصلي من Firebase كاملاً للتشخيص
+        console.error("[OTP-Register] ERROR — code:", err?.code, "| message:", err?.message, "| raw:", err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-        if (code === "auth/invalid-phone-number") {
-          Alert.alert(
-            "خطأ في الرقم",
-            `صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07\n\n(${code})`
-          );
-        } else if (code === "auth/too-many-requests") {
-          Alert.alert(
-            "محاولات كثيرة",
-            `تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة\n\n(${code})`
-          );
-        } else if (code === "timeout") {
-          Alert.alert(
-            "انتهى الوقت",
-            `لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً\n\n(${code})`
-          );
-        } else {
-          // عرض رسالة Firebase الأصلية كاملةً لتشخيص أي خطأ غير معروف
-          Alert.alert(
-            "تعذّر إرسال رمز التحقق",
-            `${msg}\n\n(${code})`
-          );
-        }
+        // عرض رسالة Firebase الأصلية مباشرةً — لا إعادة تعيين لأي verifier
+        Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
       } finally {
         setRegOtpSending(false);
       }
