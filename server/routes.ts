@@ -214,10 +214,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       );
       const data = await response.json() as any;
-      console.log("[WhatsApp OTP] UltraMsg response:", data);
+      console.log("[WhatsApp OTP] UltraMsg HTTP status:", response.status);
+      console.log("[WhatsApp OTP] UltraMsg full response:", JSON.stringify(data));
 
-      if (!response.ok || data?.error) {
-        throw new Error(data?.error ?? `UltraMsg HTTP ${response.status}`);
+      // UltraMsg returns { sent: "true", message: "..." } on success
+      // and { error: "...", ... } on failure
+      if (!response.ok) {
+        throw new Error(`UltraMsg HTTP ${response.status}: ${JSON.stringify(data)}`);
+      }
+      if (data?.error) {
+        throw new Error(`UltraMsg error: ${data.error}`);
+      }
+      if (data?.sent === false || data?.sent === "false") {
+        throw new Error(`UltraMsg rejected: ${JSON.stringify(data)}`);
       }
 
       res.json({ ok: true });

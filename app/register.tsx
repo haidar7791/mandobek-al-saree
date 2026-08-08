@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import {
   View,
   Text,
@@ -186,44 +186,53 @@ function InputField({
 
 // ─── OTP digit boxes ──────────────────────────────────────────────────────────
 
-function OtpInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const inputRef = useRef<TextInput>(null);
-  return (
-    <Pressable onPress={() => inputRef.current?.focus()} style={styles.otpRow}>
-      {Array.from({ length: 6 }).map((_, i) => {
-        const char = value[i] ?? "";
-        const active = value.length === i;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.otpBox,
-              char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
-            ]}
-          >
-            <Text style={styles.otpChar}>{char}</Text>
-          </View>
-        );
-      })}
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={(v) => onChange(v.replace(/[^0-9]/g, "").slice(0, 6))}
-        keyboardType="number-pad"
-        maxLength={6}
-        style={styles.otpHiddenInput}
-        caretHidden
-        autoFocus
-      />
-    </Pressable>
-  );
+interface OtpInputHandle {
+  focus(): void;
 }
+
+const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: string) => void }>(
+  function OtpInput({ value, onChange }, ref) {
+    const inputRef = useRef<TextInput>(null);
+
+    // Expose focus() so the parent Modal's onShow can trigger the keyboard
+    useImperativeHandle(ref, () => ({
+      focus() {
+        inputRef.current?.focus();
+      },
+    }));
+
+    return (
+      <Pressable onPress={() => inputRef.current?.focus()} style={styles.otpRow}>
+        {Array.from({ length: 6 }).map((_, i) => {
+          const char = value[i] ?? "";
+          const active = value.length === i;
+          return (
+            <View
+              key={i}
+              style={[
+                styles.otpBox,
+                char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
+              ]}
+            >
+              <Text style={styles.otpChar}>{char}</Text>
+            </View>
+          );
+        })}
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={(v) => onChange(v.replace(/[^0-9]/g, "").slice(0, 6))}
+          keyboardType="number-pad"
+          maxLength={6}
+          style={styles.otpHiddenInput}
+          caretHidden
+          showSoftInputOnFocus
+          autoFocus={false} // controlled manually via onShow to work inside Modal
+        />
+      </Pressable>
+    );
+  }
+);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -259,6 +268,7 @@ export default function RegisterScreen() {
 
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+  const otpInputRef = useRef<OtpInputHandle>(null);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -654,6 +664,11 @@ export default function RegisterScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setRegOtpStep("form")}
+        onShow={() => {
+          // autoFocus doesn't work reliably inside Modal on Android —
+          // manually focus after the animation finishes (~300ms)
+          setTimeout(() => otpInputRef.current?.focus(), 300);
+        }}
       >
         <Pressable style={styles.modalOverlay} onPress={() => {}}>
           <View style={styles.modalCard}>
@@ -671,7 +686,7 @@ export default function RegisterScreen() {
               <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
             </Text>
 
-            <OtpInput value={regOtpCode} onChange={setRegOtpCode} />
+            <OtpInput ref={otpInputRef} value={regOtpCode} onChange={setRegOtpCode} />
 
             <Pressable
               style={[styles.modalSendBtn, (regOtpVerifying || regOtpCode.length < 6) && styles.btnDisabled]}
