@@ -22,7 +22,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
+import { useAuthRequest, makeRedirectUri, ResponseType } from "expo-auth-session";
 import {
   signInWithCustomToken,
 } from "firebase/auth";
@@ -303,11 +303,22 @@ export default function RegisterScreen() {
   const otpInputRef = useRef<OtpInputHandle>(null);
 
   // ── Google OAuth for email auto-fill ──
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: GOOGLE_WEB_CLIENT_ID,
-    scopes: ["email", "profile"],
-  });
+  // Use implicit flow (responseType=token) to receive access_token directly without
+  // a server-side code exchange — all we need is the user's email address.
+  const GOOGLE_DISCOVERY = {
+    authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenEndpoint: "https://oauth2.googleapis.com/token",
+    revocationEndpoint: "https://oauth2.googleapis.com/revoke",
+  };
+  const [googleRequest, googleResponse, promptGoogleAsync] = useAuthRequest(
+    {
+      clientId: GOOGLE_WEB_CLIENT_ID,
+      responseType: ResponseType.Token,   // get access_token directly, no code exchange
+      scopes: ["openid", "email", "profile"],
+      redirectUri: makeRedirectUri({ scheme: "forus" }),
+    },
+    GOOGLE_DISCOVERY,
+  );
 
   useEffect(() => {
     if (googleResponse?.type === "success" && googleResponse.authentication?.accessToken) {
