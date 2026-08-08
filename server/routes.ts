@@ -500,10 +500,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   function getResetLinkBase(): string {
-    const domain =
-      process.env.REPLIT_DEV_DOMAIN ??
-      "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
-    return `https://${domain}`;
+    // Always use the stable Cloud Run URL so reset links work from any device
+    return "https://forus-backend-laoeoqcoza-ew.a.run.app";
   }
 
   /**
