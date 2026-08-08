@@ -21,8 +21,6 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-na
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import * as WebBrowser from "expo-web-browser";
-import { useAuthRequest, makeRedirectUri, ResponseType } from "expo-auth-session";
 import {
   signInWithCustomToken,
 } from "firebase/auth";
@@ -141,12 +139,36 @@ function toE164(phone: string): string {
 }
 
 
-// Required by expo-auth-session to complete the OAuth redirect
-WebBrowser.maybeCompleteAuthSession();
+// ── Suggested emails shown in the quick-pick modal ─────────────────────────
+// Populated with common domains; extended at runtime with addresses the user
+// has previously submitted during this session.
+const sessionEmails: string[] = [];
 
-// Google OAuth client IDs from google-services.json
-const GOOGLE_ANDROID_CLIENT_ID = "911663879269-mnbsr6beobcai4doemos48askj71b9ml.apps.googleusercontent.com";
-const GOOGLE_WEB_CLIENT_ID     = "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com";
+function recordEmail(email: string) {
+  const e = email.trim().toLowerCase();
+  if (e && e.includes("@") && !sessionEmails.includes(e)) sessionEmails.unshift(e);
+}
+
+const DOMAIN_HINTS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"];
+
+function buildSuggestions(currentInput: string): string[] {
+  const input = currentInput.trim().toLowerCase();
+  const results: string[] = [...sessionEmails];
+
+  // If the user has typed a partial address before "@", offer completions
+  if (input && !input.includes("@")) {
+    DOMAIN_HINTS.forEach((d) => {
+      const full = `${input}@${d}`;
+      if (!results.includes(full)) results.push(full);
+    });
+  } else {
+    // No input yet: just show domain hints as examples
+    if (results.length === 0) {
+      DOMAIN_HINTS.forEach((d) => results.push(`example@${d}`));
+    }
+  }
+  return results.slice(0, 6);
+}
 
 const C = Colors.light;
 
@@ -302,40 +324,8 @@ export default function RegisterScreen() {
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
 
-  // ── Google OAuth for email auto-fill ──
-  // Use implicit flow (responseType=token) to receive access_token directly without
-  // a server-side code exchange — all we need is the user's email address.
-  const GOOGLE_DISCOVERY = {
-    authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
-    tokenEndpoint: "https://oauth2.googleapis.com/token",
-    revocationEndpoint: "https://oauth2.googleapis.com/revoke",
-  };
-  const [googleRequest, googleResponse, promptGoogleAsync] = useAuthRequest(
-    {
-      clientId: GOOGLE_WEB_CLIENT_ID,
-      responseType: ResponseType.Token,   // get access_token directly, no code exchange
-      scopes: ["openid", "email", "profile"],
-      redirectUri: makeRedirectUri({ scheme: "forus" }),
-    },
-    GOOGLE_DISCOVERY,
-  );
-
-  useEffect(() => {
-    if (googleResponse?.type === "success" && googleResponse.authentication?.accessToken) {
-      const token = googleResponse.authentication.accessToken;
-      // Fetch user info to get email
-      fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${token}`)
-        .then((r) => r.json())
-        .then((info: any) => {
-          if (info?.email) {
-            setContact(info.email);
-            // Auto-fill name if empty
-            if (!fullName.trim() && info.name) setFullName(info.name);
-          }
-        })
-        .catch((e) => console.warn("[Google] userinfo error:", e));
-    }
-  }, [googleResponse]);
+  // ── Email suggestion modal ──
+  const [emailSuggestOpen, setEmailSuggestOpen] = useState(false);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -630,20 +620,7 @@ export default function RegisterScreen() {
 
             {/* 2 ── رقم الهاتف أو البريد */}
             <View style={styles.fieldWrap}>
-              <View style={styles.fieldLabelRow}>
-                <Text style={styles.fieldLabel}>رقم الهاتف أو البريد الإلكتروني</Text>
-                {/* Google button — visible only when in email mode */}
-                {!isPhone && (
-                  <Pressable
-                    style={styles.googleBtn}
-                    onPress={() => promptGoogleAsync()}
-                    disabled={!googleRequest}
-                  >
-                    <Text style={styles.googleBtnText}>G</Text>
-                    <Text style={styles.googleBtnLabel}>تسجيل بـ Google</Text>
-                  </Pressable>
-                )}
-              </View>
+              <Text style={styles.fieldLabel}>رقم الهاتف أو البريد الإلكتروني</Text>
               <View style={[styles.inputRow, styles.inputRowFull]}>
                 <View style={styles.inputIcon}>
                   <Feather
@@ -666,6 +643,16 @@ export default function RegisterScreen() {
                   onSubmitEditing={() => passwordRef.current?.focus()}
                   returnKeyType="next"
                 />
+                {/* Quick-pick icon — visible only in email mode */}
+                {!isPhone && (
+                  <Pressable
+                    onPress={() => setEmailSuggestOpen(true)}
+                    style={styles.suggestIcon}
+                    hitSlop={8}
+                  >
+                    <Feather name="chevron-down" size={18} color={C.accent} />
+                  </Pressable>
+                )}
               </View>
             </View>
 
@@ -735,8 +722,8 @@ export default function RegisterScreen() {
                     </>
                   ) : (
                     <>
-                      <Text style={styles.registerBtnText}>إنشاء حساب</Text>
-                      <Feather name="user-plus" size={18} color={C.primary} />
+                      <Text style={styles.registerBtnText}>إرسال رمز التحقق</Text>
+                      <Feather name="send" size={18} color={C.primary} />
                     </>
                   )}
                 </LinearGradient>
@@ -844,6 +831,78 @@ export default function RegisterScreen() {
         </Pressable>
       </Modal>
 
+      {/* ── Email suggestion modal ── */}
+      <Modal
+        visible={emailSuggestOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEmailSuggestOpen(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setEmailSuggestOpen(false)}>
+          <View style={[styles.modalCard, { gap: 0, padding: 0, overflow: "hidden" }]}>
+            {/* Header */}
+            <View style={suggestStyles.header}>
+              <Pressable onPress={() => setEmailSuggestOpen(false)} hitSlop={8}>
+                <Feather name="x" size={18} color={C.textSecondary} />
+              </Pressable>
+              <Text style={suggestStyles.title}>اختر أو اكتب بريدك الإلكتروني</Text>
+              <Feather name="mail" size={18} color={C.accent} />
+            </View>
+
+            {/* Suggestion list */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 280 }}
+            >
+              {buildSuggestions(contact).map((email) => (
+                <Pressable
+                  key={email}
+                  style={suggestStyles.item}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setContact(email);
+                    setEmailSuggestOpen(false);
+                    setTimeout(() => passwordRef.current?.focus(), 100);
+                  }}
+                >
+                  <Feather name="at-sign" size={15} color={C.accent} />
+                  <Text style={suggestStyles.itemText} numberOfLines={1}>{email}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {/* Manual entry area */}
+            <View style={suggestStyles.manualRow}>
+              <TextInput
+                style={suggestStyles.manualInput}
+                placeholder="أو اكتب بريدك هنا..."
+                placeholderTextColor={C.textMuted}
+                value={contact}
+                onChangeText={setContact}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                textAlign="right"
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  setEmailSuggestOpen(false);
+                  setTimeout(() => passwordRef.current?.focus(), 100);
+                }}
+              />
+              <Pressable
+                style={suggestStyles.manualConfirm}
+                onPress={() => {
+                  setEmailSuggestOpen(false);
+                  setTimeout(() => passwordRef.current?.focus(), 100);
+                }}
+              >
+                <Feather name="check" size={18} color={C.primary} />
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* ── OTP modal: Email ── */}
       <Modal
         visible={emailOtpStep === "otp"}
@@ -925,27 +984,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
   },
   fieldWrap: { gap: 6 },
-  fieldLabelRow: {
-    flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between", marginBottom: 2,
-  },
   fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
-  // Google quick-fill button shown next to the email label
-  googleBtn: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "#FFF",
-    borderWidth: 1, borderColor: "#E0E0E0", borderRadius: 20,
-    paddingHorizontal: 10, paddingVertical: 4,
-    elevation: 1,
-  },
-  googleBtnText: {
-    fontSize: 14, fontWeight: "800", color: "#4285F4",
-    fontFamily: "Cairo_700Bold",
-  },
-  googleBtnLabel: {
-    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#444",
-  },
   inputRowFull: { paddingVertical: 0 },
+  // Icon inside email field that opens the suggestion modal
+  suggestIcon: { paddingHorizontal: 4, paddingVertical: 6 },
   helperText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 4 },
   inputRow: {
     flexDirection: "row", alignItems: "center",
@@ -1071,4 +1113,36 @@ const modalStyles = StyleSheet.create({
   itemSelected: { backgroundColor: "rgba(201,168,76,0.06)" },
   itemText: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   itemTextSelected: { color: C.accent, fontFamily: "Cairo_600SemiBold" },
+});
+
+const suggestStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+    justifyContent: "flex-end",
+  },
+  title: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  item: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  itemText: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
+  manualRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: C.border, gap: 8,
+  },
+  manualInput: {
+    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
+    color: C.text, paddingVertical: 10, textAlign: "right",
+    backgroundColor: C.inputBg, borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  manualConfirm: {
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: C.accent,
+    alignItems: "center", justifyContent: "center",
+  },
 });
