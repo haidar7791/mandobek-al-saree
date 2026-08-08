@@ -291,6 +291,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── Email OTP ───────────────────────────────────────────────────────────────
+
+  /** In-memory Email OTP store: email → { code, expiresAt } (5-min TTL) */
+  const emailOtpStore = new Map<string, { code: string; expiresAt: number }>();
+
+  /**
+   * POST /api/send-email-otp
+   * Body: { email: string }
+   * Generates a 6-digit OTP and sends it via Gmail (nodemailer).
+   * Requires EMAIL_USER and EMAIL_PASS environment variables.
+   */
+  app.post("/api/send-email-otp", async (req: Request, res: Response) => {
+    const { email } = req.body as { email?: string };
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
+      return;
+    }
+
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    if (!emailUser || !emailPass) {
+      console.error("[Email OTP] EMAIL_USER / EMAIL_PASS not set");
+      res.status(503).json({ error: "خدمة البريد غير مهيأة — يرجى التواصل مع الدعم" });
+      return;
+    }
+
+    // Clean stale entries
+    const now = Date.now();
+    for (const [k, v] of emailOtpStore) if (v.expiresAt < now) emailOtpStore.delete(k);
+
+    const code = generateOtp();
+    const key  = email.toLowerCase().trim();
+    emailOtpStore.set(key, { code, expiresAt: now + 5 * 60 * 1000 });
+
+    console.log(`[Email OTP] sending to ${key}`);
+    try {
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: emailUser, pass: emailPass },
+      });
+
+      await transporter.sendMail({
+        from: `"سند" <${emailUser}>`,
+        to: email,
+        subject: "رمز التحقق - سند",
+        html: `
+          <div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;max-width:480px;margin:auto">
+            <h2 style="color:#0D1B3E">رمز التحقق الخاص بك</h2>
+            <p style="color:#444">أدخل الرمز التالي لإتمام إنشاء حسابك في تطبيق <strong>سند</strong>:</p>
+            <div style="background:#f5f0e8;border-radius:12px;padding:20px;text-align:center;margin:20px 0">
+              <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#C9A84C">${code}</span>
+            </div>
+            <p style="color:#888;font-size:13px">صالح لمدة 5 دقائق فقط · لا تشاركه مع أحد</p>
+          </div>`,
+      });
+
+      console.log(`[Email OTP] sent ✓ to ${key}`);
+      res.json({ ok: true });
+    } catch (err: any) {
+      emailOtpStore.delete(key);
+      console.error("[Email OTP] send error:", err);
+      res.status(500).json({ error: "فشل إرسال رمز التحقق — تحقق من البريد وأعد المحاولة" });
+    }
+  });
+
+  /**
+   * POST /api/verify-email-otp
+   * Body: { email: string, code: string, password?: string }
+   * Validates OTP, gets-or-creates Firebase Auth user, returns custom token.
+   */
+  app.post("/api/verify-email-otp", async (req: Request, res: Response) => {
+    const { email, code, password } = req.body as {
+      email?: string; code?: string; password?: string;
+    };
+
+    if (!email || !code) {
+      res.status(400).json({ error: "email and code are required" });
+      return;
+    }
+
+    const key   = email.toLowerCase().trim();
+    const entry = emailOtpStore.get(key);
+
+    if (!entry) {
+      res.status(400).json({ error: "لم يُرسل رمز لهذا البريد — أرسل رمزاً جديداً" });
+      return;
+    }
+    if (Date.now() > entry.expiresAt) {
+      emailOtpStore.delete(key);
+      res.status(400).json({ error: "انتهت صلاحية الرمز — اطلب رمزاً جديداً" });
+      return;
+    }
+    if (entry.code !== code.trim()) {
+      res.status(400).json({ error: "الرمز غير صحيح — تحقق وأعد المحاولة" });
+      return;
+    }
+
+    // OTP valid — single use
+    emailOtpStore.delete(key);
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+
+      let uid: string;
+      try {
+        const existing = await getAuth(admin).getUserByEmail(email);
+        uid = existing.uid;
+      } catch {
+        // User doesn't exist — create with email. Use provided password or a strong random one.
+        const safePass = (password && password.length >= 6)
+          ? password
+          : Math.random().toString(36).slice(-8) + "Aa1!";
+        const created = await getAuth(admin).createUser({
+          email,
+          emailVerified: true,
+          ...(safePass ? { password: safePass } : {}),
+        });
+        uid = created.uid;
+      }
+
+      const customToken = await getAuth(admin).createCustomToken(uid);
+      res.json({ ok: true, customToken, uid, email });
+    } catch (err: any) {
+      console.error("[Email OTP] verify error:", err);
+      res.status(500).json({ error: err.message ?? "فشل التحقق من الرمز" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

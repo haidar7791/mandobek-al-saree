@@ -1,4 +1,4 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
+import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import {
   View,
   Text,
@@ -21,8 +21,9 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-na
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import {
-  createUserWithEmailAndPassword,
   signInWithCustomToken,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -139,6 +140,13 @@ function toE164(phone: string): string {
   return "+964" + t;
 }
 
+
+// Required by expo-auth-session to complete the OAuth redirect
+WebBrowser.maybeCompleteAuthSession();
+
+// Google OAuth client IDs from google-services.json
+const GOOGLE_ANDROID_CLIENT_ID = "911663879269-mnbsr6beobcai4doemos48askj71b9ml.apps.googleusercontent.com";
+const GOOGLE_WEB_CLIENT_ID     = "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com";
 
 const C = Colors.light;
 
@@ -284,9 +292,39 @@ export default function RegisterScreen() {
   const [regOtpVerifying, setRegOtpVerifying] = useState(false);
   const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
 
+  // ── Email OTP flow ──
+  const [emailOtpStep, setEmailOtpStep] = useState<"form" | "otp">("form");
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [emailOtpSending, setEmailOtpSending] = useState(false);
+  const [emailOtpVerifying, setEmailOtpVerifying] = useState(false);
+
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
+
+  // ── Google OAuth for email auto-fill ──
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    scopes: ["email", "profile"],
+  });
+
+  useEffect(() => {
+    if (googleResponse?.type === "success" && googleResponse.authentication?.accessToken) {
+      const token = googleResponse.authentication.accessToken;
+      // Fetch user info to get email
+      fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${token}`)
+        .then((r) => r.json())
+        .then((info: any) => {
+          if (info?.email) {
+            setContact(info.email);
+            // Auto-fill name if empty
+            if (!fullName.trim() && info.name) setFullName(info.name);
+          }
+        })
+        .catch((e) => console.warn("[Google] userinfo error:", e));
+    }
+  }, [googleResponse]);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -368,55 +406,38 @@ export default function RegisterScreen() {
         setRegOtpSending(false);
       }
     } else {
-      // ── Email registration: create with email + password ──
-      if (password.length < 6) {
-        Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-        return;
-      }
-      setLoading(true);
+      // ── Email registration: send OTP to email ──
+      setEmailOtpSending(true);
       try {
         const location = await requestLocation();
-        const credential = await createUserWithEmailAndPassword(auth, rawContact, password);
-        const uid = credential.user.uid;
+        setSavedLocation(location);
 
-        await ensureUserDocument(uid, rawContact, role, {
-          name: trimmedName,
-          specialty,
-          location,
+        const endpoint = `${getServerUrl()}api/send-email-otp`;
+        console.log("[OTP-Register] sending Email OTP to:", rawContact, "→", endpoint);
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: rawContact }),
         });
-
-        if (role === "artisan" && specialty) {
-          const category = getCategoryForSpecialty(specialty);
-          await createOrUpdateArtisan(uid, {
-            name: trimmedName,
-            phone: "",
-            photoUri: null,
-            specialty,
-            category,
-            location,
-            bio: "",
-            isAvailable: true,
-          });
+        const ct = res.headers.get("content-type") ?? "";
+        if (!ct.includes("application/json")) {
+          const text = await res.text();
+          console.error("[OTP-Register] non-JSON email response:", text.slice(0, 300));
+          throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
         }
+        const data = await res.json() as { ok?: boolean; error?: string };
+        if (!res.ok || !data.ok) throw new Error(data.error ?? "فشل إرسال رمز التحقق");
 
+        console.log("[OTP-Register] Email OTP sent ✓");
+        setEmailOtpCode("");
+        setEmailOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("تم التسجيل", "تم إنشاء حسابك بنجاح!", [
-          { text: "تسجيل الدخول", onPress: () => router.replace("/login") },
-        ]);
       } catch (err: any) {
+        console.error("[OTP-Register] email send error:", err?.message ?? err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const code = err?.code || "";
-        if (code === "auth/email-already-in-use") {
-          Alert.alert("خطأ", "هذا البريد مسجل مسبقاً");
-        } else if (code === "auth/weak-password") {
-          Alert.alert("خطأ", "كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
-        } else if (code === "auth/invalid-email") {
-          Alert.alert("خطأ", "صيغة البريد الإلكتروني غير صحيحة");
-        } else {
-          Alert.alert("خطأ", "حدث خطأ أثناء إنشاء الحساب");
-        }
+        Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
       } finally {
-        setLoading(false);
+        setEmailOtpSending(false);
       }
     }
   };
@@ -490,10 +511,74 @@ export default function RegisterScreen() {
     }
   };
 
+  // ─── Verify Email OTP and complete registration ──────────────────────────
+
+  const handleVerifyEmailOtp = async () => {
+    if (emailOtpCode.length !== 6) return;
+
+    const trimmedName = fullName.trim();
+    const rawContact  = contact.trim();
+
+    setEmailOtpVerifying(true);
+    try {
+      const endpoint = `${getServerUrl()}api/verify-email-otp`;
+      console.log("[OTP-Register] verifying Email OTP for", rawContact, "→", endpoint);
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: rawContact, code: emailOtpCode, password }),
+      });
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        const text = await res.text();
+        console.error("[OTP-Register] non-JSON email verify response:", text.slice(0, 300));
+        throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
+      }
+      const data = await res.json() as { ok?: boolean; customToken?: string; uid?: string; email?: string; error?: string };
+
+      if (!res.ok || !data.ok || !data.customToken) {
+        throw new Error(data.error ?? "الرمز غير صحيح أو منتهي الصلاحية");
+      }
+
+      const credential = await signInWithCustomToken(auth, data.customToken);
+      const uid = credential.user.uid;
+      console.log("[OTP-Register] email: signed in with custom token, uid:", uid);
+
+      await ensureUserDocument(uid, rawContact, role, {
+        name: trimmedName,
+        specialty,
+        location: savedLocation,
+      });
+
+      if (role === "artisan" && specialty) {
+        const category = getCategoryForSpecialty(specialty);
+        await createOrUpdateArtisan(uid, {
+          name: trimmedName,
+          phone: "",
+          photoUri: null,
+          specialty,
+          category,
+          location: savedLocation,
+          bio: "",
+          isAvailable: true,
+        });
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace("/dashboard" as any);
+    } catch (err: any) {
+      console.error("[OTP-Register] email verify error:", err?.message ?? err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("خطأ", err?.message ?? "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
+    } finally {
+      setEmailOtpVerifying(false);
+    }
+  };
+
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
   const selectedSpecialtyLabel = ALL_OPTIONS.find((s) => s.key === specialty)?.label ?? "";
-  const anyLoading = loading || regOtpSending;
+  const anyLoading = loading || regOtpSending || emailOtpSending;
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -533,16 +618,45 @@ export default function RegisterScreen() {
             />
 
             {/* 2 ── رقم الهاتف أو البريد */}
-            <InputField
-              label="رقم الهاتف أو البريد الإلكتروني"
-              placeholder="07xxxxxxxx أو example@email.com"
-              value={contact}
-              onChangeText={setContact}
-              icon={<Feather name="phone" size={18} color={C.textSecondary} />}
-              keyboardType={contactKeyboardType}
-              innerRef={contactRef}
-              onSubmitEditing={() => isPhone ? undefined : passwordRef.current?.focus()}
-            />
+            <View style={styles.fieldWrap}>
+              <View style={styles.fieldLabelRow}>
+                <Text style={styles.fieldLabel}>رقم الهاتف أو البريد الإلكتروني</Text>
+                {/* Google button — visible only when in email mode */}
+                {!isPhone && (
+                  <Pressable
+                    style={styles.googleBtn}
+                    onPress={() => promptGoogleAsync()}
+                    disabled={!googleRequest}
+                  >
+                    <Text style={styles.googleBtnText}>G</Text>
+                    <Text style={styles.googleBtnLabel}>تسجيل بـ Google</Text>
+                  </Pressable>
+                )}
+              </View>
+              <View style={[styles.inputRow, styles.inputRowFull]}>
+                <View style={styles.inputIcon}>
+                  <Feather
+                    name={isPhone ? "phone" : "mail"}
+                    size={18}
+                    color={C.textSecondary}
+                  />
+                </View>
+                <TextInput
+                  ref={contactRef}
+                  style={styles.input}
+                  placeholder="07xxxxxxxx أو example@email.com"
+                  placeholderTextColor={C.textMuted}
+                  value={contact}
+                  onChangeText={setContact}
+                  keyboardType={contactKeyboardType}
+                  textAlign="right"
+                  textAlignVertical="center"
+                  autoCapitalize="none"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  returnKeyType="next"
+                />
+              </View>
+            </View>
 
             {/* 3 ── نوع الحساب / التخصص */}
             <View style={styles.fieldWrap}>
@@ -564,30 +678,32 @@ export default function RegisterScreen() {
               </Text>
             </View>
 
-            {/* 4 ── كلمة المرور (email only) */}
-            {!isPhone && (
-              <InputField
-                label="كلمة المرور"
-                placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
-                value={password}
-                onChangeText={setPassword}
-                icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                secureTextEntry
-                innerRef={passwordRef}
-                returnKeyType="done"
-                onSubmitEditing={handleRegister}
-              />
-            )}
+            {/* 4 ── كلمة المرور (دائماً ظاهرة) */}
+            <InputField
+              label="كلمة المرور"
+              placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
+              value={password}
+              onChangeText={setPassword}
+              icon={<Feather name="lock" size={18} color={C.textSecondary} />}
+              secureTextEntry
+              innerRef={passwordRef}
+              returnKeyType="done"
+              onSubmitEditing={handleRegister}
+            />
 
-            {/* Phone auth note */}
-            {isPhone && (
-              <View style={styles.phoneNote}>
-                <Ionicons name="shield-checkmark-outline" size={16} color={C.accent} />
-                <Text style={styles.phoneNoteText}>
-                  سيتم إرسال رمز تحقق إلى رقمك عبر SMS
-                </Text>
-              </View>
-            )}
+            {/* Note: WhatsApp OTP for phone, Email OTP for email */}
+            <View style={styles.phoneNote}>
+              <Ionicons
+                name={isPhone ? "logo-whatsapp" : "mail-outline"}
+                size={16}
+                color={C.accent}
+              />
+              <Text style={styles.phoneNoteText}>
+                {isPhone
+                  ? "سيتم إرسال رمز تحقق إلى رقمك عبر واتساب"
+                  : "سيتم إرسال رمز تحقق إلى بريدك الإلكتروني"}
+              </Text>
+            </View>
 
             <Animated.View style={btnStyle}>
               <Pressable
@@ -604,16 +720,12 @@ export default function RegisterScreen() {
                   {anyLoading ? (
                     <>
                       <ActivityIndicator size="small" color={C.primary} />
-                      <Text style={styles.registerBtnText}>
-                        {regOtpSending ? "جارٍ الإرسال..." : "جارٍ إنشاء الحساب..."}
-                      </Text>
+                      <Text style={styles.registerBtnText}>جارٍ الإرسال...</Text>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.registerBtnText}>
-                        {isPhone ? "إرسال رمز التحقق" : "إنشاء حساب"}
-                      </Text>
-                      <Feather name={isPhone ? "send" : "check"} size={18} color={C.primary} />
+                      <Text style={styles.registerBtnText}>إنشاء حساب</Text>
+                      <Feather name="user-plus" size={18} color={C.primary} />
                     </>
                   )}
                 </LinearGradient>
@@ -676,31 +788,27 @@ export default function RegisterScreen() {
         </View>
       </Modal>
 
-      {/* ── OTP verification modal (phone registration) ── */}
+      {/* ── OTP modal: WhatsApp (phone) ── */}
       <Modal
         visible={regOtpStep === "otp"}
         transparent
         animationType="slide"
         onRequestClose={() => setRegOtpStep("form")}
-        onShow={() => {
-          // autoFocus doesn't work reliably inside Modal on Android —
-          // manually focus after the animation finishes (~300ms)
-          setTimeout(() => otpInputRef.current?.focus(), 300);
-        }}
+        onShow={() => setTimeout(() => otpInputRef.current?.focus(), 300)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => {}}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconCircle}>
-                <Ionicons name="shield-checkmark" size={22} color={C.accent} />
+                <Ionicons name="logo-whatsapp" size={22} color={C.accent} />
               </View>
-              <Text style={styles.modalTitle}>رمز التحقق</Text>
+              <Text style={styles.modalTitle}>رمز التحقق — واتساب</Text>
             </View>
 
             <Text style={styles.modalDesc}>
-              أُرسل رمز تحقق مكون من 6 أرقام عبر{" "}
+              أُرسل رمز مكون من 6 أرقام عبر{" "}
               <Text style={styles.modalPhoneHighlight}>واتساب</Text>
-              {" "}إلى الرقم{"\n"}
+              {" "}إلى{"\n"}
               <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
             </Text>
 
@@ -711,28 +819,59 @@ export default function RegisterScreen() {
               onPress={handleVerifyRegisterOtp}
               disabled={regOtpVerifying || regOtpCode.length < 6}
             >
-              <LinearGradient
-                colors={[C.accent, C.accentLight]}
-                style={styles.modalSendGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {regOtpVerifying ? (
-                  <ActivityIndicator size="small" color={C.primary} />
-                ) : (
-                  <>
-                    <Text style={styles.modalSendText}>تحقق وإنشاء الحساب</Text>
-                    <Ionicons name="checkmark" size={18} color={C.primary} />
-                  </>
+              <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                {regOtpVerifying ? <ActivityIndicator size="small" color={C.primary} /> : (
+                  <><Text style={styles.modalSendText}>تحقق وإنشاء الحساب</Text><Ionicons name="checkmark" size={18} color={C.primary} /></>
                 )}
               </LinearGradient>
             </Pressable>
 
-            <Pressable
-              style={styles.modalCancelBtn}
-              onPress={() => setRegOtpStep("form")}
-            >
+            <Pressable style={styles.modalCancelBtn} onPress={() => setRegOtpStep("form")}>
               <Text style={styles.modalCancelText}>إلغاء وتعديل الرقم</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* ── OTP modal: Email ── */}
+      <Modal
+        visible={emailOtpStep === "otp"}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEmailOtpStep("form")}
+        onShow={() => setTimeout(() => otpInputRef.current?.focus(), 300)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => {}}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconCircle}>
+                <Ionicons name="mail" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.modalTitle}>رمز التحقق — البريد</Text>
+            </View>
+
+            <Text style={styles.modalDesc}>
+              أُرسل رمز مكون من 6 أرقام إلى{"\n"}
+              <Text style={styles.modalPhoneHighlight}>{contact.trim()}</Text>
+              {"\n"}تحقق من صندوق الوارد (أو Spam)
+            </Text>
+
+            <OtpInput ref={otpInputRef} value={emailOtpCode} onChange={setEmailOtpCode} />
+
+            <Pressable
+              style={[styles.modalSendBtn, (emailOtpVerifying || emailOtpCode.length < 6) && styles.btnDisabled]}
+              onPress={handleVerifyEmailOtp}
+              disabled={emailOtpVerifying || emailOtpCode.length < 6}
+            >
+              <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                {emailOtpVerifying ? <ActivityIndicator size="small" color={C.primary} /> : (
+                  <><Text style={styles.modalSendText}>تحقق وإنشاء الحساب</Text><Ionicons name="checkmark" size={18} color={C.primary} /></>
+                )}
+              </LinearGradient>
+            </Pressable>
+
+            <Pressable style={styles.modalCancelBtn} onPress={() => setEmailOtpStep("form")}>
+              <Text style={styles.modalCancelText}>إلغاء وتعديل البريد</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -775,7 +914,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
   },
   fieldWrap: { gap: 6 },
+  fieldLabelRow: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", marginBottom: 2,
+  },
   fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  // Google quick-fill button shown next to the email label
+  googleBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "#FFF",
+    borderWidth: 1, borderColor: "#E0E0E0", borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
+    elevation: 1,
+  },
+  googleBtnText: {
+    fontSize: 14, fontWeight: "800", color: "#4285F4",
+    fontFamily: "Cairo_700Bold",
+  },
+  googleBtnLabel: {
+    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#444",
+  },
+  inputRowFull: { paddingVertical: 0 },
   helperText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 4 },
   inputRow: {
     flexDirection: "row", alignItems: "center",
