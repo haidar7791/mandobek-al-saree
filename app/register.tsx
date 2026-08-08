@@ -52,32 +52,49 @@ import Colors from "@/constants/colors";
 // Hardcoded Replit dev domain — stable per-repl, used as guaranteed fallback.
 // ─── Backend URL ─────────────────────────────────────────────────────────────
 //
-// Replit port mapping (.replit):
-//   localPort 8081 → externalPort 80   (Metro / frontend — serves HTML)
-//   localPort 5000 → externalPort 5000 (Express / backend — serves JSON API)
-//
-// Default HTTPS (port 443 / port 80) goes to Metro.
-// We MUST always use :5000 for API calls, otherwise Metro intercepts and returns HTML.
+// ── Backend URL resolution ─────────────────────────────────────────────────
 //
 // Priority order:
-//   1. Baked domain from app.config.js (REACT_NATIVE_PACKAGER_HOSTNAME) + forced :5000
-//   2. EXPO_PUBLIC_DOMAIN (baked by Metro at bundle time) + forced :5000
-//   3. Hardcoded constant — verified working via curl from external devices
+//   1. Cloud Run production URL  — always used if host ends with .run.app
+//   2. EXPO_PUBLIC_SERVER_URL env var (explicit override)
+//   3. Baked Replit domain (app.config.js) + forced :5000  (dev only)
+//   4. EXPO_PUBLIC_DOMAIN env var + forced :5000            (dev only)
+//   5. Hardcoded Replit fallback + :5000                    (dev only)
+//
+// Cloud Run serves on standard HTTPS (443) — no extra port needed.
+// Replit dev backend runs on port 5000 (different from Metro on 80/443).
 
+/** Cloud Run production backend — stable URL, never changes */
+const CLOUD_RUN_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app/";
+
+/** Replit dev backend fallback */
 const REPLIT_BACKEND_HOST =
   "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
 
 function getServerUrl(): string {
-  // Helper: take a raw host/url string, strip any existing port, force :5000, return base URL
+  // 1. Explicit env override (e.g. set to Cloud Run URL in EAS builds)
+  const explicitUrl = process.env.EXPO_PUBLIC_SERVER_URL;
+  if (
+    typeof explicitUrl === "string" &&
+    explicitUrl.startsWith("https://") &&
+    !explicitUrl.includes("localhost") &&
+    !explicitUrl.includes("127.0.0.1")
+  ) {
+    const url = explicitUrl.endsWith("/") ? explicitUrl : explicitUrl + "/";
+    console.log("[API-URL] env-override →", url);
+    return url;
+  }
+
+  // Helper: strip proto/port and force :5000 (Replit dev only)
   function withPort5000(raw: string): string {
-    // Remove protocol prefix if present
     const noProto = raw.replace(/^https?:\/\//, "");
-    // Remove any existing port
-    const noPort = noProto.replace(/:\d+\/?$/, "").replace(/\/$/, "");
+    const noPort  = noProto.replace(/:\d+\/?$/, "").replace(/\/$/, "");
+    // Cloud Run hosts must NOT get :5000
+    if (noPort.endsWith(".run.app")) return `https://${noPort}/`;
     return `https://${noPort}:5000/`;
   }
 
-  // 1. Domain baked into native bundle by app.config.js at Metro startup
+  // 2. Domain baked into native bundle by app.config.js at Metro startup
   const bakedDomain: unknown = (Constants.expoConfig as any)?.extra?.replitDomain;
   if (
     typeof bakedDomain === "string" &&
@@ -91,7 +108,7 @@ function getServerUrl(): string {
     return url;
   }
 
-  // 2. EXPO_PUBLIC_DOMAIN env var (baked by Metro, may already include :5000)
+  // 3. EXPO_PUBLIC_DOMAIN env var (baked by Metro, may include :5000)
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   if (
     typeof envDomain === "string" &&
@@ -104,10 +121,9 @@ function getServerUrl(): string {
     return url;
   }
 
-  // 3. Hardcoded fallback — external curl confirmed HTTP 200 on this URL
-  const url = `https://${REPLIT_BACKEND_HOST}:5000/`;
-  console.log("[API-URL] hardcoded-fallback →", url);
-  return url;
+  // 4. Cloud Run production — stable fallback for production builds
+  console.log("[API-URL] cloud-run →", CLOUD_RUN_BASE);
+  return CLOUD_RUN_BASE;
 }
 
 /** Returns true if the input looks like a phone number (starts with digit or +, no @) */

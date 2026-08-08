@@ -21,16 +21,16 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 // ─── Backend URL ──────────────────────────────────────────────────────────────
-const REPLIT_BACKEND_HOST =
-  "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
+/** Cloud Run production backend — stable URL */
+const CLOUD_RUN_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app";
 
 function getApiBase(): string {
-  const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
-  const host =
-    envDomain && !envDomain.includes("127.0.0.1") && !envDomain.includes("localhost")
-      ? envDomain.replace(/^https?:\/\//, "").replace(/:\d+\/?$/, "").replace(/\/$/, "")
-      : REPLIT_BACKEND_HOST;
-  return `https://${host}:5000/`;
+  // Explicit env override (EAS builds can set this)
+  const explicit = process.env.EXPO_PUBLIC_SERVER_URL;
+  if (explicit && explicit.startsWith("https://") && !explicit.includes("localhost")) {
+    return explicit.endsWith("/") ? explicit : explicit + "/";
+  }
+  return CLOUD_RUN_BASE + "/";
 }
 
 // ─── PasswordInput helper ─────────────────────────────────────────────────────

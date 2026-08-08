@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
 # deploy-cloudrun.sh — Deploy forus-backend to Google Cloud Run
-#
-# Run from the workspace root after granting IAM roles:
-#   bash deploy-cloudrun.sh
-#
-# Required IAM roles on firebase-adminsdk-fbsvc@mandobek-al-saree.iam.gserviceaccount.com:
-#   roles/run.admin
-#   roles/artifactregistry.admin
-#   roles/iam.serviceAccountUser
-# ─────────────────────────────────────────────────────────────────────────────
+# Run from workspace root:  bash deploy-cloudrun.sh
 set -euo pipefail
 
 export PATH="$PATH:/home/runner/gcloud/google-cloud-sdk/bin"
@@ -22,38 +13,59 @@ IMAGE="$REGION-docker.pkg.dev/$PROJECT/$REPO/$SERVICE"
 SA="firebase-adminsdk-fbsvc@$PROJECT.iam.gserviceaccount.com"
 
 # ── 1. Authenticate ──────────────────────────────────────────────────────────
-echo "🔑 Authenticating with service account..."
+echo "🔑 Authenticating..."
 echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa_key.json
 gcloud auth activate-service-account --key-file=/tmp/sa_key.json --quiet
 gcloud config set project "$PROJECT" --quiet
 gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-echo "   ✓ Authenticated as $SA"
+echo "   ✓ Authenticated"
 
-# ── 2. Create Artifact Registry repo (idempotent) ────────────────────────────
-echo "📦 Ensuring Artifact Registry repository exists..."
+# ── 2. Artifact Registry repo (idempotent) ────────────────────────────────────
+echo "📦 Ensuring Artifact Registry repo..."
 gcloud artifacts repositories create "$REPO" \
   --repository-format=docker \
   --location="$REGION" \
   --project="$PROJECT" \
-  --quiet 2>/dev/null && echo "   ✓ Repository created" \
-  || echo "   ✓ Repository already exists"
+  --quiet 2>/dev/null && echo "   ✓ Repo created" || echo "   ✓ Repo exists"
 
-# ── 3. Build Docker image ─────────────────────────────────────────────────────
-echo "🐳 Building Docker image..."
-docker build -t "$IMAGE:latest" .
-echo "   ✓ Image built"
+# ── 3. Build & Push ───────────────────────────────────────────────────────────
+if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
+  echo "🐳 Building Docker image..."
+  docker build -t "$IMAGE:latest" .
+  echo "   ✓ Image built"
+  echo "📤 Pushing image..."
+  docker push "$IMAGE:latest"
+  echo "   ✓ Image pushed"
+else
+  echo "⏭  Skipping build (SKIP_BUILD=1) — using existing image"
+fi
 
-# ── 4. Push to Artifact Registry ─────────────────────────────────────────────
-echo "📤 Pushing image to Artifact Registry..."
-docker push "$IMAGE:latest"
-echo "   ✓ Image pushed"
+# ── 4. Write env-vars YAML (json.dumps → valid YAML double-quoted scalars) ────
+echo "🔐 Writing env-vars file..."
+python3 - <<PYEOF
+import json, os
 
-# ── 5. Read Replit secrets from environment ───────────────────────────────────
-# Secrets are already available as env vars in the Replit shell.
-# We pass them as Cloud Run env vars so the server can read process.env.*
-FIREBASE_SA_ESCAPED=$(echo "$FIREBASE_SERVICE_ACCOUNT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))" | tr -d '"')
+def q(v):
+    """json.dumps produces a valid YAML double-quoted scalar."""
+    return json.dumps(str(v))
 
-# ── 6. Deploy to Cloud Run ────────────────────────────────────────────────────
+lines = [
+    "NODE_ENV: " + q("production"),
+    "ULTRAMSG_INSTANCE_ID: " + q(os.environ.get("ULTRAMSG_INSTANCE_ID", "instance187756")),
+    "ULTRAMSG_TOKEN: "       + q(os.environ.get("ULTRAMSG_TOKEN",       "us2d3muaswe5s4kp")),
+    "FIREBASE_SERVICE_ACCOUNT: " + q(os.environ["FIREBASE_SERVICE_ACCOUNT"]),
+    "SESSION_SECRET: "           + q(os.environ["SESSION_SECRET"]),
+    "EMAIL_USER: "               + q(os.environ["EMAIL_USER"]),
+    "EMAIL_PASS: "               + q(os.environ["EMAIL_PASS"]),
+]
+
+with open("/tmp/cr-env.yaml", "w") as f:
+    f.write("\n".join(lines) + "\n")
+
+print("   ✓ /tmp/cr-env.yaml written")
+PYEOF
+
+# ── 5. Deploy to Cloud Run ────────────────────────────────────────────────────
 echo "🚀 Deploying to Cloud Run ($REGION)..."
 gcloud run deploy "$SERVICE" \
   --image="$IMAGE:latest" \
@@ -67,30 +79,23 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="NODE_ENV=production" \
-  --set-env-vars="ULTRAMSG_INSTANCE_ID=${ULTRAMSG_INSTANCE_ID:-instance187756}" \
-  --set-env-vars="ULTRAMSG_TOKEN=${ULTRAMSG_TOKEN:-us2d3muaswe5s4kp}" \
-  --update-env-vars="FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}" \
-  --update-env-vars="SESSION_SECRET=${SESSION_SECRET}" \
-  --update-env-vars="EMAIL_USER=${EMAIL_USER}" \
-  --update-env-vars="EMAIL_PASS=${EMAIL_PASS}" \
+  --env-vars-file=/tmp/cr-env.yaml \
   --quiet
 
-# ── 7. Print the live URL ─────────────────────────────────────────────────────
+# ── 6. Get live URL ───────────────────────────────────────────────────────────
 SERVICE_URL=$(gcloud run services describe "$SERVICE" \
   --project="$PROJECT" \
   --region="$REGION" \
   --format="value(status.url)")
 
-echo ""
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║  ✅ Cloud Run deployment complete!                         ║"
-echo "╠════════════════════════════════════════════════════════════╣"
-printf "║  🌐 URL: %-51s║\n" "$SERVICE_URL"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
-echo "Next step: update REPLIT_BACKEND_HOST in the app to:"
-echo "  $(echo "$SERVICE_URL" | sed 's|https://||')"
+HOST=$(echo "$SERVICE_URL" | sed 's|https://||')
+echo "$HOST" > /tmp/cr_host.txt
 
-# Cleanup
-rm -f /tmp/sa_key.json
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  ✅  Cloud Run deployment complete!                          ║"
+printf "║  🌐  %-55s ║\n" "$SERVICE_URL"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo "BACKEND_HOST=$HOST"
+
+rm -f /tmp/sa_key.json /tmp/cr-env.yaml

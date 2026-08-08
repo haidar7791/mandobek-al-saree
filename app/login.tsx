@@ -235,8 +235,8 @@ function OtpInput({
 
 // ─── Backend base URL ─────────────────────────────────────────────────────────
 
-const BACKEND_BASE =
-  "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev:5000";
+/** Cloud Run production backend — stable URL */
+const BACKEND_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app";
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
