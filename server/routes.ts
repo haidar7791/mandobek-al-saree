@@ -504,6 +504,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return "https://forus-backend-laoeoqcoza-ew.a.run.app";
   }
 
+  // ─── Reset-password web page (opened from the link in WhatsApp / email) ─────
+  /**
+   * GET /reset-password?token=<token>
+   *
+   * Serves a self-contained HTML form. The user enters a new password and
+   * the page POSTs to /api/reset-password-with-token via fetch — no Expo needed.
+   */
+  app.get("/reset-password", (req: Request, res: Response) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>إعادة تعيين كلمة المرور – فورس</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#0D1B3E;min-height:100vh;
+         display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:#fff;border-radius:20px;padding:32px 28px;width:100%;max-width:420px;
+          box-shadow:0 20px 60px rgba(0,0,0,.35)}
+    .logo{text-align:center;margin-bottom:24px}
+    .logo h1{font-size:26px;color:#0D1B3E;font-weight:800;letter-spacing:1px}
+    .logo p{font-size:13px;color:#888;margin-top:4px}
+    label{display:block;font-size:13px;font-weight:600;color:#333;margin-bottom:6px}
+    .field{margin-bottom:18px;position:relative}
+    input[type=password],input[type=text]{width:100%;padding:13px 16px;border:1.5px solid #e0e0e0;
+      border-radius:12px;font-size:15px;outline:none;transition:border .2s;text-align:right;
+      font-family:inherit;color:#111}
+    input:focus{border-color:#C9A84C;box-shadow:0 0 0 3px rgba(201,168,76,.15)}
+    .toggle{position:absolute;left:14px;top:50%;transform:translateY(-50%);
+            background:none;border:none;cursor:pointer;color:#aaa;font-size:18px;padding:4px}
+    .btn{width:100%;padding:15px;background:linear-gradient(90deg,#C9A84C,#e0c068);
+         color:#0D1B3E;font-size:16px;font-weight:800;border:none;border-radius:14px;
+         cursor:pointer;transition:opacity .2s;margin-top:4px}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .msg{margin-top:18px;padding:14px 16px;border-radius:12px;font-size:14px;text-align:center;display:none}
+    .msg.success{background:#e8f5e9;color:#2e7d32;display:block}
+    .msg.error{background:#fdecea;color:#c62828;display:block}
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid #0D1B3E;
+             border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;
+             vertical-align:middle;margin-left:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .invalid-token{text-align:center;padding:24px 0}
+    .invalid-token p{color:#c62828;font-size:15px;margin-top:8px}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>فورس</h1>
+    <p>إعادة تعيين كلمة المرور</p>
+  </div>
+
+  ${!token ? `
+  <div class="invalid-token">
+    <p>⚠️ رابط إعادة التعيين غير صالح أو منتهي الصلاحية.</p>
+    <p style="margin-top:12px;font-size:13px;color:#888">يرجى طلب رابط جديد من التطبيق.</p>
+  </div>
+  ` : `
+  <form id="form" onsubmit="submit(event)">
+    <div class="field">
+      <label for="np">كلمة المرور الجديدة</label>
+      <input type="password" id="np" placeholder="6 أحرف على الأقل" required minlength="6"/>
+      <button type="button" class="toggle" onclick="toggle('np',this)">👁</button>
+    </div>
+    <div class="field">
+      <label for="cp">تأكيد كلمة المرور</label>
+      <input type="password" id="cp" placeholder="أعد إدخال كلمة المرور" required minlength="6"/>
+      <button type="button" class="toggle" onclick="toggle('cp',this)">👁</button>
+    </div>
+    <button class="btn" id="btn" type="submit">تغيير كلمة المرور</button>
+  </form>
+  <div id="msg" class="msg"></div>
+
+  <script>
+    const TOKEN = ${JSON.stringify(token)};
+    function toggle(id, btn) {
+      const el = document.getElementById(id);
+      el.type = el.type === 'password' ? 'text' : 'password';
+      btn.textContent = el.type === 'password' ? '👁' : '🙈';
+    }
+    async function submit(e) {
+      e.preventDefault();
+      const np = document.getElementById('np').value;
+      const cp = document.getElementById('cp').value;
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('btn');
+      msg.className = 'msg'; msg.textContent = '';
+      if (np !== cp) { showErr('كلمتا المرور غير متطابقتين'); return; }
+      btn.disabled = true;
+      btn.innerHTML = 'جارٍ الحفظ… <span class="spinner"></span>';
+      try {
+        const r = await fetch('/api/reset-password-with-token', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ token: TOKEN, newPassword: np })
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) { showErr(d.error || 'حدث خطأ غير متوقع'); return; }
+        document.getElementById('form').style.display = 'none';
+        msg.className = 'msg success';
+        msg.textContent = '✅ تم تغيير كلمة المرور بنجاح — يمكنك الآن تسجيل الدخول في التطبيق.';
+      } catch(err) {
+        showErr('تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة');
+      } finally {
+        if (btn.disabled) { btn.disabled = false; btn.textContent = 'تغيير كلمة المرور'; }
+      }
+    }
+    function showErr(t) {
+      const msg = document.getElementById('msg');
+      msg.className = 'msg error'; msg.textContent = t;
+      document.getElementById('btn').disabled = false;
+      document.getElementById('btn').textContent = 'تغيير كلمة المرور';
+    }
+  </script>
+  `}
+</div>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(html);
+  });
+
   /**
    * POST /api/forgot-password
    * Body: { identifier: string }  — E.164 phone or email address
