@@ -51,8 +51,9 @@ import Colors from "@/constants/colors";
  * Metro is started with --localhost, making hostUri always "127.0.0.1".
  */
 // Hardcoded Replit dev domain — stable per-repl, used as guaranteed fallback.
-// Update this if the repl is ever renamed or migrated.
-const REPLIT_SERVER_URL = "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
+// Port 5000 is the Express backend (externalPort 5000 in .replit).
+// Port 80/443 (default HTTPS) maps to Metro (8081) — never use it for API calls.
+const REPLIT_SERVER_URL = "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev:5000";
 
 function getServerUrl(): string {
   // 1. Baked-in Replit domain from app.config.js extra (REACT_NATIVE_PACKAGER_HOSTNAME)
@@ -66,7 +67,9 @@ function getServerUrl(): string {
     !replitDomain.includes("127.0.0.1") &&
     !replitDomain.includes("localhost")
   ) {
-    const url = `https://${replitDomain}/`;
+    // Ensure :5000 — Express is on externalPort 5000, NOT the default 443/80 (that goes to Metro)
+    const host = replitDomain.includes(":") ? replitDomain : `${replitDomain}:5000`;
+    const url = `https://${host}/`;
     console.log("[getServerUrl] baked domain:", url);
     return url;
   }
