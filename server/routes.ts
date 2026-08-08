@@ -334,13 +334,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       await transporter.sendMail({
-        from: `"سند" <${emailUser}>`,
+        from: `"فورس - ForUs" <${emailUser}>`,
         to: email,
-        subject: "رمز التحقق - سند",
+        subject: "رمز التحقق - فورس",
         html: `
           <div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;max-width:480px;margin:auto">
             <h2 style="color:#0D1B3E">رمز التحقق الخاص بك</h2>
-            <p style="color:#444">أدخل الرمز التالي لإتمام إنشاء حسابك في تطبيق <strong>سند</strong>:</p>
+            <p style="color:#444">أدخل الرمز التالي لإتمام إنشاء حسابك في تطبيق <strong>فورس</strong>:</p>
             <div style="background:#f5f0e8;border-radius:12px;padding:20px;text-align:center;margin:20px 0">
               <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#C9A84C">${code}</span>
             </div>
