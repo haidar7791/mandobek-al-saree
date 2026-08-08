@@ -51,30 +51,48 @@ import Colors from "@/constants/colors";
  * Metro is started with --localhost, making hostUri always "127.0.0.1".
  */
 // Hardcoded Replit dev domain — stable per-repl, used as guaranteed fallback.
-// Port 5000 is the Express backend (externalPort 5000 in .replit).
-// Port 80/443 (default HTTPS) maps to Metro (8081) — never use it for API calls.
-const REPLIT_SERVER_URL = "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev:5000";
+// ─── Backend URL ─────────────────────────────────────────────────────────────
+//
+// Replit port mapping (.replit):
+//   localPort 8081 → externalPort 80   (Metro / frontend — serves HTML)
+//   localPort 5000 → externalPort 5000 (Express / backend — serves JSON API)
+//
+// Default HTTPS (port 443 / port 80) goes to Metro.
+// We MUST always use :5000 for API calls, otherwise Metro intercepts and returns HTML.
+//
+// Priority order:
+//   1. Baked domain from app.config.js (REACT_NATIVE_PACKAGER_HOSTNAME) + forced :5000
+//   2. EXPO_PUBLIC_DOMAIN (baked by Metro at bundle time) + forced :5000
+//   3. Hardcoded constant — verified working via curl from external devices
+
+const REPLIT_BACKEND_HOST =
+  "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
 
 function getServerUrl(): string {
-  // 1. Baked-in Replit domain from app.config.js extra (REACT_NATIVE_PACKAGER_HOSTNAME)
-  const rawExtra = (Constants.expoConfig as any)?.extra;
-  const replitDomain: unknown = rawExtra?.replitDomain;
+  // Helper: take a raw host/url string, strip any existing port, force :5000, return base URL
+  function withPort5000(raw: string): string {
+    // Remove protocol prefix if present
+    const noProto = raw.replace(/^https?:\/\//, "");
+    // Remove any existing port
+    const noPort = noProto.replace(/:\d+\/?$/, "").replace(/\/$/, "");
+    return `https://${noPort}:5000/`;
+  }
 
+  // 1. Domain baked into native bundle by app.config.js at Metro startup
+  const bakedDomain: unknown = (Constants.expoConfig as any)?.extra?.replitDomain;
   if (
-    typeof replitDomain === "string" &&
-    replitDomain.length > 0 &&
-    replitDomain.includes(".") &&
-    !replitDomain.includes("127.0.0.1") &&
-    !replitDomain.includes("localhost")
+    typeof bakedDomain === "string" &&
+    bakedDomain.length > 0 &&
+    bakedDomain.includes(".") &&
+    !bakedDomain.includes("127.0.0.1") &&
+    !bakedDomain.includes("localhost")
   ) {
-    // Ensure :5000 — Express is on externalPort 5000, NOT the default 443/80 (that goes to Metro)
-    const host = replitDomain.includes(":") ? replitDomain : `${replitDomain}:5000`;
-    const url = `https://${host}/`;
-    console.log("[getServerUrl] baked domain:", url);
+    const url = withPort5000(bakedDomain);
+    console.log("[API-URL] baked-domain →", url);
     return url;
   }
 
-  // 2. EXPO_PUBLIC_DOMAIN env var
+  // 2. EXPO_PUBLIC_DOMAIN env var (baked by Metro, may already include :5000)
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   if (
     typeof envDomain === "string" &&
@@ -82,15 +100,15 @@ function getServerUrl(): string {
     !envDomain.includes("127.0.0.1") &&
     !envDomain.includes("localhost")
   ) {
-    const clean = envDomain.replace(/\/$/, "");
-    const url = clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
-    console.log("[getServerUrl] env domain:", url);
+    const url = withPort5000(envDomain);
+    console.log("[API-URL] env-domain →", url);
     return url;
   }
 
-  // 3. Hardcoded fallback — always works on physical devices, never returns a relative URL
-  console.log("[getServerUrl] using hardcoded fallback:", REPLIT_SERVER_URL);
-  return `${REPLIT_SERVER_URL}/`;
+  // 3. Hardcoded fallback — external curl confirmed HTTP 200 on this URL
+  const url = `https://${REPLIT_BACKEND_HOST}:5000/`;
+  console.log("[API-URL] hardcoded-fallback →", url);
+  return url;
 }
 
 /** Returns true if the input looks like a phone number (starts with digit or +, no @) */
