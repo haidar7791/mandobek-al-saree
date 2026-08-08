@@ -180,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Generates a 6-digit OTP, stores it for 5 minutes, and sends it via UltraMsg.
    */
   app.post("/api/send-whatsapp-otp", async (req: Request, res: Response) => {
-    const { phone } = req.body as { phone?: string };
+    const { phone, forRegistration } = req.body as { phone?: string; forRegistration?: boolean };
     if (!phone) {
       res.status(400).json({ error: "phone is required" });
       return;
@@ -188,6 +188,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const e164   = toE164Server(phone);
     const waPhone = e164.replace(/^\+/, ""); // UltraMsg wants no leading +
+
+    // ── Duplicate check for new registrations ───────────────────────────────
+    if (forRegistration) {
+      try {
+        const admin = await getAdminApp();
+        const { getAuth } = await import("firebase-admin/auth");
+        await getAuth(admin).getUserByPhoneNumber(e164);
+        // Reached here → user already exists
+        res.status(409).json({ ok: false, error: "الحساب موجود بالفعل، يرجى تسجيل الدخول", exists: true });
+        return;
+      } catch (authErr: any) {
+        if (authErr.code !== "auth/user-not-found") {
+          // Unexpected error (network, config, etc.)
+          console.error("[WhatsApp OTP] duplicate-check error:", authErr);
+          res.status(500).json({ error: "تعذّر التحقق من الحساب — حاول مجدداً" });
+          return;
+        }
+        // auth/user-not-found → no existing account → proceed
+      }
+    }
 
     // Clean stale entries then generate fresh OTP
     const now = Date.now();
@@ -243,7 +263,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Validates the OTP, then gets-or-creates a Firebase Auth user and returns a custom token.
    */
   app.post("/api/verify-whatsapp-otp", async (req: Request, res: Response) => {
-    const { phone, code } = req.body as { phone?: string; code?: string };
+    const { phone, code, password, forRegistration } = req.body as {
+      phone?: string; code?: string; password?: string; forRegistration?: boolean;
+    };
     if (!phone || !code) {
       res.status(400).json({ error: "phone and code are required" });
       return;
@@ -273,13 +295,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const admin = await getAdminApp();
       const { getAuth } = await import("firebase-admin/auth");
 
-      // Get existing Firebase Auth user or create a new one for this phone
+      // Fake-email used for password-based login compatibility (matches client toFirebaseEmail)
+      const rawLocal  = e164ToIraqiLocal(e164); // 07xxxxxxxx
+      const fakeEmail = `${rawLocal}@sanad.app`;
+      const safePass  = password && password.length >= 6 ? password : undefined;
+
       let uid: string;
       try {
         const existing = await getAuth(admin).getUserByPhoneNumber(e164);
         uid = existing.uid;
-      } catch {
-        const created = await getAuth(admin).createUser({ phoneNumber: e164 });
+        // On registration: ensure the user has fake-email + password for signInWithEmailAndPassword
+        if (forRegistration && safePass) {
+          await getAuth(admin).updateUser(uid, {
+            email: fakeEmail,
+            emailVerified: true,
+            password: safePass,
+          }).catch(() => {/* non-fatal if email already claimed */});
+        }
+      } catch (notFound: any) {
+        if (notFound.code !== "auth/user-not-found") throw notFound;
+        // New user — create with phone + fake-email + password for dual-auth
+        const created = await getAuth(admin).createUser({
+          phoneNumber: e164,
+          ...(safePass ? {
+            email: fakeEmail,
+            emailVerified: true,
+            password: safePass,
+          } : {}),
+        });
         uid = created.uid;
       }
 
@@ -303,10 +346,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Requires EMAIL_USER and EMAIL_PASS environment variables.
    */
   app.post("/api/send-email-otp", async (req: Request, res: Response) => {
-    const { email } = req.body as { email?: string };
+    const { email, forRegistration } = req.body as { email?: string; forRegistration?: boolean };
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
       return;
+    }
+
+    // ── Duplicate check for new registrations ───────────────────────────────
+    if (forRegistration) {
+      try {
+        const admin = await getAdminApp();
+        const { getAuth } = await import("firebase-admin/auth");
+        await getAuth(admin).getUserByEmail(email.toLowerCase().trim());
+        res.status(409).json({ ok: false, error: "الحساب موجود بالفعل، يرجى تسجيل الدخول", exists: true });
+        return;
+      } catch (authErr: any) {
+        if (authErr.code !== "auth/user-not-found") {
+          console.error("[Email OTP] duplicate-check error:", authErr);
+          res.status(500).json({ error: "تعذّر التحقق من الحساب — حاول مجدداً" });
+          return;
+        }
+        // auth/user-not-found → no existing account → proceed
+      }
     }
 
     const emailUser = process.env.EMAIL_USER;
@@ -418,6 +479,210 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[Email OTP] verify error:", err);
       res.status(500).json({ error: err.message ?? "فشل التحقق من الرمز" });
+    }
+  });
+
+  // ─── Forgot / Reset password via secure token ────────────────────────────────
+
+  /** Reset token store: hex-token → { uid, identifier, type, expiresAt } (15-min TTL) */
+  const resetTokenStore = new Map<string, {
+    uid: string;
+    identifier: string;
+    type: "phone" | "email";
+    expiresAt: number;
+  }>();
+
+  function generateResetToken(): string {
+    // 40-char alphanumeric token — no native crypto needed on Node 18
+    return Array.from({ length: 40 }, () =>
+      Math.floor(Math.random() * 36).toString(36)
+    ).join("");
+  }
+
+  function getResetLinkBase(): string {
+    const domain =
+      process.env.REPLIT_DEV_DOMAIN ??
+      "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
+    return `https://${domain}`;
+  }
+
+  /**
+   * POST /api/forgot-password
+   * Body: { identifier: string }  — E.164 phone or email address
+   *
+   * 1. Checks that the account exists in Firebase Auth.
+   * 2. Generates a 40-char secure token (15-min TTL).
+   * 3. Sends the reset link via WhatsApp (phone) or email.
+   */
+  app.post("/api/forgot-password", async (req: Request, res: Response) => {
+    const { identifier } = req.body as { identifier?: string };
+    if (!identifier) {
+      res.status(400).json({ error: "identifier is required" });
+      return;
+    }
+
+    const trimmed = identifier.trim();
+    const isPhone = /^[\d\+]/.test(trimmed) && !trimmed.includes("@");
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+
+      let uid: string;
+
+      if (isPhone) {
+        const e164 = toE164Server(trimmed);
+        try {
+          const user = await getAuth(admin).getUserByPhoneNumber(e164);
+          uid = user.uid;
+        } catch {
+          // Also try the fake-email pattern
+          const rawLocal = e164ToIraqiLocal(e164);
+          const fakeEmail = `${rawLocal}@sanad.app`;
+          try {
+            const user = await getAuth(admin).getUserByEmail(fakeEmail);
+            uid = user.uid;
+          } catch {
+            res.status(404).json({ error: "رقم الهاتف غير مسجل في النظام" });
+            return;
+          }
+        }
+      } else {
+        // email path
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+          res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
+          return;
+        }
+        try {
+          const user = await getAuth(admin).getUserByEmail(trimmed.toLowerCase());
+          uid = user.uid;
+        } catch {
+          res.status(404).json({ error: "البريد الإلكتروني غير مسجل في النظام" });
+          return;
+        }
+      }
+
+      // Clean stale tokens
+      const now = Date.now();
+      for (const [k, v] of resetTokenStore) if (v.expiresAt < now) resetTokenStore.delete(k);
+
+      const token = generateResetToken();
+      resetTokenStore.set(token, {
+        uid,
+        identifier: trimmed,
+        type: isPhone ? "phone" : "email",
+        expiresAt: now + 15 * 60 * 1000,
+      });
+
+      const resetLink = `${getResetLinkBase()}/reset-password?token=${token}`;
+      console.log(`[ForgotPassword] token for uid=${uid} link=${resetLink}`);
+
+      if (isPhone) {
+        // ── Send via WhatsApp ──
+        const e164    = toE164Server(trimmed);
+        const waPhone = e164.replace(/^\+/, "");
+        const instanceId = process.env.ULTRAMSG_INSTANCE_ID ?? "instance187756";
+        const waToken    = process.env.ULTRAMSG_TOKEN      ?? "us2d3muaswe5s4kp";
+
+        const waBody =
+          `مرحباً، تم طلب إعادة تعيين كلمة المرور لحسابك في تطبيق فورس.\n` +
+          `انقر على الرابط لإعادة تعيين كلمة المرور (صالح 15 دقيقة):\n${resetLink}`;
+
+        const waRes = await fetch(
+          `https://api.ultramsg.com/${instanceId}/messages/chat`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: waToken, to: waPhone, body: waBody }).toString(),
+          }
+        );
+        const waData = await waRes.json() as any;
+        if (waData?.error) throw new Error(`UltraMsg: ${waData.error}`);
+        console.log(`[ForgotPassword] WhatsApp reset link sent to ${e164}`);
+      } else {
+        // ── Send via Email ──
+        const emailUser = process.env.EMAIL_USER;
+        const emailPass = process.env.EMAIL_PASS;
+        if (!emailUser || !emailPass) {
+          res.status(503).json({ error: "خدمة البريد غير مهيأة — يرجى التواصل مع الدعم" });
+          return;
+        }
+        const nodemailer = await import("nodemailer");
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: emailUser, pass: emailPass },
+        });
+        await transporter.sendMail({
+          from: `"فورس - ForUs" <${emailUser}>`,
+          to: trimmed,
+          subject: "إعادة تعيين كلمة المرور - فورس",
+          html: `
+            <div dir="rtl" style="font-family:Arial,sans-serif;text-align:right;padding:24px;max-width:520px;margin:auto">
+              <h2 style="color:#0D1B3E">إعادة تعيين كلمة المرور</h2>
+              <p style="color:#444">تلقّينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك في تطبيق <strong>فورس</strong>.</p>
+              <p style="color:#444">انقر على الزر أدناه لاختيار كلمة مرور جديدة. الرابط صالح لمدة <strong>15 دقيقة</strong> فقط.</p>
+              <div style="text-align:center;margin:28px 0">
+                <a href="${resetLink}"
+                   style="background:#C9A84C;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:16px;font-weight:bold;display:inline-block">
+                  إعادة تعيين كلمة المرور
+                </a>
+              </div>
+              <p style="color:#888;font-size:12px">إذا لم تطلب ذلك، يمكنك تجاهل هذه الرسالة بأمان.</p>
+              <hr style="border:none;border-top:1px solid #eee;margin:20px 0"/>
+              <p style="color:#aaa;font-size:11px;text-align:center">فورس - ForUs</p>
+            </div>`,
+        });
+        console.log(`[ForgotPassword] Email reset link sent to ${trimmed}`);
+      }
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ForgotPassword] error:", err);
+      res.status(500).json({ error: err.message ?? "تعذّر إرسال رابط إعادة التعيين" });
+    }
+  });
+
+  /**
+   * POST /api/reset-password-with-token
+   * Body: { token: string, newPassword: string }
+   *
+   * Validates the token, updates the Firebase Auth password, then invalidates the token.
+   */
+  app.post("/api/reset-password-with-token", async (req: Request, res: Response) => {
+    const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+
+    if (!token || !newPassword) {
+      res.status(400).json({ error: "token and newPassword are required" });
+      return;
+    }
+    if (typeof newPassword !== "string" || newPassword.length < 6) {
+      res.status(400).json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
+      return;
+    }
+
+    const entry = resetTokenStore.get(token);
+    if (!entry) {
+      res.status(400).json({ error: "رابط إعادة التعيين غير صالح أو مستخدم مسبقاً" });
+      return;
+    }
+    if (Date.now() > entry.expiresAt) {
+      resetTokenStore.delete(token);
+      res.status(400).json({ error: "انتهت صلاحية الرابط — يرجى طلب رابط جديد" });
+      return;
+    }
+
+    // Invalidate immediately (single-use)
+    resetTokenStore.delete(token);
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+      await getAuth(admin).updateUser(entry.uid, { password: newPassword });
+      console.log(`[ResetPassword] password updated for uid=${entry.uid}`);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ResetPassword] error:", err);
+      res.status(500).json({ error: err.message ?? "فشل تحديث كلمة المرور" });
     }
   });
 

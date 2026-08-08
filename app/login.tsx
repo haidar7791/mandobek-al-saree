@@ -25,22 +25,11 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
-import {
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithPhoneNumber,
-  updatePassword,
-  type ConfirmationResult,
-  type ApplicationVerifier,
-  RecaptchaVerifier,
-} from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
-import FirebaseRecaptcha, {
-  type FirebaseRecaptchaHandle,
-} from "@/components/FirebaseRecaptcha";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -244,9 +233,10 @@ function OtpInput({
   );
 }
 
-// ─── OTP step type ────────────────────────────────────────────────────────────
+// ─── Backend base URL ─────────────────────────────────────────────────────────
 
-type OtpStep = "verify" | "newpass";
+const BACKEND_BASE =
+  "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev:5000";
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -257,30 +247,10 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
-  // ── Email reset modal ──
-  const [resetModalVisible, setResetModalVisible] = useState(false);
-  const [resetContact, setResetContact] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-
-  // ── Phone OTP reset flow ──
-  const [otpStep, setOtpStep] = useState<OtpStep | null>(null);
-  const [otpPhone, setOtpPhone] = useState(""); // raw input (07xxx)
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [otpVerifying, setOtpVerifying] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-  const [confirmationResult, setConfirmationResult] =
-    useState<ConfirmationResult | null>(null);
-  const [phoneToken, setPhoneToken] = useState<string | null>(null); // idToken after OTP
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordUpdating, setPasswordUpdating] = useState(false);
-
-  // ── reCAPTCHA (native only) ──
-  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
-  // Web reCAPTCHA container div id
-  const webRecaptchaContainerId = "web-recaptcha-container";
-  const webVerifierRef = useRef<ApplicationVerifier | null>(null);
+  // ── Forgot password modal ──
+  const [forgotModalVisible, setForgotModalVisible] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
 
   // ── Biometric ──
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -312,13 +282,6 @@ export default function LoginScreen() {
     }, 500);
     return () => clearTimeout(timer);
   }, []);
-
-  // ── Countdown timer for OTP resend ──
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [countdown]);
 
   // ─── Sign-in logic ────────────────────────────────────────────────────────
   const performSignIn = useCallback(async (contactVal: string, passwordVal: string) => {
@@ -409,270 +372,45 @@ export default function LoginScreen() {
     }
   };
 
-  // ─── Forgot password ────────────────────────────────────────────────────────
+  // ─── Forgot password — opens modal ────────────────────────────────────────
   const handleForgotPassword = () => {
-    const trimmed = contact.trim();
-    if (isPhoneInput(trimmed)) {
-      setOtpPhone(trimmed);
-      // Begin OTP flow: send OTP immediately
-      handleSendOtp(trimmed);
-    } else {
-      setResetContact(trimmed);
-      setResetModalVisible(true);
-    }
+    setForgotIdentifier(contact.trim());
+    setForgotModalVisible(true);
   };
 
-  // ─── Email reset ───────────────────────────────────────────────────────────
-  const handleSendResetEmail = async () => {
-    const trimmed = resetContact.trim();
-    if (!trimmed) {
-      Alert.alert("خطأ", "يرجى إدخال البريد الإلكتروني");
+  // ─── Forgot password — submit identifier to backend ───────────────────────
+  const handleForgotPasswordSubmit = async () => {
+    const id = forgotIdentifier.trim();
+    if (!id) {
+      Alert.alert("خطأ", "يرجى إدخال رقم الهاتف أو البريد الإلكتروني");
       return;
     }
-    setResetLoading(true);
+    setForgotSending(true);
     try {
-      const email = toFirebaseEmail(trimmed);
-      await sendPasswordResetEmail(auth, email);
-      setResetModalVisible(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "تم الإرسال ✓",
-        "تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني، يرجى التحقق من صندوق الوارد"
-      );
-    } catch (err: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const code = err?.code || "";
-      if (code === "auth/user-not-found" || code === "auth/invalid-email") {
-        Alert.alert("خطأ", "البريد الإلكتروني غير مسجل في النظام");
-      } else if (code === "auth/too-many-requests") {
-        Alert.alert("محاولات كثيرة", "يرجى الانتظار قليلاً ثم المحاولة مجدداً");
-      } else {
-        Alert.alert("خطأ", "تعذّر إرسال رابط إعادة التعيين، يرجى المحاولة لاحقاً");
-      }
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  // ─── OTP: Send ────────────────────────────────────────────────────────────
-  const handleSendOtp = async (rawPhone?: string) => {
-    const phone = (rawPhone ?? otpPhone).trim();
-    if (!phone) {
-      Alert.alert("خطأ", "يرجى إدخال رقم الهاتف");
-      return;
-    }
-
-    setOtpSending(true);
-    try {
-      // 1. Normalise to E.164 — log both raw and formatted for diagnosis
-      const e164 = toE164(phone);
-      console.log("[OTP-Login] step 1 — phone input:", phone, "→ E.164:", e164);
-
-      // Derive raw local number (07xxxxxxxx) from any input format
-      const rawLocal = e164.startsWith("+964")
-        ? "0" + e164.slice(4)
-        : phone.startsWith("0") ? phone : phone;
-      const legacyEmail = rawLocal + "@sanad.app"; // old fake-email format
-
-      // 2. Search Firestore for the account in both new (E.164 phone field)
-      //    and old (@sanad.app email field) formats to support legacy accounts
-      console.log("[OTP-Login] step 2 — querying Firestore for:", e164, rawLocal);
-      const [byPhoneSnap, byLegacyEmailSnap] = await Promise.all([
-        getDocs(
-          query(collection(db, "users"), where("phone", "in", [e164, rawLocal]))
-        ),
-        getDocs(
-          query(collection(db, "users"), where("email", "==", legacyEmail))
-        ),
-      ]);
-      console.log("[OTP-Login] step 2 — byPhone:", byPhoneSnap.size, "byLegacy:", byLegacyEmailSnap.size);
-
-      if (byPhoneSnap.empty && byLegacyEmailSnap.empty) {
-        Alert.alert("خطأ", "رقم الهاتف غير مسجل لدينا");
-        return; // finally will reset setOtpSending
-      }
-
-      // 3. Resolve ApplicationVerifier
-      console.log("[OTP-Login] step 3 — resolving verifier, platform:", Platform.OS);
-      let verifier: ApplicationVerifier;
-      if (Platform.OS === "web") {
-        let container = document.getElementById(webRecaptchaContainerId);
-        if (!container) {
-          container = document.createElement("div");
-          container.id = webRecaptchaContainerId;
-          container.style.display = "none";
-          document.body.appendChild(container);
-        }
-        if (!webVerifierRef.current) {
-          webVerifierRef.current = new RecaptchaVerifier(
-            auth,
-            webRecaptchaContainerId,
-            { size: "invisible" }
-          );
-        }
-        verifier = webVerifierRef.current;
-      } else {
-        if (!recaptchaRef.current) {
-          Alert.alert("خطأ", "لم يتم تحميل reCAPTCHA بعد — يرجى الانتظار لحظة ثم المحاولة");
-          return; // finally will reset setOtpSending
-        }
-        verifier = recaptchaRef.current.verifier;
-        console.log("[OTP-Login] step 3 — native verifier type:", verifier?.type ?? "MISSING");
-        if (!verifier) {
-          Alert.alert("خطأ", "خطأ داخلي في reCAPTCHA — يرجى إغلاق التطبيق وإعادة فتحه");
-          return;
-        }
-      }
-
-      // 4. Send OTP — with a 30-second hard timeout so it can never hang
-      console.log("[OTP-Login] step 4 — calling signInWithPhoneNumber for", e164);
-      const result = await withTimeout(
-        signInWithPhoneNumber(auth, e164, verifier),
-        30_000,
-        "signInWithPhoneNumber"
-      );
-      console.log("[OTP-Login] step 4 — OTP sent successfully ✓");
-
-      setConfirmationResult(result);
-      setOtpPhone(phone);
-      setOtpCode("");
-      setOtpStep("verify");
-      setCountdown(RESEND_COUNTDOWN);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      const code: string = err?.code ?? "unknown";
-      const msg: string = err?.message ?? String(err);
-      console.error("[OTP-Login] ERROR — code:", code, "message:", msg);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      // Reset web verifier so next attempt gets a fresh one
-      webVerifierRef.current = null;
-
-      if (code === "auth/invalid-phone-number") {
-        Alert.alert("خطأ في الرقم", "صيغة رقم الهاتف غير صحيحة\nتأكد أن الرقم يبدأ بـ 07");
-      } else if (code === "auth/too-many-requests") {
-        Alert.alert("محاولات كثيرة", "تم إيقاف الإرسال مؤقتاً بسبب كثرة المحاولات\nيرجى الانتظار دقيقة ثم المحاولة");
-      } else if (code === "timeout") {
-        Alert.alert("انتهى الوقت", "لم يستجب Firebase خلال 30 ثانية\nتحقق من اتصال الإنترنت وحاول مجدداً");
-      } else {
-        Alert.alert(
-          "تعذّر إرسال رمز التحقق",
-          `يرجى المحاولة لاحقاً\n\n(${code})`
-        );
-      }
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
-  // ─── OTP: Verify ─────────────────────────────────────────────────────────
-  const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) {
-      Alert.alert("خطأ", "يرجى إدخال الرمز المكون من 6 أرقام");
-      return;
-    }
-    if (!confirmationResult) return;
-
-    setOtpVerifying(true);
-    try {
-      const credential = await confirmationResult.confirm(otpCode);
-      const phoneUid = credential.user.uid;
-
-      // Check if this Phone Auth UID owns a Firestore user document.
-      // If it does, this is a native Phone Auth account (registered without password)
-      // and the user is already signed in — send them straight to the dashboard.
-      // If not, this is the password-reset flow for an old email+password account
-      // and we need to collect the new password.
-      const userDocSnap = await getDoc(doc(db, "users", phoneUid));
-
-      if (userDocSnap.exists()) {
-        // Phone Auth user — already signed in
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        resetOtpFlow();
-        router.replace("/dashboard" as any);
-      } else {
-        // Old email+password account — show new-password step
-        const token = await credential.user.getIdToken();
-        setPhoneToken(token);
-        setOtpStep("newpass");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (err: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const code: string = err?.code ?? "";
-      if (code === "auth/invalid-verification-code") {
-        Alert.alert("رمز خاطئ", "الرمز الذي أدخلته غير صحيح — تحقق وأعد المحاولة");
-      } else if (code === "auth/code-expired") {
-        Alert.alert("رمز منتهي الصلاحية", "انتهت صلاحية الرمز — اطلب رمزاً جديداً");
-      } else {
-        Alert.alert("خطأ", "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
-      }
-    } finally {
-      setOtpVerifying(false);
-    }
-  };
-
-  // ─── Password update ──────────────────────────────────────────────────────
-  const handleUpdatePassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      Alert.alert("خطأ", "يرجى إدخال كلمة المرور وتأكيدها");
-      return;
-    }
-    if (newPassword.length < 6) {
-      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert("خطأ", "كلمتا المرور غير متطابقتين");
-      return;
-    }
-    if (!phoneToken) return;
-
-    setPasswordUpdating(true);
-    try {
-      const res = await fetch("/api/reset-password", {
+      const res = await fetch(`${BACKEND_BASE}/api/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: phoneToken, newPassword }),
+        body: JSON.stringify({ identifier: id }),
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        Alert.alert("خطأ", data?.error ?? "تعذّر تحديث كلمة المرور");
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("خطأ", data.error ?? "تعذّر إرسال رابط إعادة التعيين");
         return;
       }
-
-      // Clear saved biometric creds since password changed
-      await clearCreds();
-      setSavedCreds(null);
-
-      // Reset all OTP state
-      resetOtpFlow();
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setForgotModalVisible(false);
+      const via = /^[\d\+]/.test(id) && !id.includes("@") ? "واتساب" : "البريد الإلكتروني";
       Alert.alert(
-        "تم بنجاح ✓",
-        "تم تغيير كلمة المرور بنجاح — يمكنك الآن تسجيل الدخول",
-        [{ text: "حسناً", onPress: () => {} }]
+        "تم الإرسال ✓",
+        `تم إرسال رابط إعادة التعيين إلى ${via} — تحقق من الوارد وافتح الرابط خلال 15 دقيقة`
       );
-    } catch (err) {
-      console.error("Password update error:", err);
-      Alert.alert("خطأ", "تعذّر الاتصال بالخادم — يرجى التحقق من الإنترنت والمحاولة مجدداً");
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("خطأ", "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
-      setPasswordUpdating(false);
+      setForgotSending(false);
     }
-  };
-
-  const resetOtpFlow = () => {
-    setOtpStep(null);
-    setOtpCode("");
-    setOtpPhone("");
-    setConfirmationResult(null);
-    setPhoneToken(null);
-    setNewPassword("");
-    setConfirmPassword("");
-    setCountdown(0);
-    // Reset web verifier so next attempt gets a fresh one
-    webVerifierRef.current = null;
   };
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -682,9 +420,6 @@ export default function LoginScreen() {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
-      {/* Hidden reCAPTCHA for native phone auth */}
-      {Platform.OS !== "web" && <FirebaseRecaptcha ref={recaptchaRef} />}
-
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -748,13 +483,8 @@ export default function LoginScreen() {
               onPress={handleForgotPassword}
               style={styles.forgotBtn}
               activeOpacity={0.7}
-              disabled={otpSending}
             >
-              {otpSending ? (
-                <ActivityIndicator size="small" color={C.accent} />
-              ) : (
-                <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
-              )}
+              <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
             </TouchableOpacity>
 
             <Animated.View style={btnStyle}>
@@ -812,56 +542,58 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Email reset modal ── */}
+      {/* ── Forgot password modal ── */}
       <Modal
-        visible={resetModalVisible}
+        visible={forgotModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setResetModalVisible(false)}
+        onRequestClose={() => setForgotModalVisible(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setResetModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setForgotModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconCircle}>
                 <Feather name="lock" size={22} color={C.accent} />
               </View>
-              <Text style={styles.modalTitle}>إعادة تعيين كلمة المرور</Text>
+              <Text style={styles.modalTitle}>نسيت كلمة المرور؟</Text>
             </View>
 
             <Text style={styles.modalDesc}>
-              أدخل بريدك الإلكتروني المسجّل وسنرسل لك رابط إعادة التعيين
+              أدخل رقم هاتفك أو بريدك الإلكتروني المسجّل وسنرسل لك رابط إعادة التعيين
             </Text>
 
             <View style={[styles.inputRow, { marginTop: 4 }]}>
               <View style={styles.inputIcon}>
-                <Feather name="mail" size={18} color={C.textSecondary} />
+                <Feather name="user" size={18} color={C.textSecondary} />
               </View>
               <TextInput
                 style={styles.input}
-                placeholder="البريد الإلكتروني"
+                placeholder="07xxxxxxxxxx أو example@email.com"
                 placeholderTextColor={C.textMuted}
-                value={resetContact}
-                onChangeText={setResetContact}
-                keyboardType="email-address"
+                value={forgotIdentifier}
+                onChangeText={setForgotIdentifier}
+                keyboardType="default"
                 textAlign="right"
                 autoCapitalize="none"
                 autoFocus
+                returnKeyType="send"
+                onSubmitEditing={handleForgotPasswordSubmit}
               />
             </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
-                onPress={() => setResetModalVisible(false)}
+                onPress={() => setForgotModalVisible(false)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.modalCancelText}>إلغاء</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalSendBtn, resetLoading && styles.btnDisabled]}
-                onPress={handleSendResetEmail}
+                style={[styles.modalSendBtn, forgotSending && styles.btnDisabled]}
+                onPress={handleForgotPasswordSubmit}
                 activeOpacity={0.8}
-                disabled={resetLoading}
+                disabled={forgotSending}
               >
                 <LinearGradient
                   colors={[C.accent, C.accentLight]}
@@ -869,11 +601,11 @@ export default function LoginScreen() {
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  {resetLoading ? (
+                  {forgotSending ? (
                     <ActivityIndicator size="small" color={C.primary} />
                   ) : (
                     <>
-                      <Text style={styles.modalSendText}>إرسال</Text>
+                      <Text style={styles.modalSendText}>إرسال الرابط</Text>
                       <Feather name="send" size={15} color={C.primary} />
                     </>
                   )}
@@ -881,175 +613,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
           </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* ── OTP Verify modal ── */}
-      <Modal
-        visible={otpStep === "verify"}
-        transparent
-        animationType="slide"
-        onRequestClose={resetOtpFlow}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => {}}>
-          <View style={styles.modalCard}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIconCircle}>
-                <Ionicons name="shield-checkmark" size={22} color={C.accent} />
-              </View>
-              <Text style={styles.modalTitle}>رمز التحقق</Text>
-            </View>
-
-            <Text style={styles.modalDesc}>
-              أُرسل رمز تحقق مكون من 6 أرقام إلى الرقم{"\n"}
-              <Text style={styles.modalPhoneHighlight}>{otpPhone}</Text>
-            </Text>
-
-            {/* OTP input */}
-            <OtpInput value={otpCode} onChange={setOtpCode} />
-
-            {/* Verify button */}
-            <TouchableOpacity
-              style={[styles.modalSendBtn, (otpVerifying || otpCode.length < 6) && styles.btnDisabled]}
-              onPress={handleVerifyOtp}
-              activeOpacity={0.8}
-              disabled={otpVerifying || otpCode.length < 6}
-            >
-              <LinearGradient
-                colors={[C.accent, C.accentLight]}
-                style={styles.modalSendGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {otpVerifying ? (
-                  <ActivityIndicator size="small" color={C.primary} />
-                ) : (
-                  <>
-                    <Text style={styles.modalSendText}>تحقق من الرمز</Text>
-                    <Ionicons name="checkmark" size={18} color={C.primary} />
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Resend / countdown */}
-            <View style={styles.resendRow}>
-              {countdown > 0 ? (
-                <Text style={styles.countdownText}>
-                  إعادة الإرسال بعد{" "}
-                  <Text style={styles.countdownNum}>{countdown}</Text> ث
-                </Text>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => handleSendOtp(otpPhone)}
-                  disabled={otpSending}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.resendText}>
-                    {otpSending ? "جارٍ الإرسال..." : "إعادة إرسال الرمز"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Cancel */}
-            <TouchableOpacity
-              style={styles.modalCancelBtn}
-              onPress={resetOtpFlow}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalCancelText}>إلغاء</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* ── New password modal ── */}
-      <Modal
-        visible={otpStep === "newpass"}
-        transparent
-        animationType="slide"
-        onRequestClose={resetOtpFlow}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => {}}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={{ width: "100%" }}
-          >
-            <View style={styles.modalCard}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <View style={styles.modalIconCircle}>
-                  <Feather name="lock" size={22} color={C.accent} />
-                </View>
-                <Text style={styles.modalTitle}>كلمة المرور الجديدة</Text>
-              </View>
-
-              <Text style={styles.modalDesc}>
-                تم التحقق من هويتك بنجاح ✓{"\n"}أدخل كلمة المرور الجديدة
-              </Text>
-
-              {/* New password */}
-              <InputField
-                label="كلمة المرور الجديدة"
-                placeholder="6 أحرف على الأقل"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                secureTextEntry
-                autoFocus
-                returnKeyType="next"
-              />
-
-              {/* Confirm password */}
-              <InputField
-                label="تأكيد كلمة المرور"
-                placeholder="أعد إدخال كلمة المرور"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                secureTextEntry
-                returnKeyType="done"
-                onSubmitEditing={handleUpdatePassword}
-              />
-
-              {/* Submit */}
-              <TouchableOpacity
-                style={[
-                  styles.modalSendBtn,
-                  passwordUpdating && styles.btnDisabled,
-                ]}
-                onPress={handleUpdatePassword}
-                activeOpacity={0.8}
-                disabled={passwordUpdating}
-              >
-                <LinearGradient
-                  colors={[C.accent, C.accentLight]}
-                  style={styles.modalSendGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  {passwordUpdating ? (
-                    <ActivityIndicator size="small" color={C.primary} />
-                  ) : (
-                    <>
-                      <Text style={styles.modalSendText}>تغيير كلمة المرور</Text>
-                      <Feather name="check" size={16} color={C.primary} />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={resetOtpFlow}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>إلغاء</Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </View>

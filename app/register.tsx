@@ -349,7 +349,7 @@ export default function RegisterScreen() {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: rawContact }),
+          body: JSON.stringify({ phone: rawContact, forRegistration: true }),
         });
         const ct = res.headers.get("content-type") ?? "";
         if (!ct.includes("application/json")) {
@@ -387,7 +387,7 @@ export default function RegisterScreen() {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: rawContact }),
+          body: JSON.stringify({ email: rawContact, forRegistration: true }),
         });
         const ct = res.headers.get("content-type") ?? "";
         if (!ct.includes("application/json")) {
@@ -429,7 +429,7 @@ export default function RegisterScreen() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: rawContact, code: regOtpCode }),
+        body: JSON.stringify({ phone: rawContact, code: regOtpCode, password, forRegistration: true }),
       });
       const ct = res.headers.get("content-type") ?? "";
       if (!ct.includes("application/json")) {
