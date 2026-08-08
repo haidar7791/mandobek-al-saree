@@ -51,22 +51,44 @@ import Colors from "@/constants/colors";
  * Metro is started with --localhost, making hostUri always "127.0.0.1".
  */
 function getServerUrl(): string {
-  // 1. Baked-in Replit domain from app.config.js (process.env.REPLIT_DEV_DOMAIN at Metro start)
-  const replitDomain: string | null = (Constants.expoConfig as any)?.extra?.replitDomain;
-  if (replitDomain) {
-    console.log("[getServerUrl] using baked replitDomain:", replitDomain);
-    return `https://${replitDomain}/`;
+  // 1. Baked-in Replit domain from app.config.js extra (REACT_NATIVE_PACKAGER_HOSTNAME)
+  //    Always a plain string — empty string if not found (never object/null/undefined).
+  const rawExtra = (Constants.expoConfig as any)?.extra;
+  const replitDomain: unknown = rawExtra?.replitDomain;
+
+  // Strict type + sanity check: must be a non-empty string with a dot, not localhost
+  if (
+    typeof replitDomain === "string" &&
+    replitDomain.length > 0 &&
+    replitDomain.includes(".") &&
+    !replitDomain.includes("127.0.0.1") &&
+    !replitDomain.includes("localhost")
+  ) {
+    const url = `https://${replitDomain}/`;
+    console.log("[getServerUrl] using baked domain:", url);
+    return url;
   }
 
-  // 2. EXPO_PUBLIC_DOMAIN env var fallback
+  // 2. EXPO_PUBLIC_DOMAIN env var (set in npm script, may or may not reach the bundler)
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (envDomain) {
+  if (
+    typeof envDomain === "string" &&
+    envDomain.length > 0 &&
+    !envDomain.includes("127.0.0.1") &&
+    !envDomain.includes("localhost")
+  ) {
     const clean = envDomain.replace(/\/$/, "");
-    return clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
+    const url = clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
+    console.log("[getServerUrl] using EXPO_PUBLIC_DOMAIN:", url);
+    return url;
   }
 
-  // 3. Web fallback
-  console.warn("[getServerUrl] no domain found, falling back to relative URL");
+  // 3. Web fallback — relative URL works via Express proxy on web
+  console.warn(
+    "[getServerUrl] no valid domain found (extra =",
+    JSON.stringify(rawExtra),
+    ") — using relative URL"
+  );
   return "/";
 }
 
