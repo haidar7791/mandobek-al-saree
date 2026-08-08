@@ -139,37 +139,6 @@ function toE164(phone: string): string {
 }
 
 
-// ── Suggested emails shown in the quick-pick modal ─────────────────────────
-// Populated with common domains; extended at runtime with addresses the user
-// has previously submitted during this session.
-const sessionEmails: string[] = [];
-
-function recordEmail(email: string) {
-  const e = email.trim().toLowerCase();
-  if (e && e.includes("@") && !sessionEmails.includes(e)) sessionEmails.unshift(e);
-}
-
-const DOMAIN_HINTS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"];
-
-function buildSuggestions(currentInput: string): string[] {
-  const input = currentInput.trim().toLowerCase();
-  const results: string[] = [...sessionEmails];
-
-  // If the user has typed a partial address before "@", offer completions
-  if (input && !input.includes("@")) {
-    DOMAIN_HINTS.forEach((d) => {
-      const full = `${input}@${d}`;
-      if (!results.includes(full)) results.push(full);
-    });
-  } else {
-    // No input yet: just show domain hints as examples
-    if (results.length === 0) {
-      DOMAIN_HINTS.forEach((d) => results.push(`example@${d}`));
-    }
-  }
-  return results.slice(0, 6);
-}
-
 const C = Colors.light;
 
 // ─── InputField ───────────────────────────────────────────────────────────────
@@ -324,14 +293,14 @@ export default function RegisterScreen() {
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
 
-  // ── Email suggestion modal ──
-  const [emailSuggestOpen, setEmailSuggestOpen] = useState(false);
+  // ── Explicit auth method toggle ──
+  const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
 
   const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
-  const isPhone = isPhoneInput(contact);
+  const isPhone = authMethod === "phone";
   const contactKeyboardType: "phone-pad" | "email-address" = isPhone ? "phone-pad" : "email-address";
 
   const requestLocation = async (): Promise<GeoLocation | null> => {
@@ -368,7 +337,7 @@ export default function RegisterScreen() {
     });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    if (isPhoneInput(rawContact)) {
+    if (authMethod === "phone") {
       // ── Phone registration: send OTP via WhatsApp (UltraMsg) ──
       setRegOtpSending(true);
       try {
@@ -618,9 +587,11 @@ export default function RegisterScreen() {
               onSubmitEditing={() => contactRef.current?.focus()}
             />
 
-            {/* 2 ── رقم الهاتف أو البريد */}
+            {/* 2 ── رقم الهاتف أو البريد — مع زر تبديل صريح */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>رقم الهاتف أو البريد الإلكتروني</Text>
+              <Text style={styles.fieldLabel}>
+                {isPhone ? "رقم الهاتف" : "البريد الإلكتروني"}
+              </Text>
               <View style={[styles.inputRow, styles.inputRowFull]}>
                 <View style={styles.inputIcon}>
                   <Feather
@@ -632,7 +603,7 @@ export default function RegisterScreen() {
                 <TextInput
                   ref={contactRef}
                   style={styles.input}
-                  placeholder="07xxxxxxxx أو example@email.com"
+                  placeholder={isPhone ? "07xxxxxxxxxx" : "example@email.com"}
                   placeholderTextColor={C.textMuted}
                   value={contact}
                   onChangeText={setContact}
@@ -640,20 +611,27 @@ export default function RegisterScreen() {
                   textAlign="right"
                   textAlignVertical="center"
                   autoCapitalize="none"
+                  autoCorrect={false}
                   onSubmitEditing={() => passwordRef.current?.focus()}
                   returnKeyType="next"
                 />
-                {/* Quick-pick icon — visible only in email mode */}
-                {!isPhone && (
-                  <Pressable
-                    onPress={() => setEmailSuggestOpen(true)}
-                    style={styles.suggestIcon}
-                    hitSlop={8}
-                  >
-                    <Feather name="chevron-down" size={18} color={C.accent} />
-                  </Pressable>
-                )}
               </View>
+              {/* Toggle link */}
+              <Pressable
+                onPress={() => {
+                  setAuthMethod(isPhone ? "email" : "phone");
+                  setContact("");
+                  setTimeout(() => contactRef.current?.focus(), 100);
+                }}
+                style={styles.toggleMethodBtn}
+                hitSlop={6}
+              >
+                <Text style={styles.toggleMethodText}>
+                  {isPhone
+                    ? "استخدام البريد الإلكتروني بدلاً من ذلك"
+                    : "استخدام رقم الهاتف بدلاً من ذلك"}
+                </Text>
+              </Pressable>
             </View>
 
             {/* 3 ── نوع الحساب / التخصص */}
@@ -831,78 +809,6 @@ export default function RegisterScreen() {
         </Pressable>
       </Modal>
 
-      {/* ── Email suggestion modal ── */}
-      <Modal
-        visible={emailSuggestOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEmailSuggestOpen(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setEmailSuggestOpen(false)}>
-          <View style={[styles.modalCard, { gap: 0, padding: 0, overflow: "hidden" }]}>
-            {/* Header */}
-            <View style={suggestStyles.header}>
-              <Pressable onPress={() => setEmailSuggestOpen(false)} hitSlop={8}>
-                <Feather name="x" size={18} color={C.textSecondary} />
-              </Pressable>
-              <Text style={suggestStyles.title}>اختر أو اكتب بريدك الإلكتروني</Text>
-              <Feather name="mail" size={18} color={C.accent} />
-            </View>
-
-            {/* Suggestion list */}
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              style={{ maxHeight: 280 }}
-            >
-              {buildSuggestions(contact).map((email) => (
-                <Pressable
-                  key={email}
-                  style={suggestStyles.item}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setContact(email);
-                    setEmailSuggestOpen(false);
-                    setTimeout(() => passwordRef.current?.focus(), 100);
-                  }}
-                >
-                  <Feather name="at-sign" size={15} color={C.accent} />
-                  <Text style={suggestStyles.itemText} numberOfLines={1}>{email}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            {/* Manual entry area */}
-            <View style={suggestStyles.manualRow}>
-              <TextInput
-                style={suggestStyles.manualInput}
-                placeholder="أو اكتب بريدك هنا..."
-                placeholderTextColor={C.textMuted}
-                value={contact}
-                onChangeText={setContact}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                textAlign="right"
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  setEmailSuggestOpen(false);
-                  setTimeout(() => passwordRef.current?.focus(), 100);
-                }}
-              />
-              <Pressable
-                style={suggestStyles.manualConfirm}
-                onPress={() => {
-                  setEmailSuggestOpen(false);
-                  setTimeout(() => passwordRef.current?.focus(), 100);
-                }}
-              >
-                <Feather name="check" size={18} color={C.primary} />
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
       {/* ── OTP modal: Email ── */}
       <Modal
         visible={emailOtpStep === "otp"}
@@ -986,8 +892,12 @@ const styles = StyleSheet.create({
   fieldWrap: { gap: 6 },
   fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
   inputRowFull: { paddingVertical: 0 },
-  // Icon inside email field that opens the suggestion modal
-  suggestIcon: { paddingHorizontal: 4, paddingVertical: 6 },
+  // Toggle link beneath the contact field
+  toggleMethodBtn: { alignSelf: "flex-end", paddingVertical: 4 },
+  toggleMethodText: {
+    fontSize: 12, fontFamily: "Cairo_600SemiBold",
+    color: C.accent, textDecorationLine: "underline",
+  },
   helperText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 4 },
   inputRow: {
     flexDirection: "row", alignItems: "center",
@@ -1113,36 +1023,4 @@ const modalStyles = StyleSheet.create({
   itemSelected: { backgroundColor: "rgba(201,168,76,0.06)" },
   itemText: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   itemTextSelected: { color: C.accent, fontFamily: "Cairo_600SemiBold" },
-});
-
-const suggestStyles = StyleSheet.create({
-  header: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: C.border,
-    justifyContent: "flex-end",
-  },
-  title: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  item: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: C.border,
-  },
-  itemText: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
-  manualRow: {
-    flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 12, paddingVertical: 10,
-    borderTopWidth: 1, borderTopColor: C.border, gap: 8,
-  },
-  manualInput: {
-    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
-    color: C.text, paddingVertical: 10, textAlign: "right",
-    backgroundColor: C.inputBg, borderRadius: 10,
-    paddingHorizontal: 12,
-  },
-  manualConfirm: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: C.accent,
-    alignItems: "center", justifyContent: "center",
-  },
 });
