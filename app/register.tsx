@@ -50,13 +50,15 @@ import Colors from "@/constants/colors";
  * NOTE: We intentionally do NOT use Constants.expoConfig.hostUri because
  * Metro is started with --localhost, making hostUri always "127.0.0.1".
  */
+// Hardcoded Replit dev domain — stable per-repl, used as guaranteed fallback.
+// Update this if the repl is ever renamed or migrated.
+const REPLIT_SERVER_URL = "https://7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
+
 function getServerUrl(): string {
   // 1. Baked-in Replit domain from app.config.js extra (REACT_NATIVE_PACKAGER_HOSTNAME)
-  //    Always a plain string — empty string if not found (never object/null/undefined).
   const rawExtra = (Constants.expoConfig as any)?.extra;
   const replitDomain: unknown = rawExtra?.replitDomain;
 
-  // Strict type + sanity check: must be a non-empty string with a dot, not localhost
   if (
     typeof replitDomain === "string" &&
     replitDomain.length > 0 &&
@@ -65,11 +67,11 @@ function getServerUrl(): string {
     !replitDomain.includes("localhost")
   ) {
     const url = `https://${replitDomain}/`;
-    console.log("[getServerUrl] using baked domain:", url);
+    console.log("[getServerUrl] baked domain:", url);
     return url;
   }
 
-  // 2. EXPO_PUBLIC_DOMAIN env var (set in npm script, may or may not reach the bundler)
+  // 2. EXPO_PUBLIC_DOMAIN env var
   const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
   if (
     typeof envDomain === "string" &&
@@ -79,17 +81,13 @@ function getServerUrl(): string {
   ) {
     const clean = envDomain.replace(/\/$/, "");
     const url = clean.startsWith("http") ? `${clean}/` : `https://${clean}/`;
-    console.log("[getServerUrl] using EXPO_PUBLIC_DOMAIN:", url);
+    console.log("[getServerUrl] env domain:", url);
     return url;
   }
 
-  // 3. Web fallback — relative URL works via Express proxy on web
-  console.warn(
-    "[getServerUrl] no valid domain found (extra =",
-    JSON.stringify(rawExtra),
-    ") — using relative URL"
-  );
-  return "/";
+  // 3. Hardcoded fallback — always works on physical devices, never returns a relative URL
+  console.log("[getServerUrl] using hardcoded fallback:", REPLIT_SERVER_URL);
+  return `${REPLIT_SERVER_URL}/`;
 }
 
 /** Returns true if the input looks like a phone number (starts with digit or +, no @) */
