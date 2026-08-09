@@ -96,11 +96,11 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
 
         {/* ── Top section: thumbnail + name + price ── */}
         <View style={styles.cardTopRow}>
-          <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
           </View>
+          <ProductThumb uri={order.productImageUrl} />
         </View>
 
         {/* ── Divider ── */}
@@ -181,11 +181,11 @@ function SaleCard({ order, onAccept, onReject }: {
 
         {/* ── Top section: thumbnail + title + price ── */}
         <View style={styles.cardTopRow}>
-          <ProductThumb uri={order.productImageUrl} />
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
           </View>
+          <ProductThumb uri={order.productImageUrl} />
         </View>
 
         {/* ── Divider ── */}
@@ -718,18 +718,21 @@ const styles = StyleSheet.create({
   },
 
   // Top row: thumbnail + product info
+  // row (not row-reverse) — elements ordered in JSX as [textBlock, image]
+  // RTL native: row flows right→left, so textBlock lands on RIGHT, image on LEFT ✓
+  // RTL web:    same RTL flow, same visual result ✓
   cardTopRow: {
-    flexDirection: "row-reverse", alignItems: "flex-start", gap: 12,
+    flexDirection: "row", alignItems: "flex-start", gap: 12,
   },
-  productThumb: { width: 68, height: 68, borderRadius: 14 },
+  productThumb: { width: 72, height: 72, borderRadius: 14 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
-  productInfo: { flex: 1, gap: 6, alignItems: "flex-start" },
-  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "left" },
+  productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
+  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
 
   // Price pill
   pricePill: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    alignSelf: "flex-start",
+    flexDirection: "row-reverse", alignItems: "center", gap: 4,
+    alignSelf: "flex-end",
     backgroundColor: "rgba(22,163,74,0.1)",
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
   },
