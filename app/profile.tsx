@@ -109,6 +109,8 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editSpecialty, setEditSpecialty] = useState("");
+  const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
   // OTP sub-modal (opens after WhatsApp OTP is sent)
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpCode, setOtpCode] = useState("");
@@ -279,6 +281,7 @@ export default function ProfileScreen() {
     setEditName(name);
     setEditBio(bio);
     setEditPhone(phone);
+    setEditSpecialty(specialty || "client");
     setOtpModalVisible(false);
     setOtpCode("");
     setPhoneVerifiedInSession(false);
@@ -352,26 +355,37 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
+      // Determine new role from specialty selection
+      const newRole: "client" | "artisan" =
+        editSpecialty === "client" ? "client" : "artisan";
+
       await setUserProfile(uid, {
         name: editName.trim(),
         bio: editBio.trim(),
+        specialty: editSpecialty,
+        role: newRole,
       });
-      // Sync artisan record if applicable
-      if (role === "artisan" && specialty) {
+
+      // Sync artisan record when role is artisan
+      if (newRole === "artisan" && editSpecialty) {
         const profile = await getUserProfile(uid);
         await createOrUpdateArtisan(uid, {
           name: editName.trim(),
           phone: phone,
           photoUri: profile?.photoUri ?? photoUri,
-          specialty,
-          category: getCategoryForSpecialty(specialty),
+          specialty: editSpecialty,
+          category: getCategoryForSpecialty(editSpecialty),
           location: profile?.location ?? null,
           bio: editBio.trim(),
           isAvailable: true,
         });
       }
+
+      // Reflect changes locally
       setName(editName.trim());
       setBio(editBio.trim());
+      setSpecialty(editSpecialty);
+      setRole(newRole);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditModalVisible(false);
       Alert.alert("تم الحفظ ✓", "تم تحديث ملفك الشخصي بنجاح");
@@ -676,6 +690,29 @@ export default function ProfileScreen() {
                   <Text style={styles.bioCounter}>{editBio.length}/500</Text>
                 </View>
 
+                {/* ── Specialty picker ── */}
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.fieldLabel}>التخصص المهني</Text>
+                  <Pressable
+                    style={styles.specialtyPickerBtn}
+                    onPress={() => setSpecialtyPickerVisible(true)}
+                  >
+                    <Feather name="chevron-left" size={17} color={C.textSecondary} />
+                    <Text
+                      style={[
+                        styles.specialtyPickerValue,
+                        !editSpecialty && { color: C.textMuted },
+                      ]}
+                    >
+                      {editSpecialty === "client"
+                        ? "زبون (عميل)"
+                        : ALL_SPECIALTIES.find((s) => s.key === editSpecialty)?.label ||
+                          "اختر التخصص"}
+                    </Text>
+                    <Feather name="briefcase" size={17} color={C.textSecondary} />
+                  </Pressable>
+                </View>
+
                 {/* ── Phone + inline verify button ── */}
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>رقم الهاتف</Text>
@@ -767,6 +804,196 @@ export default function ProfileScreen() {
               </ScrollView>
             </Pressable>
           </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* ══════════════════════════════════════════
+          SPECIALTY PICKER MODAL
+      ══════════════════════════════════════════ */}
+      <Modal
+        visible={specialtyPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSpecialtyPickerVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setSpecialtyPickerVisible(false)}
+        >
+          <Pressable style={styles.specialtySheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>اختر التخصص المهني</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+              {/* ── Client option ── */}
+              <Text style={styles.spCategoryHeader}>عام</Text>
+              {[{ key: "client", label: "زبون (عميل)" }].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
+              {/* ── Home services ── */}
+              <Text style={styles.spCategoryHeader}>خدمات المنزل</Text>
+              {[
+                { key: "plumber", label: "سباك" },
+                { key: "electrician", label: "كهربائي" },
+                { key: "carpenter", label: "نجار" },
+                { key: "painter", label: "صباغ" },
+                { key: "mason", label: "بنّاء" },
+                { key: "tiler", label: "سيراميك" },
+                { key: "ironsmith", label: "حداد" },
+                { key: "ac_tech", label: "صيانة مكيفات" },
+                { key: "shovel", label: "شفل" },
+                { key: "roller", label: "حادلة" },
+                { key: "backhoe", label: "بوكلن" },
+                { key: "crane", label: "ونج" },
+              ].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
+              {/* ── Car services ── */}
+              <Text style={styles.spCategoryHeader}>خدمات السيارات</Text>
+              {[
+                { key: "mechanic", label: "ميكانيكي" },
+                { key: "auto_elec", label: "كهرباء سيارات" },
+                { key: "tire_spec", label: "كرين" },
+                { key: "body_repair", label: "بنجرجي" },
+                { key: "ac_car", label: "تبريد سيارات" },
+              ].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
+              {/* ── General services ── */}
+              <Text style={styles.spCategoryHeader}>خدمات عامة</Text>
+              {[
+                { key: "clinic", label: "عيادات طبية" },
+                { key: "lab_center", label: "مراكز ومختبرات" },
+              ].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
+              {/* ── Delivery services ── */}
+              <Text style={styles.spCategoryHeader}>خدمات التوصيل</Text>
+              {[
+                { key: "taxi", label: "تكسي" },
+                { key: "bus", label: "باص" },
+                { key: "courier", label: "مندوب" },
+              ].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
+              <View style={{ height: 32 }} />
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -1387,6 +1614,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Cairo_700Bold",
     color: "#fff",
+  },
+
+  // ── Specialty picker button (inside edit modal) ──
+  specialtyPickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 8,
+  },
+  specialtyPickerValue: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlign: "right",
+  },
+
+  // ── Specialty picker sheet ──
+  specialtySheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  spCategoryHeader: {
+    fontSize: 12,
+    fontFamily: "Cairo_700Bold",
+    color: C.textMuted,
+    textAlign: "right",
+    marginTop: 16,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  spOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 2,
+  },
+  spOptionRowActive: {
+    backgroundColor: "#EEF2FF",
+  },
+  spOptionLabel: {
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlign: "right",
+  },
+  spOptionLabelActive: {
+    fontFamily: "Cairo_700Bold",
+    color: C.primary,
   },
 
   // ── Save button ──
