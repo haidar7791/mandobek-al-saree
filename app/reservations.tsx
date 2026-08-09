@@ -752,19 +752,8 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Product row: thumbnail (left) + name & price */}
+                  {/* Product row: text (left) + thumbnail (right) */}
                   <View style={styles.poProductRow}>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
                     <View style={styles.poProductInfo}>
                       <Text style={styles.poInfoLine} numberOfLines={2}>
                         <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
@@ -777,6 +766,17 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                   </View>
 
                   {/* Buyer name */}
@@ -908,19 +908,8 @@ export default function ReservationsScreen() {
                       )}
                     </View>
                   )}
-                  {/* Product row: thumbnail (left) + name & price */}
+                  {/* Product row: text (left) + thumbnail (right) */}
                   <View style={styles.poProductRow}>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
                     <View style={styles.poProductInfo}>
                       <Text style={styles.poInfoLine} numberOfLines={2}>
                         <Text style={styles.poFieldLabel}>{"اسم المنتج: "}</Text>
@@ -933,6 +922,17 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
+                    {order.productImageUrl ? (
+                      <Image
+                        source={{ uri: order.productImageUrl }}
+                        style={styles.poThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
+                        <Feather name="image" size={22} color={C.textMuted} />
+                      </View>
+                    )}
                   </View>
 
                   {/* Seller name */}
