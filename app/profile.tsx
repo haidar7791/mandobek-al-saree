@@ -676,13 +676,39 @@ export default function ProfileScreen() {
                   <Text style={styles.bioCounter}>{editBio.length}/500</Text>
                 </View>
 
-                {/* ── Phone + WhatsApp OTP ── */}
+                {/* ── Phone + inline verify button ── */}
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>رقم الهاتف</Text>
-                  <View style={styles.inputRow}>
-                    <View style={styles.inputIconWrap}>
-                      <Feather name="phone" size={17} color={C.textSecondary} />
-                    </View>
+
+                  {/* Input row with embedded verify / verified badge */}
+                  <View style={[
+                    styles.inputRow,
+                    phoneVerifiedInSession && { borderColor: C.success, borderWidth: 1.5 },
+                  ]}>
+                    {/* Left side: verified badge OR verify button */}
+                    {phoneVerifiedInSession ? (
+                      <View style={styles.inlineVerifiedBadge}>
+                        <Feather name="check-circle" size={14} color={C.success} />
+                        <Text style={styles.inlineVerifiedText}>موثق</Text>
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={[styles.inlineVerifyBtn, sendingOtp && { opacity: 0.55 }]}
+                        onPress={handleSendOtp}
+                        disabled={sendingOtp}
+                      >
+                        {sendingOtp ? (
+                          <ActivityIndicator size="small" color="#fff" style={{ width: 42 }} />
+                        ) : (
+                          <Text style={styles.inlineVerifyBtnText}>تحقق</Text>
+                        )}
+                      </Pressable>
+                    )}
+
+                    {/* Divider */}
+                    <View style={styles.inputDivider} />
+
+                    {/* Phone TextInput */}
                     <TextInput
                       style={styles.input}
                       placeholder="07xxxxxxxx"
@@ -698,33 +724,12 @@ export default function ProfileScreen() {
                       keyboardType="phone-pad"
                       maxLength={11}
                     />
-                  </View>
 
-                  {/* Status after verification */}
-                  {phoneVerifiedInSession ? (
-                    <View style={styles.phoneVerifiedRow}>
-                      <Feather name="check-circle" size={14} color={C.success} />
-                      <Text style={styles.phoneVerifiedText}>
-                        تم التحقق من الرقم وحفظه ✓
-                      </Text>
+                    {/* Phone icon on far right */}
+                    <View style={styles.inputIconWrap}>
+                      <Feather name="phone" size={17} color={C.textSecondary} />
                     </View>
-                  ) : (
-                    /* WhatsApp send-OTP button — opens OTP sub-modal on success */
-                    <Pressable
-                      style={[styles.whatsappBtn, sendingOtp && { opacity: 0.55 }]}
-                      onPress={handleSendOtp}
-                      disabled={sendingOtp}
-                    >
-                      {sendingOtp ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <>
-                          <MaterialCommunityIcons name="whatsapp" size={16} color="#fff" />
-                          <Text style={styles.whatsappBtnText}>التحقق عبر الواتساب</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  )}
+                  </View>
                 </View>
 
                 {/* ── Save button ── */}
@@ -1282,36 +1287,41 @@ const styles = StyleSheet.create({
     textAlign: "left",
   },
 
-  // ── Phone verification ──
-  whatsappBtn: {
+  // ── Phone verification (inline inside input row) ──
+  inlineVerifyBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
     backgroundColor: "#25D366",
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginTop: 4,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minWidth: 52,
   },
-  whatsappBtnText: {
-    fontSize: 13,
+  inlineVerifyBtnText: {
+    fontSize: 12,
     fontFamily: "Cairo_700Bold",
     color: "#fff",
   },
-  phoneVerifiedRow: {
+  inlineVerifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: C.successLight,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginTop: 4,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
   },
-  phoneVerifiedText: {
-    fontSize: 13,
+  inlineVerifiedText: {
+    fontSize: 12,
     fontFamily: "Cairo_600SemiBold",
     color: C.success,
+  },
+  inputDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: C.border,
+    marginHorizontal: 4,
   },
   // ── OTP sub-modal ──
   otpModalOverlay: {
