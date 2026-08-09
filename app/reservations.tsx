@@ -1222,9 +1222,10 @@ const styles = StyleSheet.create({
   poProductInfo: {
     flex: 1,
     gap: 6,
+    alignItems: "flex-start",
   },
   poInfoLine: {
-    textAlign: "right",
+    textAlign: "left",
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
