@@ -1,21 +1,29 @@
 /**
  * user-profile.tsx
- * Lightweight public-profile viewer for client accounts.
+ * Public-profile viewer for client / admin accounts.
  * Accessible from ChatRoom when the other participant has no artisan record.
- * Shows: name, photo, bio, contact. No "طلب خدمة", no portfolio, no ratings.
+ * Shows: name, photo, bio, contact buttons, map + distance (when location available).
+ * "طلب خدمة" is intentionally absent — clients offer no service.
  */
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, Image, Linking, Platform,
-  ActivityIndicator,
+  ActivityIndicator, Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
-import { getUserProfile, getArtisanByUserId, buildChatId } from "../lib/db_logic";
+import {
+  getUserProfile,
+  getArtisanByUserId,
+  buildChatId,
+  calcDistanceKm,
+  type GeoLocation,
+} from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -30,10 +38,14 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<{
     name: string; phone?: string; bio?: string; photoUri?: string;
+    location?: GeoLocation | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
   const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
+
+  // Viewer's GPS location (to compute distance + enable directions)
+  const [viewerLocation, setViewerLocation] = useState<GeoLocation | null>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -47,21 +59,16 @@ export default function UserProfileScreen() {
         if (cancelled) return;
 
         if (p?.role === "artisan") {
-          // Resolve the artisan document so we can hand off the pre-fetched
-          // object to artisan-profile.tsx for an instant, zero-loading-screen
-          // paint — same pattern used by dashboard artisan cards.
+          // Hand off to artisan-profile for a richer view
           const artisan = await getArtisanByUserId(userId);
           if (cancelled) return;
           if (artisan) {
-            // Replace so pressing Back from artisan-profile returns to whatever
-            // screen the user came from (e.g. the products list), not here.
             router.replace({
               pathname: "/artisan-profile",
               params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
             } as any);
-            return; // don't setLoading(false) — this screen is being replaced
+            return;
           }
-          // artisan doc missing despite role="artisan" — fall through to client view
         }
 
         if (p) {
@@ -70,6 +77,7 @@ export default function UserProfileScreen() {
             phone: p.phone ?? undefined,
             bio: p.bio ?? undefined,
             photoUri: p.photoUri ?? undefined,
+            location: p.location ?? null,
           });
         }
         setResolvedRole(p?.role === "admin" ? "admin" : "client");
@@ -82,9 +90,41 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
+  // Request GPS for the viewer (to show distance + directions)
+  useEffect(() => {
+    (async () => {
+      try {
+        // First try saved profile location
+        const me = auth.currentUser;
+        if (me) {
+          const myProfile = await getUserProfile(me.uid);
+          if (myProfile?.location) {
+            setViewerLocation(myProfile.location);
+          }
+        }
+        // Then try live GPS (more accurate, overwrites profile location)
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setViewerLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {
+        // GPS unavailable — silently skip
+      }
+    })();
+  }, []);
+
   const displayName = profile?.name || nameProp || "مستخدم";
   const photoUri = profile?.photoUri || userPhoto || undefined;
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+
+  // Distance between viewer and this user's saved location
+  const distance =
+    viewerLocation && profile?.location
+      ? calcDistanceKm(viewerLocation, profile.location)
+      : null;
 
   const handleCall = () => {
     if (!profile?.phone) return;
@@ -107,8 +147,20 @@ export default function UserProfileScreen() {
     router.push({ pathname: "/chat", params: { chatId, otherName: displayName } });
   };
 
-  // While we're resolving an artisan account and about to replace() this screen,
-  // render nothing — avoids a flash of the client profile layout.
+  const handleOpenMap = () => {
+    if (!profile?.location) {
+      Alert.alert("تنبيه", "لا يوجد موقع محدد لهذا المستخدم");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { lat, lng } = profile.location;
+    const url = viewerLocation
+      ? `https://www.google.com/maps/dir/?api=1&origin=${viewerLocation.lat},${viewerLocation.lng}&destination=${lat},${lng}&travelmode=driving`
+      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(url);
+  };
+
+  // While resolving an artisan redirect, show nothing to avoid flash
   if (loading && resolvedRole === null) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
@@ -120,7 +172,7 @@ export default function UserProfileScreen() {
   const roleLabel = resolvedRole === "admin" ? "مدير" : "زبون";
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: bottomPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 8 }]}>
         <View style={styles.nav}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -140,7 +192,19 @@ export default function UserProfileScreen() {
           ) : (
             <>
               <Text style={styles.name}>{displayName}</Text>
-              <Text style={styles.roleTag}>{roleLabel}</Text>
+              <View style={styles.roleTagRow}>
+                <Text style={styles.roleTag}>{roleLabel}</Text>
+                {distance !== null && (
+                  <View style={styles.distancePill}>
+                    <Feather name="navigation" size={11} color={C.accent} />
+                    <Text style={styles.distanceText}>
+                      {distance < 1
+                        ? `${Math.round(distance * 1000)} م`
+                        : `${distance.toFixed(1)} كم`}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </>
           )}
         </View>
@@ -148,7 +212,7 @@ export default function UserProfileScreen() {
 
       {!loading && (
         <>
-          {/* Action buttons */}
+          {/* ── Action buttons ── */}
           <View style={[styles.actionRow, { paddingTop: 16 }]}>
             {profile?.phone ? (
               <Pressable style={[styles.actionBtn, styles.callBtn]} onPress={handleCall}>
@@ -170,7 +234,13 @@ export default function UserProfileScreen() {
             )}
           </View>
 
-          {/* Bio */}
+          {/* ── Map button (shown whenever location exists or as fallback) ── */}
+          <Pressable style={styles.mapBtn} onPress={handleOpenMap}>
+            <Feather name="map-pin" size={18} color={C.accent} />
+            <Text style={styles.mapBtnText}>عرض على الخريطة</Text>
+          </Pressable>
+
+          {/* ── Bio ── */}
           {profile?.bio ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>نبذة</Text>
@@ -193,7 +263,10 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   heroContent: { alignItems: "center", gap: 8 },
-  photo: { width: 90, height: 90, borderRadius: 22, borderWidth: 2.5, borderColor: "rgba(255,255,255,0.25)" },
+  photo: {
+    width: 90, height: 90, borderRadius: 22,
+    borderWidth: 2.5, borderColor: "rgba(255,255,255,0.25)",
+  },
   initials: {
     width: 90, height: 90, borderRadius: 22,
     backgroundColor: "rgba(201,168,76,0.2)",
@@ -201,23 +274,61 @@ const styles = StyleSheet.create({
   },
   initialsText: { fontSize: 32, fontFamily: "Cairo_700Bold", color: C.accent },
   name: { fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "center" },
+
+  roleTagRow: {
+    flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center",
+  },
   roleTag: {
     backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 4,
     fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent,
   },
+  distancePill: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  distanceText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+
   actionRow: {
-    flexDirection: "row-reverse", gap: 10, paddingHorizontal: 20, paddingBottom: 16,
+    flexDirection: "row-reverse", gap: 10, paddingHorizontal: 20, paddingBottom: 12,
   },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 7, paddingVertical: 12, borderRadius: 14,
+    gap: 6, borderRadius: 14, paddingVertical: 12,
   },
+  actionBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF" },
   callBtn: { backgroundColor: "#22C55E" },
   waBtn: { backgroundColor: "#25D366" },
   chatBtn: { backgroundColor: C.primary },
-  actionBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  section: { margin: 16, backgroundColor: C.card, borderRadius: 14, padding: 14 },
-  sectionTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.primary, textAlign: "right", marginBottom: 8 },
-  bioText: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right", lineHeight: 22 },
+
+  mapBtn: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
+
+  section: { marginHorizontal: 20, marginBottom: 16 },
+  sectionTitle: {
+    fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text,
+    textAlign: "right", marginBottom: 6,
+  },
+  bioText: {
+    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    textAlign: "right", lineHeight: 22,
+  },
 });
