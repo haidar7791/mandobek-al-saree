@@ -216,37 +216,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const code = generateOtp();
     otpStore.set(e164, { code, expiresAt: now + 5 * 60 * 1000 });
 
-    const instanceId = process.env.ULTRAMSG_INSTANCE_ID ?? "instance187756";
-    const token      = process.env.ULTRAMSG_TOKEN      ?? "us2d3muaswe5s4kp";
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
 
-    console.log(`[WhatsApp OTP] sending to ${e164} (wa: ${waPhone})`);
+    if (!phoneNumberId || !accessToken) {
+      console.error("[WhatsApp OTP] WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN not set");
+      otpStore.delete(e164);
+      res.status(503).json({ error: "خدمة الرسائل غير مهيأة — يرجى التواصل مع الدعم" });
+      return;
+    }
+
+    // waPhone is E.164 without leading + (Meta API format)
+    console.log(`[WhatsApp OTP] sending to ${e164} via Meta Cloud API`);
     try {
+      const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
+
+      const msgBody = templateName
+        // ── Template message (production: pre-approved OTP template) ──
+        ? {
+            messaging_product: "whatsapp",
+            to: waPhone,
+            type: "template",
+            template: {
+              name: templateName,
+              language: { code: "ar" },
+              components: [{
+                type: "body",
+                parameters: [{ type: "text", text: code }],
+              }],
+            },
+          }
+        // ── Text message (testing / open conversations) ──
+        : {
+            messaging_product: "whatsapp",
+            to: waPhone,
+            type: "text",
+            text: { body: `رمز التحقق الخاص بك في تطبيق فورس هو: *${code}*\nصالح لمدة 5 دقائق ⏱` },
+          };
+
       const response = await fetch(
-        `https://api.ultramsg.com/${instanceId}/messages/chat`,
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            token,
-            to:   waPhone,
-            body: `رمز التحقق الخاص بك هو: ${code}\nصالح لمدة 5 دقائق`,
-          }).toString(),
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(msgBody),
         }
       );
       const data = await response.json() as any;
-      console.log("[WhatsApp OTP] UltraMsg HTTP status:", response.status);
-      console.log("[WhatsApp OTP] UltraMsg full response:", JSON.stringify(data));
+      console.log("[WhatsApp OTP] Meta API status:", response.status);
+      console.log("[WhatsApp OTP] Meta API response:", JSON.stringify(data));
 
-      // UltraMsg returns { sent: "true", message: "..." } on success
-      // and { error: "...", ... } on failure
-      if (!response.ok) {
-        throw new Error(`UltraMsg HTTP ${response.status}: ${JSON.stringify(data)}`);
-      }
-      if (data?.error) {
-        throw new Error(`UltraMsg error: ${data.error}`);
-      }
-      if (data?.sent === false || data?.sent === "false") {
-        throw new Error(`UltraMsg rejected: ${JSON.stringify(data)}`);
+      if (!response.ok || data?.error) {
+        throw new Error(
+          data?.error?.message ?? `Meta API HTTP ${response.status}: ${JSON.stringify(data)}`
+        );
       }
 
       res.json({ ok: true });
@@ -743,27 +769,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[ForgotPassword] token for uid=${uid} link=${resetLink}`);
 
       if (isPhone) {
-        // ── Send via WhatsApp ──
+        // ── Send via Meta WhatsApp Cloud API ──
         const e164    = toE164Server(trimmed);
-        const waPhone = e164.replace(/^\+/, "");
-        const instanceId = process.env.ULTRAMSG_INSTANCE_ID ?? "instance187756";
-        const waToken    = process.env.ULTRAMSG_TOKEN      ?? "us2d3muaswe5s4kp";
+        const waPhone = e164.replace(/^\+/, ""); // E.164 without leading +
+        const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+        const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
+
+        if (!phoneNumberId || !accessToken) {
+          res.status(503).json({ error: "خدمة WhatsApp غير مهيأة — يرجى التواصل مع الدعم" });
+          return;
+        }
 
         const waBody =
           `مرحباً، تم طلب إعادة تعيين كلمة المرور لحسابك في تطبيق فورس.\n` +
           `انقر على الرابط لإعادة تعيين كلمة المرور (صالح 15 دقيقة):\n${resetLink}`;
 
         const waRes = await fetch(
-          `https://api.ultramsg.com/${instanceId}/messages/chat`,
+          `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token: waToken, to: waPhone, body: waBody }).toString(),
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: waPhone,
+              type: "text",
+              text: { body: waBody },
+            }),
           }
         );
         const waData = await waRes.json() as any;
-        if (waData?.error) throw new Error(`UltraMsg: ${waData.error}`);
-        console.log(`[ForgotPassword] WhatsApp reset link sent to ${e164}`);
+        if (!waRes.ok || waData?.error) {
+          throw new Error(waData?.error?.message ?? `Meta API HTTP ${waRes.status}: ${JSON.stringify(waData)}`);
+        }
+        console.log(`[ForgotPassword] WhatsApp reset link sent to ${e164} via Meta Cloud API`);
       } else {
         // ── Send via Email ──
         const emailUser = process.env.EMAIL_USER;

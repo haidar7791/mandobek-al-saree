@@ -51,8 +51,8 @@ def q(v):
 
 lines = [
     "NODE_ENV: " + q("production"),
-    "ULTRAMSG_INSTANCE_ID: " + q(os.environ.get("ULTRAMSG_INSTANCE_ID", "instance187756")),
-    "ULTRAMSG_TOKEN: "       + q(os.environ.get("ULTRAMSG_TOKEN",       "us2d3muaswe5s4kp")),
+    "WHATSAPP_PHONE_NUMBER_ID: " + q(os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")),
+    "WHATSAPP_ACCESS_TOKEN: "    + q(os.environ.get("WHATSAPP_ACCESS_TOKEN",    "")),
     "FIREBASE_SERVICE_ACCOUNT: " + q(os.environ["FIREBASE_SERVICE_ACCOUNT"]),
     "SESSION_SECRET: "           + q(os.environ["SESSION_SECRET"]),
     "EMAIL_USER: "               + q(os.environ["EMAIL_USER"]),
