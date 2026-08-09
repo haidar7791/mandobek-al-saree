@@ -723,13 +723,13 @@ const styles = StyleSheet.create({
   },
   productThumb: { width: 68, height: 68, borderRadius: 14 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
-  productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
-  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  productInfo: { flex: 1, gap: 6, alignItems: "flex-start" },
+  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "left" },
 
   // Price pill
   pricePill: {
-    flexDirection: "row-reverse", alignItems: "center", gap: 4,
-    alignSelf: "flex-end",
+    flexDirection: "row", alignItems: "center", gap: 4,
+    alignSelf: "flex-start",
     backgroundColor: "rgba(22,163,74,0.1)",
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
   },
