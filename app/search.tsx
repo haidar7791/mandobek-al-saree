@@ -2,17 +2,22 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, TextInput, Pressable, FlatList,
   Image, TouchableOpacity, Platform, ActivityIndicator,
+  Modal, ScrollView, Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { auth } from "@/lib/firebase";
 import {
   getArtisans,
   subscribeToProducts,
   getSpecialtyLabel,
   isFeaturedActive,
+  createProductOrder,
+  cancelProductOrder,
+  getUserProfile,
   type ArtisanProfile,
   type Product,
 } from "@/lib/db_logic";
@@ -27,6 +32,11 @@ export default function SearchScreen() {
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingArtisans, setLoadingArtisans] = useState(true);
+
+  // ── Product detail modal ─────────────────────────────────────────────────
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [buyingProduct, setBuyingProduct] = useState(false);
+
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
   useEffect(() => {
@@ -83,6 +93,48 @@ export default function SearchScreen() {
   }, [filteredArtisans, filteredProducts, q]);
 
   const totalResults = filteredArtisans.length + filteredProducts.length;
+
+  // ── Buy handler (same logic as dashboard) ────────────────────────────────
+  const handleBuyProduct = async (p: Product) => {
+    const user = auth.currentUser;
+    if (!user) { router.replace("/login" as any); return; }
+    const selfProfile = await getUserProfile(user.uid);
+    Alert.alert(
+      "تأكيد الشراء",
+      `هل تريد إرسال طلب شراء لـ "${p.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "إرسال الطلب",
+          onPress: async () => {
+            setBuyingProduct(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              await createProductOrder({
+                productId: p.id,
+                productTitle: p.title,
+                productImageUrl: p.imageUrl,
+                productPrice: p.price,
+                sellerId: p.sellerId,
+                sellerName: p.sellerName,
+                buyerId: user.uid,
+                buyerName: selfProfile?.name || "",
+                buyerPhone: selfProfile?.phone || "",
+                buyerLocation: null,
+              });
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setSelectedProduct(null);
+              Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
+            } catch {
+              Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
+            } finally {
+              setBuyingProduct(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
@@ -183,12 +235,19 @@ export default function SearchScreen() {
               );
             }
 
-            // product
+            // ── Product card ── now fully pressable → opens detail modal
             const p = item.data as Product;
             const isSold = p.status === "sold";
             const sellerFeatured = isFeaturedActive({ featuredUntil: p.sellerFeaturedUntil });
             return (
-              <View style={[styles.rowCard, isSold && styles.rowCardDim]}>
+              <TouchableOpacity
+                style={[styles.rowCard, isSold && styles.rowCardDim]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSelectedProduct(p);
+                }}
+              >
                 {p.imageUrl ? (
                   <Image source={{ uri: p.imageUrl }} style={styles.productThumb} resizeMode="cover" />
                 ) : (
@@ -199,34 +258,140 @@ export default function SearchScreen() {
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>{p.title}</Text>
                   <Text style={styles.priceText}>{p.price.toLocaleString("ar-IQ")} د.ع</Text>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: p.sellerId, userName: p.sellerName } } as any);
-                    }}
-                  >
-                    <View style={styles.sellerRow}>
-                      <Text style={styles.rowSub} numberOfLines={1}>{p.sellerName}</Text>
-                      {sellerFeatured && (
-                        <View style={styles.featuredBadge}>
-                          <Ionicons name="star" size={9} color={C.primary} />
-                          <Text style={styles.featuredText}>مميز</Text>
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                  <View style={styles.sellerRow}>
+                    <Text style={styles.rowSub} numberOfLines={1}>{p.sellerName}</Text>
+                    {sellerFeatured && (
+                      <View style={styles.featuredBadge}>
+                        <Ionicons name="star" size={9} color={C.primary} />
+                        <Text style={styles.featuredText}>مميز</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-                {isSold && (
+                {isSold ? (
                   <View style={styles.soldBadge}>
                     <Text style={styles.soldText}>مباع</Text>
                   </View>
+                ) : (
+                  <Feather name="chevron-left" size={16} color={C.textMuted} />
                 )}
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
       )}
+
+      {/* ══════════════════════════════════════════
+          PRODUCT DETAIL BOTTOM SHEET MODAL
+      ══════════════════════════════════════════ */}
+      <Modal
+        visible={!!selectedProduct}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedProduct(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setSelectedProduct(null)}>
+          <Pressable style={styles.detailSheet} onPress={(e) => e.stopPropagation()}>
+            {selectedProduct && (() => {
+              const p = selectedProduct;
+              const isSold = p.status === "sold";
+              const sellerFeatured = isFeaturedActive({ featuredUntil: p.sellerFeaturedUntil });
+              return (
+                <>
+                  {/* Handle */}
+                  <View style={styles.sheetHandle} />
+
+                  <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                    {/* Product image */}
+                    {p.imageUrl ? (
+                      <Image
+                        source={{ uri: p.imageUrl }}
+                        style={styles.detailImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={[styles.detailImage, styles.detailImageFallback]}>
+                        <Feather name="image" size={48} color={C.textMuted} />
+                      </View>
+                    )}
+
+                    {/* Sold overlay label */}
+                    {isSold && (
+                      <View style={styles.detailSoldBanner}>
+                        <Text style={styles.detailSoldBannerText}>هذا المنتج تم بيعه</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.detailBody}>
+                      {/* Title + price */}
+                      <Text style={styles.detailTitle}>{p.title}</Text>
+                      <Text style={styles.detailPrice}>
+                        {p.price.toLocaleString("ar-IQ")}
+                        <Text style={styles.detailCurrency}> د.ع</Text>
+                      </Text>
+
+                      {/* Description */}
+                      {p.description ? (
+                        <Text style={styles.detailDesc}>{p.description}</Text>
+                      ) : null}
+
+                      {/* Seller row */}
+                      <TouchableOpacity
+                        style={styles.detailSellerRow}
+                        activeOpacity={0.75}
+                        onPress={() => {
+                          setSelectedProduct(null);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          router.push({ pathname: "/user-profile", params: { userId: p.sellerId, userName: p.sellerName } } as any);
+                        }}
+                      >
+                        <Feather name="chevron-left" size={16} color={C.textSecondary} />
+                        <View style={styles.detailSellerInfo}>
+                          <Text style={styles.detailSellerName}>{p.sellerName}</Text>
+                          {sellerFeatured && (
+                            <View style={styles.featuredBadge}>
+                              <Ionicons name="star" size={9} color={C.primary} />
+                              <Text style={styles.featuredText}>مميز</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.detailSellerIcon}>
+                          <Feather name="user" size={16} color={C.primary} />
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Buy / sold button */}
+                      {isSold ? (
+                        <View style={[styles.detailBuyBtn, styles.detailBuyBtnSold]}>
+                          <Text style={styles.detailBuyBtnText}>تم البيع</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.detailBuyBtn, buyingProduct && { opacity: 0.6 }]}
+                          activeOpacity={0.85}
+                          disabled={buyingProduct}
+                          onPress={() => handleBuyProduct(p)}
+                        >
+                          {buyingProduct ? (
+                            <ActivityIndicator size="small" color={C.primary} />
+                          ) : (
+                            <>
+                              <Feather name="shopping-bag" size={16} color={C.primary} />
+                              <Text style={styles.detailBuyBtnText}>إرسال طلب شراء</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
+
+                      <View style={{ height: 8 }} />
+                    </View>
+                  </ScrollView>
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -304,4 +469,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 4,
   },
   soldText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: "#EF4444" },
+
+  // ── Product Detail Modal ──────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-end",
+  },
+  detailSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+    maxHeight: "88%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: C.border,
+    alignSelf: "center", marginTop: 10, marginBottom: 4,
+  },
+  detailImage: {
+    width: "100%",
+    height: 240,
+  },
+  detailImageFallback: {
+    backgroundColor: C.inputBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailSoldBanner: {
+    backgroundColor: "rgba(239,68,68,0.9)",
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  detailSoldBannerText: {
+    fontSize: 14, fontFamily: "Cairo_700Bold", color: "#fff",
+  },
+  detailBody: {
+    padding: 20, gap: 10,
+  },
+  detailTitle: {
+    fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right",
+  },
+  detailPrice: {
+    fontSize: 22, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right",
+  },
+  detailCurrency: {
+    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+  },
+  detailDesc: {
+    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    textAlign: "right", lineHeight: 22,
+  },
+  detailSellerRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: C.inputBg,
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 4,
+  },
+  detailSellerIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    alignItems: "center", justifyContent: "center",
+  },
+  detailSellerInfo: {
+    flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 6,
+  },
+  detailSellerName: {
+    fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text,
+  },
+  detailBuyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  detailBuyBtnSold: {
+    backgroundColor: C.border,
+  },
+  detailBuyBtnText: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
+  },
 });
