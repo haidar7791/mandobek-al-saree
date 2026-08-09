@@ -570,45 +570,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     <p style="margin-top:12px;font-size:13px;color:#888">يرجى طلب رابط جديد من التطبيق.</p>
   </div>
   ` : `
-  <form id="form" onsubmit="submit(event)">
+  <form id="form" onsubmit="handleSubmit(event)">
     <div class="field">
       <label for="np">كلمة المرور الجديدة</label>
       <input type="password" id="np" placeholder="6 أحرف على الأقل" required minlength="6"/>
-      <button type="button" class="toggle" onclick="toggle('np',this)">👁</button>
+      <button type="button" class="toggle" onclick="toggleVis('np',this)">👁</button>
     </div>
     <div class="field">
       <label for="cp">تأكيد كلمة المرور</label>
       <input type="password" id="cp" placeholder="أعد إدخال كلمة المرور" required minlength="6"/>
-      <button type="button" class="toggle" onclick="toggle('cp',this)">👁</button>
+      <button type="button" class="toggle" onclick="toggleVis('cp',this)">👁</button>
     </div>
+    <input type="hidden" id="tokenField" value="${token}"/>
     <button class="btn" id="btn" type="submit">تغيير كلمة المرور</button>
   </form>
   <div id="msg" class="msg"></div>
 
   <script>
-    const TOKEN = ${JSON.stringify(token)};
-    function toggle(id, btn) {
-      const el = document.getElementById(id);
+    function toggleVis(id, btn) {
+      var el = document.getElementById(id);
       el.type = el.type === 'password' ? 'text' : 'password';
       btn.textContent = el.type === 'password' ? '👁' : '🙈';
     }
-    async function submit(e) {
+    async function handleSubmit(e) {
       e.preventDefault();
-      const np = document.getElementById('np').value;
-      const cp = document.getElementById('cp').value;
-      const msg = document.getElementById('msg');
-      const btn = document.getElementById('btn');
+      var np  = document.getElementById('np').value;
+      var cp  = document.getElementById('cp').value;
+      var tok = document.getElementById('tokenField').value;
+      var msg = document.getElementById('msg');
+      var btn = document.getElementById('btn');
       msg.className = 'msg'; msg.textContent = '';
       if (np !== cp) { showErr('كلمتا المرور غير متطابقتين'); return; }
+      if (!tok)      { showErr('رابط إعادة التعيين غير صالح'); return; }
       btn.disabled = true;
       btn.innerHTML = 'جارٍ الحفظ… <span class="spinner"></span>';
       try {
-        const r = await fetch('/api/reset-password-with-token', {
+        var apiUrl = window.location.origin + '/api/reset-password-with-token';
+        var r = await fetch(apiUrl, {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ token: TOKEN, newPassword: np })
+          body: JSON.stringify({ token: tok, newPassword: np })
         });
-        const d = await r.json();
+        var d = await r.json();
         if (!r.ok || !d.ok) { showErr(d.error || 'حدث خطأ غير متوقع'); return; }
         document.getElementById('form').style.display = 'none';
         msg.className = 'msg success';
@@ -620,7 +623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     function showErr(t) {
-      const msg = document.getElementById('msg');
+      var msg = document.getElementById('msg');
       msg.className = 'msg error'; msg.textContent = t;
       document.getElementById('btn').disabled = false;
       document.getElementById('btn').textContent = 'تغيير كلمة المرور';
