@@ -514,6 +514,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/reset-password", (req: Request, res: Response) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
 
+    // Validate token exists and has not expired — do NOT delete it here.
+    // The token is only consumed after a successful POST /api/reset-password-with-token.
+    const tokenEntry = token ? resetTokenStore.get(token) : null;
+    const tokenValid = tokenEntry != null && Date.now() <= tokenEntry.expiresAt;
+
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -559,7 +564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     <p>إعادة تعيين كلمة المرور</p>
   </div>
 
-  ${!token ? `
+  ${!tokenValid ? `
   <div class="invalid-token">
     <p>⚠️ رابط إعادة التعيين غير صالح أو منتهي الصلاحية.</p>
     <p style="margin-top:12px;font-size:13px;color:#888">يرجى طلب رابط جديد من التطبيق.</p>
@@ -795,13 +800,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    // Invalidate immediately (single-use)
-    resetTokenStore.delete(token);
-
     try {
       const admin = await getAdminApp();
       const { getAuth } = await import("firebase-admin/auth");
       await getAuth(admin).updateUser(entry.uid, { password: newPassword });
+      // Invalidate only after successful update (single-use, no retry penalty on failure)
+      resetTokenStore.delete(token);
       console.log(`[ResetPassword] password updated for uid=${entry.uid}`);
       res.json({ ok: true });
     } catch (err: any) {
