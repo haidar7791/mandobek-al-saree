@@ -334,6 +334,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * POST /api/verify-otp-only
+   * Body: { phone: string, code: string }
+   *
+   * Validates a WhatsApp OTP without creating or modifying any Firebase Auth user.
+   * Used by the profile screen to verify a new phone number before persisting it.
+   */
+  app.post("/api/verify-otp-only", async (req: Request, res: Response) => {
+    const { phone, code } = req.body as { phone?: string; code?: string };
+    if (!phone || !code) {
+      res.status(400).json({ ok: false, error: "phone and code are required" });
+      return;
+    }
+    const e164  = toE164Server(phone);
+    const entry = otpStore.get(e164);
+    if (!entry) {
+      res.status(400).json({ ok: false, error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
+      return;
+    }
+    if (Date.now() > entry.expiresAt) {
+      otpStore.delete(e164);
+      res.status(400).json({ ok: false, error: "انتهت صلاحية الرمز — اطلب رمزاً جديداً" });
+      return;
+    }
+    if (entry.code !== code.trim()) {
+      res.status(400).json({ ok: false, error: "الرمز غير صحيح — تحقق وأعد المحاولة" });
+      return;
+    }
+    // Valid — consume (single-use)
+    otpStore.delete(e164);
+    res.json({ ok: true });
+  });
+
   // ─── Email OTP ───────────────────────────────────────────────────────────────
 
   /** In-memory Email OTP store: email → { code, expiresAt } (5-min TTL) */

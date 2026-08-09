@@ -11,7 +11,6 @@ import {
   Alert,
   Image,
   Modal,
-  FlatList,
   ActivityIndicator,
   Dimensions,
 } from "react-native";
@@ -26,13 +25,13 @@ import Animated, {
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import Constants from "expo-constants";
 import { auth } from "@/lib/firebase";
 import { performSignOut } from "@/lib/push_notifications";
 import {
   getBalance,
   getUserProfile,
   setUserProfile,
-  ALL_SPECIALTIES,
   addPortfolioImage,
   removePortfolioImage,
   uploadPortfolioImage,
@@ -40,112 +39,120 @@ import {
   updateArtisanPhotoIfExists,
   createOrUpdateArtisan,
   getCategoryForSpecialty,
+  ALL_SPECIALTIES,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
 const SCREEN_W = Dimensions.get("window").width;
-const IMG_SIZE = (SCREEN_W - 18 * 2 - 18 * 2 - 10 * 2) / 3;
+// Portfolio images are full-width with a 4:3 aspect ratio
+const PORTFOLIO_IMG_H = Math.round((SCREEN_W - 18 * 2) * 0.75);
 
-function InputField({
-  label,
-  placeholder,
-  value,
-  onChangeText,
-  icon,
-  keyboardType = "default",
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (t: string) => void;
-  icon: React.ReactNode;
-  keyboardType?: "default" | "phone-pad" | "email-address";
-}) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={[styles.inputRow, focused && styles.inputFocused]}>
-        <View style={styles.inputIcon}>{icon}</View>
-        <TextInput
-          style={styles.input}
-          placeholder={placeholder}
-          placeholderTextColor={C.textMuted}
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          textAlign="right"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          autoCapitalize="none"
-        />
-      </View>
-    </View>
-  );
+// ─── Backend URL helpers (same logic as register.tsx) ────────────────────────
+const CLOUD_RUN_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app/";
+const REPLIT_BACKEND_HOST =
+  "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
+
+function getServerUrl(): string {
+  const explicitUrl = process.env.EXPO_PUBLIC_SERVER_URL;
+  if (
+    typeof explicitUrl === "string" &&
+    explicitUrl.startsWith("https://") &&
+    !explicitUrl.includes("localhost") &&
+    !explicitUrl.includes("127.0.0.1")
+  ) {
+    return explicitUrl.endsWith("/") ? explicitUrl : explicitUrl + "/";
+  }
+  function withPort5000(raw: string): string {
+    const noProto = raw.replace(/^https?:\/\//, "");
+    const noPort = noProto.replace(/:\d+\/?$/, "").replace(/\/$/, "");
+    if (noPort.endsWith(".run.app")) return `https://${noPort}/`;
+    return `https://${noPort}:5000/`;
+  }
+  const bakedDomain: unknown = (Constants.expoConfig as any)?.extra?.replitDomain;
+  if (typeof bakedDomain === "string" && bakedDomain.length > 0) {
+    return withPort5000(bakedDomain);
+  }
+  const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (typeof envDomain === "string" && envDomain.length > 0) {
+    return withPort5000(envDomain);
+  }
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const h = window.location.hostname;
+    if (h !== "localhost" && h !== "127.0.0.1") return withPort5000(h);
+  }
+  return withPort5000(REPLIT_BACKEND_HOST);
 }
 
+const IRAQI_PHONE_REGEX = /^07\d{9}$/;
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const [currentUser, setCurrentUser] = useState("");
+
+  // ── Profile state ──────────────────────────────────────────────────────────
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
-  const [saving, setSaving] = useState(false);
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
-
   const [specialty, setSpecialty] = useState("");
-  const [professionalBio, setProfessionalBio] = useState("");
-  const [showSpecialtyModal, setShowSpecialtyModal] = useState(false);
-
+  const [bio, setBio] = useState("");
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
+  // ── Edit modal state ───────────────────────────────────────────────────────
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [phoneVerifiedInSession, setPhoneVerifiedInSession] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad =
     Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
+  const specialtyLabel =
+    specialty === "client"
+      ? "زبون"
+      : ALL_SPECIALTIES.find((s) => s.key === specialty)?.label || specialty || "";
+
+  // ── Load profile on screen focus ───────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       const load = async () => {
         const user = auth.currentUser;
-        if (!user) {
-          router.replace("/");
-          return;
-        }
-        const userId = user.uid;
-        setUid(userId);
-        const displayId = user.email?.replace("@sanad.app", "") || userId;
-        setCurrentUser(displayId);
-
-        const profile = await getUserProfile(userId);
+        if (!user) { router.replace("/"); return; }
+        setUid(user.uid);
+        const profile = await getUserProfile(user.uid);
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
+          setIsPhoneVerified(profile.isPhoneVerified ?? false);
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
-          setProfessionalBio(profile.bio || "");
+          setBio(profile.bio || "");
           setPortfolioImages(profile.portfolio || []);
-        } else {
-          setName(displayId);
         }
-
-        const bal = await getBalance(userId);
+        const bal = await getBalance(user.uid);
         setBalance(bal);
       };
       load();
     }, [])
   );
 
+  // ── Profile photo ──────────────────────────────────────────────────────────
   const handlePickImage = async () => {
-    // Android 13+ uses the system Photo Picker — no permission required.
-    // iOS still requires an explicit media-library grant.
     if (Platform.OS === "ios") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
@@ -159,9 +166,8 @@ export default function ProfileScreen() {
       aspect: [1, 1],
       quality: 0.8,
     });
-    if (!result.canceled && result.assets[0]) {
+    if (!result.canceled && result.assets[0])
       await handleSaveNewPhoto(result.assets[0].uri);
-    }
   };
 
   const handleTakePhoto = async () => {
@@ -175,31 +181,25 @@ export default function ProfileScreen() {
       aspect: [1, 1],
       quality: 0.8,
     });
-    if (!result.canceled && result.assets[0]) {
+    if (!result.canceled && result.assets[0])
       await handleSaveNewPhoto(result.assets[0].uri);
-    }
   };
 
-  // Profile photo is uploaded and persisted immediately upon selection,
-  // matching the immediate-save behaviour of portfolio images — the user
-  // should not have to press "Save Changes" for it to take effect.
   const handleSaveNewPhoto = async (localUri: string) => {
-    const previousPhotoUri = photoUri;
-    setPhotoUri(localUri); // optimistic local preview
+    const prev = photoUri;
+    setPhotoUri(localUri);
     setUploadingPhoto(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const userId = auth.currentUser?.uid;
       if (!userId) throw new Error("not authenticated");
-      const downloadUrl = await uploadProfilePhoto(userId, localUri);
-      setPhotoUri(downloadUrl);
-      await setUserProfile(userId, { photoUri: downloadUrl });
-      if (role === "artisan") {
-        await updateArtisanPhotoIfExists(userId, downloadUrl);
-      }
+      const url = await uploadProfilePhoto(userId, localUri);
+      setPhotoUri(url);
+      await setUserProfile(userId, { photoUri: url });
+      if (role === "artisan") await updateArtisanPhotoIfExists(userId, url);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
-      setPhotoUri(previousPhotoUri);
+    } catch {
+      setPhotoUri(prev);
       Alert.alert("خطأ", "تعذّر حفظ الصورة الشخصية، حاول مرة أخرى");
     } finally {
       setUploadingPhoto(false);
@@ -214,9 +214,8 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // ── Portfolio ──────────────────────────────────────────────────────────────
   const handleAddPortfolioImage = async () => {
-    // Android 13+ uses the system Photo Picker — no permission required.
-    // iOS still requires an explicit media-library grant.
     if (Platform.OS === "ios") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
@@ -226,31 +225,29 @@ export default function ProfileScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
+      allowsEditing: false,
       quality: 0.85,
     });
     if (result.canceled || !result.assets[0]) return;
 
     setUploadingPortfolio(true);
     try {
-      const downloadUrl = await uploadPortfolioImage(uid, result.assets[0].uri);
-      await addPortfolioImage(uid, downloadUrl);
-      setPortfolioImages((prev) => [...prev, downloadUrl]);
+      const url = await uploadPortfolioImage(uid, result.assets[0].uri);
+      await addPortfolioImage(uid, url);
+      setPortfolioImages((prev) => [...prev, url]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       const code = err?.code || "";
       const msg = err?.message || "";
       let userMsg = "تعذّر رفع الصورة، حاول مرة أخرى";
-      if (code.includes("unauthorized") || msg.includes("unauthorized") || msg.includes("permission")) {
-        userMsg =
-          "صلاحيات الرفع مرفوضة من قِبل Firebase Storage.\n" +
-          "تأكد من نشر قواعد storage.rules في لوحة Firebase.";
-      } else if (msg.includes("network") || code.includes("network")) {
+      if (
+        code.includes("unauthorized") ||
+        msg.includes("unauthorized") ||
+        msg.includes("permission")
+      )
+        userMsg = "صلاحيات الرفع مرفوضة من Firebase Storage.";
+      else if (msg.includes("network") || code.includes("network"))
         userMsg = "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
-      } else if (msg.includes("retry-limit") || msg.includes("canceled")) {
-        userMsg = "انقطع الرفع، حاول مرة أخرى";
-      }
       Alert.alert("خطأ في رفع الصورة", `${userMsg}\n\n[${code || "unknown"}]`);
     } finally {
       setUploadingPortfolio(false);
@@ -276,54 +273,106 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert("خطأ", "يرجى إدخال الاسم");
-      return;
-    }
+  // ── Edit Modal logic ───────────────────────────────────────────────────────
+  const openEditModal = () => {
+    setEditName(name);
+    setEditBio(bio);
+    setEditPhone(phone);
+    setOtpSent(false);
+    setOtpCode("");
+    setPhoneVerifiedInSession(false);
+    setEditModalVisible(true);
+  };
 
-    const trimmedPhone = phone.trim();
-    // Iraqi mobile number: starts with 07 and is exactly 11 digits (e.g. 07812345678).
-    const IRAQI_PHONE_REGEX = /^07\d{9}$/;
-    if (trimmedPhone.length > 0 && !IRAQI_PHONE_REGEX.test(trimmedPhone)) {
+  const handleSendOtp = async () => {
+    const trimmed = editPhone.trim();
+    if (!IRAQI_PHONE_REGEX.test(trimmed)) {
       Alert.alert(
-        "رقم هاتف غير صحيح",
-        "يرجى إدخال رقم هاتف عراقي صحيح مكوّن من 11 رقمًا ويبدأ بـ 07، مثال: 07812345678"
+        "رقم غير صحيح",
+        "أدخل رقم هاتف عراقي صحيح (11 رقماً يبدأ بـ 07)\nمثال: 07812345678"
       );
       return;
     }
+    setSendingOtp(true);
+    try {
+      const r = await fetch(`${getServerUrl()}api/send-whatsapp-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: trimmed }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "فشل إرسال الرمز");
+      setOtpSent(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      Alert.alert("خطأ", err.message || "تعذّر إرسال رمز التحقق عبر الواتساب");
+    } finally {
+      setSendingOtp(false);
+    }
+  };
 
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim() || otpCode.trim().length < 4) {
+      Alert.alert("خطأ", "أدخل رمز التحقق المرسل إليك");
+      return;
+    }
+    setVerifyingOtp(true);
+    try {
+      const r = await fetch(`${getServerUrl()}api/verify-otp-only`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: editPhone.trim(), code: otpCode.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "الرمز غير صحيح");
+      // Persist new phone + verified flag to Firestore immediately
+      await setUserProfile(uid, {
+        phone: editPhone.trim(),
+        isPhoneVerified: true,
+      });
+      setPhone(editPhone.trim());
+      setIsPhoneVerified(true);
+      setPhoneVerifiedInSession(true);
+      setOtpSent(false);
+      setOtpCode("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      Alert.alert("خطأ", err.message || "رمز التحقق غير صحيح");
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) {
+      Alert.alert("خطأ", "يرجى إدخال الاسم الكامل");
+      return;
+    }
     setSaving(true);
     try {
-      const userId = auth.currentUser?.uid;
-      if (!userId) throw new Error("not authenticated");
-      // Photo is already uploaded + persisted immediately on selection
-      // (see handleSaveNewPhoto) — don't re-write it here, since photoUri
-      // could still be a local file:// URI if a Save is tapped mid-upload.
-      await setUserProfile(userId, {
-        name: name.trim(),
-        phone: trimmedPhone,
-        specialty: specialty || undefined,
-        bio: professionalBio.trim(),
+      await setUserProfile(uid, {
+        name: editName.trim(),
+        bio: editBio.trim(),
       });
-
-      // Sync artisan record so the user appears in dashboard search
+      // Sync artisan record if applicable
       if (role === "artisan" && specialty) {
-        const profile = await getUserProfile(userId);
-        await createOrUpdateArtisan(userId, {
-          name: name.trim(),
-          phone: trimmedPhone,
+        const profile = await getUserProfile(uid);
+        await createOrUpdateArtisan(uid, {
+          name: editName.trim(),
+          phone: phone,
           photoUri: profile?.photoUri ?? photoUri,
           specialty,
           category: getCategoryForSpecialty(specialty),
           location: profile?.location ?? null,
-          bio: professionalBio.trim(),
+          bio: editBio.trim(),
           isAvailable: true,
         });
       }
-
+      setName(editName.trim());
+      setBio(editBio.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم الحفظ", "تم حفظ بياناتك بنجاح");
+      setEditModalVisible(false);
+      Alert.alert("تم الحفظ ✓", "تم تحديث ملفك الشخصي بنجاح");
     } catch {
       Alert.alert("خطأ", "حدث خطأ أثناء حفظ البيانات");
     } finally {
@@ -331,37 +380,34 @@ export default function ProfileScreen() {
     }
   };
 
+  // ── Logout ─────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert(
-      "تسجيل الخروج",
-      "هل أنت متأكد من رغبتك في تسجيل الخروج؟",
-      [
-        { text: "إلغاء", style: "cancel" },
-        {
-          text: "تسجيل الخروج",
-          style: "destructive",
-          onPress: async () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            await performSignOut();
-            router.replace("/login");
-          },
+    Alert.alert("تسجيل الخروج", "هل أنت متأكد من رغبتك في تسجيل الخروج؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "تسجيل الخروج",
+        style: "destructive",
+        onPress: async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          await performSignOut();
+          router.replace("/login");
         },
-      ]
-    );
+      },
+    ]);
   };
-
-  const CLIENT_OPTION_PROFILE = { key: "client", label: "زبون", icon: "user" };
-  const PROFILE_SPECIALTIES = [CLIENT_OPTION_PROFILE, ...ALL_SPECIALTIES];
-  const selectedSpecialtyLabel =
-    PROFILE_SPECIALTIES.find((s) => s.key === specialty)?.label || "اختر تخصصك";
 
   const btnScale = useSharedValue(1);
   const btnAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: btnScale.value }],
   }));
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
+
+      {/* ══════════════════════════════════════════
+          HEADER — avatar · name · wallet
+      ══════════════════════════════════════════ */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -374,30 +420,30 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.avatarSection}>
+          {/* Avatar */}
           <Pressable style={styles.avatarWrap} onPress={handleChangePhoto}>
-            {photoUri ? (
+            {uploadingPhoto ? (
+              <LinearGradient colors={["#1E2F60", "#0D1B3E"]} style={styles.avatarPlaceholder}>
+                <ActivityIndicator size="large" color={C.accent} />
+              </LinearGradient>
+            ) : photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.avatarImg} />
             ) : (
-              <LinearGradient
-                colors={["#1E2F60", "#0D1B3E"]}
-                style={styles.avatarPlaceholder}
-              >
+              <LinearGradient colors={["#1E2F60", "#0D1B3E"]} style={styles.avatarPlaceholder}>
                 <Ionicons name="person" size={44} color={C.accent} />
               </LinearGradient>
             )}
             <View style={styles.cameraBtn}>
-              <LinearGradient
-                colors={[C.accent, C.accentLight]}
-                style={styles.cameraBtnGrad}
-              >
+              <LinearGradient colors={[C.accent, C.accentLight]} style={styles.cameraBtnGrad}>
                 <Feather name="camera" size={14} color={C.primary} />
               </LinearGradient>
             </View>
           </Pressable>
 
-          <Text style={styles.displayName}>{name || currentUser}</Text>
-          <Text style={styles.displayContact}>{currentUser}</Text>
+          {/* Name only — NO email/contact line */}
+          <Text style={styles.displayName}>{name || "—"}</Text>
 
+          {/* Wallet pill */}
           <View style={styles.balancePill}>
             <MaterialCommunityIcons name="wallet" size={14} color={C.accent} />
             <Text style={styles.balancePillText}>
@@ -407,177 +453,142 @@ export default function ProfileScreen() {
         </View>
       </LinearGradient>
 
+      {/* ══════════════════════════════════════════
+          SCROLLABLE BODY
+      ══════════════════════════════════════════ */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={[
-            styles.formContent,
-            { paddingBottom: bottomPad + 24 },
-          ]}
+          contentContainerStyle={[styles.body, { paddingBottom: bottomPad + 24 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ─── Personal Data Card ─── */}
+
+          {/* ── Personal Data Card (read-only) ── */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>البيانات الشخصية</Text>
+            {/* Card header */}
+            <View style={styles.cardTitleRow}>
+              <Pressable style={styles.editBtn} onPress={openEditModal}>
+                <Feather name="edit-2" size={13} color={C.accent} />
+                <Text style={styles.editBtnText}>تعديل الملف الشخصي</Text>
+              </Pressable>
+              <Text style={styles.cardTitle}>البيانات الشخصية</Text>
+            </View>
 
-            <InputField
-              label="الاسم الكامل"
-              placeholder="أدخل اسمك الكامل"
-              value={name}
-              onChangeText={setName}
-              icon={<Feather name="user" size={17} color={C.textSecondary} />}
-            />
-
-            <InputField
-              label="رقم الهاتف"
-              placeholder="07xxxxxxxx"
-              value={phone}
-              onChangeText={setPhone}
-              icon={<Feather name="phone" size={17} color={C.textSecondary} />}
-              keyboardType="phone-pad"
-            />
-
-            {/* Specialty Dropdown (always shown) */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>التخصص المهني</Text>
-              <Pressable
-                style={styles.dropdownBtn}
-                onPress={() => setShowSpecialtyModal(true)}
-              >
-                <Feather name="chevron-down" size={17} color={C.textSecondary} />
-                <Text
-                  style={[
-                    styles.dropdownBtnText,
-                    !specialty && { color: C.textMuted },
-                  ]}
-                >
-                  {selectedSpecialtyLabel}
-                </Text>
-                <View style={styles.inputIcon}>
-                  <MaterialCommunityIcons
-                    name="briefcase-outline"
-                    size={17}
-                    color={C.textSecondary}
-                  />
+            {/* Specialty */}
+            {specialtyLabel ? (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoValue}>{specialtyLabel}</Text>
+                <View style={styles.infoIconWrap}>
+                  <MaterialCommunityIcons name="briefcase-outline" size={16} color={C.accent} />
                 </View>
-              </Pressable>
-            </View>
-
-            {/* Professional Bio (optional, multi-line) */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>الوصف المهني أو النبذة (اختياري)</Text>
-              <View style={styles.bioInputRow}>
-                <TextInput
-                  style={styles.bioInput}
-                  placeholder="اكتب نبذة عنك، اختصاصك، شهاداتك أو خبراتك..."
-                  placeholderTextColor={C.textMuted}
-                  value={professionalBio}
-                  onChangeText={setProfessionalBio}
-                  textAlign="right"
-                  multiline
-                  numberOfLines={4}
-                  maxLength={500}
-                />
               </View>
-              <Text style={styles.bioCounter}>{professionalBio.length}/500</Text>
-            </View>
+            ) : null}
 
-            <Animated.View style={btnAnimStyle}>
-              <Pressable
-                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-                onPress={handleSave}
-                disabled={saving}
-                onPressIn={() => { btnScale.value = withSpring(0.97); }}
-                onPressOut={() => { btnScale.value = withSpring(1); }}
-              >
-                <LinearGradient
-                  colors={[C.accent, C.accentLight]}
-                  style={styles.saveBtnGrad}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  {saving ? (
-                    <Text style={styles.saveBtnText}>جارٍ الحفظ...</Text>
-                  ) : (
-                    <>
-                      <Text style={styles.saveBtnText}>حفظ التغييرات</Text>
-                      <Feather name="check" size={18} color={C.primary} />
-                    </>
-                  )}
-                </LinearGradient>
-              </Pressable>
-            </Animated.View>
+            {/* Bio */}
+            {bio ? (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoValue, styles.bioValue]}>{bio}</Text>
+                <View style={styles.infoIconWrap}>
+                  <Feather name="file-text" size={16} color={C.accent} />
+                </View>
+              </View>
+            ) : null}
+
+            {/* Phone with verified badge */}
+            <View style={styles.infoRow}>
+              <View style={styles.phoneValueWrap}>
+                {isPhoneVerified && (
+                  <View style={styles.verifiedBadge}>
+                    <Feather name="check-circle" size={12} color={C.success} />
+                    <Text style={styles.verifiedText}>موثق</Text>
+                  </View>
+                )}
+                <Text style={[styles.infoValue, !phone && { color: C.textMuted }]}>
+                  {phone || "لم يُضف رقم هاتف"}
+                </Text>
+              </View>
+              <View style={styles.infoIconWrap}>
+                <Feather name="phone" size={16} color={C.accent} />
+              </View>
+            </View>
           </View>
 
-          {/* ─── Portfolio Gallery (artisan only) ─── */}
-          {role === "artisan" && (
-            <View style={styles.card}>
-              <View style={styles.portfolioHeader}>
-                <Pressable
-                  style={[styles.addImageBtn, uploadingPortfolio && { opacity: 0.5 }]}
-                  onPress={handleAddPortfolioImage}
-                  disabled={uploadingPortfolio}
-                >
-                  {uploadingPortfolio ? (
-                    <ActivityIndicator size="small" color={C.accent} />
-                  ) : (
-                    <Feather name="plus" size={15} color={C.accent} />
-                  )}
-                  <Text style={styles.addImageBtnText}>إضافة صورة</Text>
-                </Pressable>
-                <Text style={styles.cardTitle}>معرض أعمالي</Text>
-              </View>
-
-              {portfolioImages.length === 0 ? (
-                <View style={styles.emptyPortfolio}>
-                  <MaterialCommunityIcons
-                    name="image-multiple-outline"
-                    size={42}
-                    color={C.textMuted}
-                  />
-                  <Text style={styles.emptyPortfolioText}>
-                    لم تضف أي صور بعد
-                  </Text>
-                  <Text style={styles.emptyPortfolioSub}>
-                    اضغط "إضافة صورة" لرفع أعمالك السابقة
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.portfolioGrid}>
-                  {portfolioImages.map((uri, index) => (
-                    <View key={index} style={styles.portfolioImgWrap}>
-                      <Image
-                        source={{ uri }}
-                        style={styles.portfolioImg}
-                        resizeMode="cover"
-                      />
-                      <Pressable
-                        style={styles.deleteImgBtn}
-                        onPress={() => handleDeletePortfolioImage(uri)}
-                      >
-                        <Feather name="trash-2" size={13} color="#fff" />
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-              )}
+          {/* ── Portfolio Gallery (all users) ── */}
+          <View style={styles.card}>
+            <View style={styles.portfolioHeader}>
+              <Pressable
+                style={[styles.addImageBtn, uploadingPortfolio && { opacity: 0.5 }]}
+                onPress={handleAddPortfolioImage}
+                disabled={uploadingPortfolio}
+              >
+                {uploadingPortfolio ? (
+                  <ActivityIndicator size="small" color={C.accent} />
+                ) : (
+                  <Feather name="plus" size={15} color={C.accent} />
+                )}
+                <Text style={styles.addImageBtnText}>إضافة صورة</Text>
+              </Pressable>
+              <Text style={styles.cardTitle}>معرض أعمالي</Text>
             </View>
-          )}
 
-          {/* ─── Account Settings Card ─── */}
+            {portfolioImages.length === 0 ? (
+              <View style={styles.emptyPortfolio}>
+                <MaterialCommunityIcons
+                  name="image-multiple-outline"
+                  size={44}
+                  color={C.textMuted}
+                />
+                <Text style={styles.emptyPortfolioText}>لم تضف أي صور بعد</Text>
+                <Text style={styles.emptyPortfolioSub}>
+                  اضغط "إضافة صورة" لرفع أعمالك السابقة
+                </Text>
+              </View>
+            ) : (
+              /* Vertical list — one image per row */
+              <View style={styles.portfolioList}>
+                {portfolioImages.map((uri, idx) => (
+                  <View key={idx} style={styles.portfolioItem}>
+                    <Image
+                      source={{ uri }}
+                      style={styles.portfolioImg}
+                      resizeMode="cover"
+                    />
+                    <Pressable
+                      style={styles.deleteImgBtn}
+                      onPress={() => handleDeletePortfolioImage(uri)}
+                    >
+                      <Text style={styles.deleteImgIcon}>🗑️</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* ── Account Settings ── */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>إعدادات الحساب</Text>
 
-            <Pressable style={styles.settingsRow} onPress={() => router.push("/dashboard")}>
+            <Pressable
+              style={styles.settingsRow}
+              onPress={() => router.push("/dashboard")}
+            >
               <Feather name="chevron-left" size={18} color={C.textMuted} />
               <View style={styles.settingsRowText}>
                 <Text style={styles.settingsRowLabel}>الرئيسية</Text>
-                <Text style={styles.settingsRowSub}>عرض أصحاب الاختصاص القريبين</Text>
+                <Text style={styles.settingsRowSub}>
+                  عرض أصحاب الاختصاص القريبين
+                </Text>
               </View>
-              <View style={[styles.settingsRowIcon, { backgroundColor: "rgba(59,130,246,0.1)" }]}>
+              <View
+                style={[
+                  styles.settingsRowIcon,
+                  { backgroundColor: "rgba(59,130,246,0.1)" },
+                ]}
+              >
                 <Feather name="home" size={18} color="#3B82F6" />
               </View>
             </Pressable>
@@ -590,12 +601,18 @@ export default function ProfileScreen() {
                 <Text style={styles.settingsRowLabel}>تغيير الصورة الشخصية</Text>
                 <Text style={styles.settingsRowSub}>من الكاميرا أو المعرض</Text>
               </View>
-              <View style={[styles.settingsRowIcon, { backgroundColor: "rgba(201,168,76,0.1)" }]}>
+              <View
+                style={[
+                  styles.settingsRowIcon,
+                  { backgroundColor: "rgba(201,168,76,0.1)" },
+                ]}
+              >
                 <Feather name="camera" size={18} color={C.accent} />
               </View>
             </Pressable>
           </View>
 
+          {/* Admin button */}
           {uid === ADMIN_UID && (
             <Pressable
               style={styles.adminBtn}
@@ -605,80 +622,246 @@ export default function ProfileScreen() {
                 <Ionicons name="shield-checkmark" size={20} color="#fff" />
               </View>
               <Text style={styles.adminText}>لوحة تحكم المشرف</Text>
-              <Feather name="chevron-left" size={16} color="rgba(255,255,255,0.6)" />
+              <Feather
+                name="chevron-left"
+                size={16}
+                color="rgba(255,255,255,0.6)"
+              />
             </Pressable>
           )}
 
+          {/* Logout */}
           <Pressable style={styles.logoutBtn} onPress={handleLogout}>
             <View style={styles.logoutIcon}>
               <Feather name="log-out" size={20} color={C.danger} />
             </View>
             <Text style={styles.logoutText}>تسجيل الخروج</Text>
-            <Feather name="chevron-left" size={16} color={C.danger} style={{ opacity: 0.5 }} />
+            <Feather
+              name="chevron-left"
+              size={16}
+              color={C.danger}
+              style={{ opacity: 0.5 }}
+            />
           </Pressable>
 
-          <Text style={styles.versionNote}>فورس - ForUs • خدمات المنزل والسيارة</Text>
+          <Text style={styles.versionNote}>
+            فورس - ForUs • خدمات المنزل والسيارة
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ─── Specialty Picker Modal ─── */}
+      {/* ══════════════════════════════════════════
+          EDIT PROFILE MODAL
+      ══════════════════════════════════════════ */}
       <Modal
-        visible={showSpecialtyModal}
+        visible={editModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowSpecialtyModal(false)}
+        onRequestClose={() => setEditModalVisible(false)}
       >
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setShowSpecialtyModal(false)}
+          onPress={() => setEditModalVisible(false)}
         >
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>اختر تخصصك</Text>
-            <FlatList
-              data={PROFILE_SPECIALTIES}
-              keyExtractor={(item) => item.key}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 24 }}
-              renderItem={({ item }) => {
-                const selected = specialty === item.key;
-                return (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ width: "100%" }}
+          >
+            <Pressable
+              style={styles.modalSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>تعديل الملف الشخصي</Text>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* ── Full Name ── */}
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.fieldLabel}>الاسم الكامل</Text>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputIconWrap}>
+                      <Feather name="user" size={17} color={C.textSecondary} />
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="أدخل اسمك الكامل"
+                      placeholderTextColor={C.textMuted}
+                      value={editName}
+                      onChangeText={setEditName}
+                      textAlign="right"
+                      autoCapitalize="words"
+                    />
+                  </View>
+                </View>
+
+                {/* ── Bio ── */}
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.fieldLabel}>
+                    النبذة الشخصية (اختياري)
+                  </Text>
+                  <View style={styles.bioInputRow}>
+                    <TextInput
+                      style={styles.bioInput}
+                      placeholder="اكتب نبذة عنك، خبراتك، شهاداتك..."
+                      placeholderTextColor={C.textMuted}
+                      value={editBio}
+                      onChangeText={setEditBio}
+                      textAlign="right"
+                      multiline
+                      numberOfLines={3}
+                      maxLength={500}
+                    />
+                  </View>
+                  <Text style={styles.bioCounter}>{editBio.length}/500</Text>
+                </View>
+
+                {/* ── Phone + WhatsApp OTP ── */}
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.fieldLabel}>رقم الهاتف</Text>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputIconWrap}>
+                      <Feather name="phone" size={17} color={C.textSecondary} />
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="07xxxxxxxx"
+                      placeholderTextColor={C.textMuted}
+                      value={editPhone}
+                      onChangeText={(v) => {
+                        setEditPhone(v);
+                        setOtpSent(false);
+                        setPhoneVerifiedInSession(false);
+                        setOtpCode("");
+                      }}
+                      textAlign="right"
+                      keyboardType="phone-pad"
+                      maxLength={11}
+                    />
+                  </View>
+
+                  {/* Phone verified confirmation */}
+                  {phoneVerifiedInSession ? (
+                    <View style={styles.phoneVerifiedRow}>
+                      <Feather name="check-circle" size={14} color={C.success} />
+                      <Text style={styles.phoneVerifiedText}>
+                        تم التحقق من الرقم وحفظه ✓
+                      </Text>
+                    </View>
+                  ) : (
+                    /* Send OTP button */
+                    <Pressable
+                      style={[
+                        styles.whatsappBtn,
+                        sendingOtp && { opacity: 0.55 },
+                      ]}
+                      onPress={handleSendOtp}
+                      disabled={sendingOtp}
+                    >
+                      {sendingOtp ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons
+                            name="whatsapp"
+                            size={16}
+                            color="#fff"
+                          />
+                          <Text style={styles.whatsappBtnText}>
+                            التحقق عبر الواتساب
+                          </Text>
+                        </>
+                      )}
+                    </Pressable>
+                  )}
+
+                  {/* OTP code input — shown after OTP sent */}
+                  {otpSent && !phoneVerifiedInSession && (
+                    <View style={styles.otpBlock}>
+                      <Text style={styles.otpHint}>
+                        أُرسل إليك رمز عبر الواتساب — أدخله أدناه
+                      </Text>
+                      <View style={styles.inputRow}>
+                        <View style={styles.inputIconWrap}>
+                          <Feather name="key" size={17} color={C.textSecondary} />
+                        </View>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="أدخل رمز التحقق"
+                          placeholderTextColor={C.textMuted}
+                          value={otpCode}
+                          onChangeText={setOtpCode}
+                          textAlign="right"
+                          keyboardType="number-pad"
+                          maxLength={6}
+                        />
+                      </View>
+                      <Pressable
+                        style={[
+                          styles.verifyBtn,
+                          verifyingOtp && { opacity: 0.55 },
+                        ]}
+                        onPress={handleVerifyOtp}
+                        disabled={verifyingOtp}
+                      >
+                        {verifyingOtp ? (
+                          <ActivityIndicator size="small" color={C.primary} />
+                        ) : (
+                          <Text style={styles.verifyBtnText}>تأكيد الرمز</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+
+                {/* ── Save button ── */}
+                <Animated.View
+                  style={[btnAnimStyle, { marginTop: 8, marginBottom: 28 }]}
+                >
                   <Pressable
-                    style={[
-                      styles.specialtyItem,
-                      selected && styles.specialtyItemSelected,
-                    ]}
-                    onPress={() => {
-                      setSpecialty(item.key);
-                      Haptics.selectionAsync();
-                      setShowSpecialtyModal(false);
+                    style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                    onPress={handleSaveEdit}
+                    disabled={saving}
+                    onPressIn={() => {
+                      btnScale.value = withSpring(0.97);
+                    }}
+                    onPressOut={() => {
+                      btnScale.value = withSpring(1);
                     }}
                   >
-                    {selected && (
-                      <Feather name="check" size={16} color={C.accent} />
-                    )}
-                    <Text
-                      style={[
-                        styles.specialtyItemText,
-                        selected && { color: C.accent, fontFamily: "Cairo_700Bold" },
-                      ]}
+                    <LinearGradient
+                      colors={[C.accent, C.accentLight]}
+                      style={styles.saveBtnGrad}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
                     >
-                      {item.label}
-                    </Text>
+                      {saving ? (
+                        <Text style={styles.saveBtnText}>جارٍ الحفظ...</Text>
+                      ) : (
+                        <>
+                          <Text style={styles.saveBtnText}>حفظ التغييرات</Text>
+                          <Feather name="check" size={18} color={C.primary} />
+                        </>
+                      )}
+                    </LinearGradient>
                   </Pressable>
-                );
-              }}
-            />
-          </View>
+                </Animated.View>
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
-
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
+
+  // ── Header ──
   header: { paddingBottom: 28 },
   headerContent: {
     flexDirection: "row",
@@ -756,12 +939,6 @@ const styles = StyleSheet.create({
     color: "#FFF",
     textAlign: "center",
   },
-  displayContact: {
-    fontSize: 12,
-    fontFamily: "Cairo_400Regular",
-    color: "rgba(255,255,255,0.55)",
-    textAlign: "center",
-  },
   balancePill: {
     flexDirection: "row",
     alignItems: "center",
@@ -779,21 +956,30 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_600SemiBold",
     color: C.accent,
   },
-  formContent: {
+
+  // ── Body ──
+  body: {
     paddingHorizontal: 18,
     paddingTop: 20,
     gap: 14,
   },
+
+  // ── Cards ──
   card: {
     backgroundColor: C.card,
     borderRadius: 18,
     padding: 18,
-    gap: 16,
+    gap: 14,
     shadowColor: C.shadow,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 3,
+  },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   cardTitle: {
     fontSize: 14,
@@ -803,87 +989,72 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  fieldWrap: { gap: 6 },
-  fieldLabel: {
-    fontSize: 13,
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(201,168,76,0.1)",
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.3)",
+  },
+  editBtnText: {
+    fontSize: 12,
     fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
+  },
+
+  // ── Info rows (read-only) ──
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  infoIconWrap: {
+    width: 28,
+    alignItems: "center",
+    paddingTop: 2,
+  },
+  infoValue: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Cairo_400Regular",
     color: C.text,
     textAlign: "right",
   },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: C.inputBg,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    paddingHorizontal: 14,
-    gap: 10,
-  },
-  inputFocused: { borderColor: C.accent, backgroundColor: "#FFF" },
-  bioInputRow: {
-    backgroundColor: C.inputBg,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 100,
-  },
-  bioInput: {
+  bioValue: {
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
-    color: C.text,
-    textAlignVertical: "top",
-    minHeight: 80,
-    padding: 0,
+    color: C.textSecondary,
+    lineHeight: 22,
   },
-  bioCounter: {
+  phoneValueWrap: {
+    flex: 1,
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: C.successLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "flex-end",
+  },
+  verifiedText: {
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
-    color: C.textMuted,
-    textAlign: "left",
+    fontFamily: "Cairo_600SemiBold",
+    color: C.success,
   },
-  inputIcon: { width: 28, alignItems: "center" },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_400Regular",
-    color: C.text,
-    paddingVertical: 13,
-    textAlign: "right",
-  },
-  dropdownBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: C.inputBg,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    gap: 10,
-  },
-  dropdownBtnText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_400Regular",
-    color: C.text,
-    textAlign: "right",
-  },
-  saveBtn: { borderRadius: 13, overflow: "hidden", marginTop: 4 },
-  saveBtnGrad: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
-  },
-  saveBtnText: {
-    fontSize: 15,
-    fontFamily: "Cairo_700Bold",
-    color: C.primary,
-  },
+
+  // ── Portfolio ──
   portfolioHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -907,7 +1078,7 @@ const styles = StyleSheet.create({
   },
   emptyPortfolio: {
     alignItems: "center",
-    paddingVertical: 24,
+    paddingVertical: 28,
     gap: 6,
   },
   emptyPortfolioText: {
@@ -921,17 +1092,16 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     textAlign: "center",
   },
-  portfolioGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+  portfolioList: {
+    gap: 12,
   },
-  portfolioImgWrap: {
-    width: IMG_SIZE,
-    height: IMG_SIZE,
-    borderRadius: 12,
+  portfolioItem: {
+    width: "100%",
+    height: PORTFOLIO_IMG_H,
+    borderRadius: 14,
     overflow: "hidden",
     position: "relative",
+    backgroundColor: C.inputBg,
   },
   portfolioImg: {
     width: "100%",
@@ -939,15 +1109,20 @@ const styles = StyleSheet.create({
   },
   deleteImgBtn: {
     position: "absolute",
-    top: 5,
-    right: 5,
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: "rgba(229,57,53,0.85)",
+    top: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
+  deleteImgIcon: {
+    fontSize: 18,
+  },
+
+  // ── Settings rows ──
   settingsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -974,36 +1149,8 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   divider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
-  logoutBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: C.card,
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: `${C.danger}25`,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  logoutIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: C.dangerLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoutText: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.danger,
-    textAlign: "right",
-  },
+
+  // ── Admin / Logout ──
   adminBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1034,6 +1181,36 @@ const styles = StyleSheet.create({
     color: "#fff",
     textAlign: "right",
   },
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.card,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: `${C.danger}25`,
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  logoutIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: C.dangerLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.danger,
+    textAlign: "right",
+  },
   versionNote: {
     fontSize: 11,
     fontFamily: "Cairo_400Regular",
@@ -1041,18 +1218,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
+
+  // ── Edit Modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   modalSheet: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    maxHeight: "70%",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    maxHeight: "88%",
   },
   modalHandle: {
     width: 40,
@@ -1060,33 +1239,131 @@ const styles = StyleSheet.create({
     backgroundColor: C.border,
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: "Cairo_700Bold",
     color: C.text,
-    textAlign: "right",
-    marginBottom: 12,
+    textAlign: "center",
+    marginBottom: 18,
   },
-  specialtyItem: {
+
+  // ── Form fields (inside modal) ──
+  fieldWrap: { gap: 7, marginBottom: 14 },
+  fieldLabel: {
+    fontSize: 13,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.text,
+    textAlign: "right",
+  },
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
     gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
   },
-  specialtyItemSelected: {
-    backgroundColor: "rgba(201,168,76,0.06)",
-    borderRadius: 10,
-  },
-  specialtyItemText: {
+  inputIconWrap: { width: 28, alignItems: "center" },
+  input: {
+    flex: 1,
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
+    paddingVertical: 13,
     textAlign: "right",
+  },
+  bioInputRow: {
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 90,
+  },
+  bioInput: {
+    fontSize: 13,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlignVertical: "top",
+    minHeight: 70,
+    padding: 0,
+    textAlign: "right",
+  },
+  bioCounter: {
+    fontSize: 11,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "left",
+  },
+
+  // ── Phone verification ──
+  whatsappBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#25D366",
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  whatsappBtnText: {
+    fontSize: 13,
+    fontFamily: "Cairo_700Bold",
+    color: "#fff",
+  },
+  phoneVerifiedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: C.successLight,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  phoneVerifiedText: {
+    fontSize: 13,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.success,
+  },
+  otpBlock: { gap: 8, marginTop: 4 },
+  otpHint: {
+    fontSize: 12,
+    fontFamily: "Cairo_400Regular",
+    color: C.textSecondary,
+    textAlign: "right",
+  },
+  verifyBtn: {
+    backgroundColor: C.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verifyBtnText: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: "#fff",
+  },
+
+  // ── Save button ──
+  saveBtn: { borderRadius: 13, overflow: "hidden" },
+  saveBtnGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    gap: 8,
+  },
+  saveBtnText: {
+    fontSize: 15,
+    fontFamily: "Cairo_700Bold",
+    color: C.primary,
   },
 });
