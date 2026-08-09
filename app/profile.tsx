@@ -109,7 +109,8 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
   const [editPhone, setEditPhone] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
+  // OTP sub-modal (opens after WhatsApp OTP is sent)
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
@@ -278,7 +279,7 @@ export default function ProfileScreen() {
     setEditName(name);
     setEditBio(bio);
     setEditPhone(phone);
-    setOtpSent(false);
+    setOtpModalVisible(false);
     setOtpCode("");
     setPhoneVerifiedInSession(false);
     setEditModalVisible(true);
@@ -302,7 +303,8 @@ export default function ProfileScreen() {
       });
       const d = await r.json();
       if (!r.ok || !d.ok) throw new Error(d.error || "فشل إرسال الرمز");
-      setOtpSent(true);
+      setOtpCode("");
+      setOtpModalVisible(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       Alert.alert("خطأ", err.message || "تعذّر إرسال رمز التحقق عبر الواتساب");
@@ -333,7 +335,7 @@ export default function ProfileScreen() {
       setPhone(editPhone.trim());
       setIsPhoneVerified(true);
       setPhoneVerifiedInSession(true);
-      setOtpSent(false);
+      setOtpModalVisible(false);
       setOtpCode("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
@@ -497,18 +499,18 @@ export default function ProfileScreen() {
               </View>
             ) : null}
 
-            {/* Phone with verified badge */}
+            {/* Phone with inline verified badge */}
             <View style={styles.infoRow}>
-              <View style={styles.phoneValueWrap}>
-                {isPhoneVerified && (
-                  <View style={styles.verifiedBadge}>
-                    <Feather name="check-circle" size={12} color={C.success} />
-                    <Text style={styles.verifiedText}>موثق</Text>
-                  </View>
-                )}
+              <View style={styles.phoneValueInline}>
                 <Text style={[styles.infoValue, !phone && { color: C.textMuted }]}>
                   {phone || "لم يُضف رقم هاتف"}
                 </Text>
+                {isPhoneVerified && (
+                  <View style={styles.verifiedBadgeInline}>
+                    <Feather name="check-circle" size={13} color={C.success} />
+                    <Text style={styles.verifiedText}>موثق ✓</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.infoIconWrap}>
                 <Feather name="phone" size={16} color={C.accent} />
@@ -566,50 +568,6 @@ export default function ProfileScreen() {
                 ))}
               </View>
             )}
-          </View>
-
-          {/* ── Account Settings ── */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>إعدادات الحساب</Text>
-
-            <Pressable
-              style={styles.settingsRow}
-              onPress={() => router.push("/dashboard")}
-            >
-              <Feather name="chevron-left" size={18} color={C.textMuted} />
-              <View style={styles.settingsRowText}>
-                <Text style={styles.settingsRowLabel}>الرئيسية</Text>
-                <Text style={styles.settingsRowSub}>
-                  عرض أصحاب الاختصاص القريبين
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.settingsRowIcon,
-                  { backgroundColor: "rgba(59,130,246,0.1)" },
-                ]}
-              >
-                <Feather name="home" size={18} color="#3B82F6" />
-              </View>
-            </Pressable>
-
-            <View style={styles.divider} />
-
-            <Pressable style={styles.settingsRow} onPress={handleChangePhoto}>
-              <Feather name="chevron-left" size={18} color={C.textMuted} />
-              <View style={styles.settingsRowText}>
-                <Text style={styles.settingsRowLabel}>تغيير الصورة الشخصية</Text>
-                <Text style={styles.settingsRowSub}>من الكاميرا أو المعرض</Text>
-              </View>
-              <View
-                style={[
-                  styles.settingsRowIcon,
-                  { backgroundColor: "rgba(201,168,76,0.1)" },
-                ]}
-              >
-                <Feather name="camera" size={18} color={C.accent} />
-              </View>
-            </Pressable>
           </View>
 
           {/* Admin button */}
@@ -732,7 +690,7 @@ export default function ProfileScreen() {
                       value={editPhone}
                       onChangeText={(v) => {
                         setEditPhone(v);
-                        setOtpSent(false);
+                        setOtpModalVisible(false);
                         setPhoneVerifiedInSession(false);
                         setOtpCode("");
                       }}
@@ -742,7 +700,7 @@ export default function ProfileScreen() {
                     />
                   </View>
 
-                  {/* Phone verified confirmation */}
+                  {/* Status after verification */}
                   {phoneVerifiedInSession ? (
                     <View style={styles.phoneVerifiedRow}>
                       <Feather name="check-circle" size={14} color={C.success} />
@@ -751,12 +709,9 @@ export default function ProfileScreen() {
                       </Text>
                     </View>
                   ) : (
-                    /* Send OTP button */
+                    /* WhatsApp send-OTP button — opens OTP sub-modal on success */
                     <Pressable
-                      style={[
-                        styles.whatsappBtn,
-                        sendingOtp && { opacity: 0.55 },
-                      ]}
+                      style={[styles.whatsappBtn, sendingOtp && { opacity: 0.55 }]}
                       onPress={handleSendOtp}
                       disabled={sendingOtp}
                     >
@@ -764,55 +719,11 @@ export default function ProfileScreen() {
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
                         <>
-                          <MaterialCommunityIcons
-                            name="whatsapp"
-                            size={16}
-                            color="#fff"
-                          />
-                          <Text style={styles.whatsappBtnText}>
-                            التحقق عبر الواتساب
-                          </Text>
+                          <MaterialCommunityIcons name="whatsapp" size={16} color="#fff" />
+                          <Text style={styles.whatsappBtnText}>التحقق عبر الواتساب</Text>
                         </>
                       )}
                     </Pressable>
-                  )}
-
-                  {/* OTP code input — shown after OTP sent */}
-                  {otpSent && !phoneVerifiedInSession && (
-                    <View style={styles.otpBlock}>
-                      <Text style={styles.otpHint}>
-                        أُرسل إليك رمز عبر الواتساب — أدخله أدناه
-                      </Text>
-                      <View style={styles.inputRow}>
-                        <View style={styles.inputIconWrap}>
-                          <Feather name="key" size={17} color={C.textSecondary} />
-                        </View>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="أدخل رمز التحقق"
-                          placeholderTextColor={C.textMuted}
-                          value={otpCode}
-                          onChangeText={setOtpCode}
-                          textAlign="right"
-                          keyboardType="number-pad"
-                          maxLength={6}
-                        />
-                      </View>
-                      <Pressable
-                        style={[
-                          styles.verifyBtn,
-                          verifyingOtp && { opacity: 0.55 },
-                        ]}
-                        onPress={handleVerifyOtp}
-                        disabled={verifyingOtp}
-                      >
-                        {verifyingOtp ? (
-                          <ActivityIndicator size="small" color={C.primary} />
-                        ) : (
-                          <Text style={styles.verifyBtnText}>تأكيد الرمز</Text>
-                        )}
-                      </Pressable>
-                    </View>
                   )}
                 </View>
 
@@ -852,6 +763,74 @@ export default function ProfileScreen() {
             </Pressable>
           </KeyboardAvoidingView>
         </Pressable>
+      </Modal>
+
+      {/* ══════════════════════════════════════════
+          OTP SUB-MODAL — opens on top of edit modal
+      ══════════════════════════════════════════ */}
+      <Modal
+        visible={otpModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOtpModalVisible(false)}
+      >
+        <View style={styles.otpModalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ width: "100%", paddingHorizontal: 24 }}
+          >
+            <View style={styles.otpModalCard}>
+              {/* Header */}
+              <View style={styles.otpModalHeader}>
+                <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
+                <Text style={styles.otpModalTitle}>أدخل رمز التحقق</Text>
+              </View>
+              <Text style={styles.otpModalSub}>
+                أُرسل إليك رمز مكوّن من 6 أرقام عبر الواتساب إلى{"\n"}
+                <Text style={styles.otpPhoneHighlight}>{editPhone}</Text>
+              </Text>
+
+              {/* OTP input */}
+              <View style={[styles.inputRow, { marginTop: 16 }]}>
+                <View style={styles.inputIconWrap}>
+                  <Feather name="key" size={17} color={C.textSecondary} />
+                </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="• • • • • •"
+                  placeholderTextColor={C.textMuted}
+                  value={otpCode}
+                  onChangeText={setOtpCode}
+                  textAlign="center"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus
+                />
+              </View>
+
+              {/* Confirm button */}
+              <Pressable
+                style={[styles.verifyBtn, { marginTop: 14 }, verifyingOtp && { opacity: 0.55 }]}
+                onPress={handleVerifyOtp}
+                disabled={verifyingOtp}
+              >
+                {verifyingOtp ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.verifyBtnText}>تأكيد الرمز</Text>
+                )}
+              </Pressable>
+
+              {/* Cancel */}
+              <Pressable
+                style={styles.otpCancelBtn}
+                onPress={() => { setOtpModalVisible(false); setOtpCode(""); }}
+              >
+                <Text style={styles.otpCancelText}>إلغاء</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -1033,20 +1012,22 @@ const styles = StyleSheet.create({
     color: C.textSecondary,
     lineHeight: 22,
   },
-  phoneValueWrap: {
+  phoneValueInline: {
     flex: 1,
-    alignItems: "flex-end",
-    gap: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  verifiedBadge: {
+  verifiedBadgeInline: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: C.successLight,
     borderRadius: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    alignSelf: "flex-end",
   },
   verifiedText: {
     fontSize: 11,
@@ -1332,12 +1313,58 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_600SemiBold",
     color: C.success,
   },
-  otpBlock: { gap: 8, marginTop: 4 },
-  otpHint: {
-    fontSize: 12,
+  // ── OTP sub-modal ──
+  otpModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  otpModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 24,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 16,
+  },
+  otpModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  otpModalTitle: {
+    fontSize: 18,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+    textAlign: "center",
+  },
+  otpModalSub: {
+    fontSize: 13,
     fontFamily: "Cairo_400Regular",
     color: C.textSecondary,
-    textAlign: "right",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  otpPhoneHighlight: {
+    fontFamily: "Cairo_700Bold",
+    color: C.primary,
+    fontSize: 14,
+  },
+  otpCancelBtn: {
+    marginTop: 12,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  otpCancelText: {
+    fontSize: 13,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
   },
   verifyBtn: {
     backgroundColor: C.primary,
