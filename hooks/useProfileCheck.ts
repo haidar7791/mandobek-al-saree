@@ -59,7 +59,11 @@ export function useProfileCheck(userId: string | null | undefined): ProfileCheck
   let isPhoneOk = false;
 
   if (profile) {
-    isPhoneOk = IRAQI_PHONE_REGEX.test((profile.phone || "").trim());
+    // Phone is OK if: explicit verified flag, any phoneNumber stored, or valid Iraqi format
+    isPhoneOk =
+      profile.isPhoneVerified === true ||
+      !!(profile.phoneNumber || "").trim() ||
+      IRAQI_PHONE_REGEX.test((profile.phone || "").trim());
     const isPhotoOk = !!profile.photoUri;
     const isBioOk = !!profile.bio && profile.bio.trim().length >= MIN_BIO_LENGTH;
     const isPortfolioOk = !!profile.portfolio && profile.portfolio.length >= MIN_PORTFOLIO_IMAGES;

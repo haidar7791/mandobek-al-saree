@@ -85,6 +85,22 @@ function getServerUrl(): string {
 
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 
+/**
+ * Safe JSON parser: checks Content-Type before calling .json() so a stray
+ * HTML error page never causes "JSON Parse error" in the UI.
+ */
+async function safeJson(r: Response): Promise<any> {
+  const ct = r.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    const text = await r.text().catch(() => "");
+    throw new Error(
+      `خطأ في الاتصال بالخادم (${r.status})` +
+      (text ? `: ${text.slice(0, 120)}` : "")
+    );
+  }
+  return r.json();
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -303,7 +319,7 @@ export default function ProfileScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: trimmed, forRegistration: false }),
       });
-      const d = await r.json();
+      const d = await safeJson(r);
       if (!r.ok || !d.ok) throw new Error(d.error || "فشل إرسال الرمز");
       setOtpCode("");
       setOtpModalVisible(true);
@@ -327,7 +343,7 @@ export default function ProfileScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: editPhone.trim(), code: otpCode.trim() }),
       });
-      const d = await r.json();
+      const d = await safeJson(r);
       if (!r.ok || !d.ok) throw new Error(d.error || "الرمز غير صحيح");
       // Persist new phone + verified flag to Firestore immediately
       await setUserProfile(uid, {
