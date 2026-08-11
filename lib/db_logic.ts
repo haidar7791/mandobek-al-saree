@@ -306,6 +306,23 @@ export const createOrUpdateArtisan = async (
 
 // Lightweight sync used when only the photo changes (e.g. immediate profile-photo
 // save) — avoids requiring the full ArtisanProfile payload that createOrUpdateArtisan needs.
+/**
+ * Deletes the artisan document for userId (if it exists).
+ * Called when a user switches their role from artisan → client so they
+ * no longer appear in service/category listings.
+ */
+export const deleteArtisanIfExists = async (userId: string): Promise<void> => {
+  try {
+    const existing = await getArtisanByUserId(userId);
+    if (existing) {
+      await deleteDoc(doc(db, "artisans", existing.id));
+      console.log(`[deleteArtisanIfExists] removed artisan doc ${existing.id} for user ${userId}`);
+    }
+  } catch (err) {
+    console.error("deleteArtisanIfExists error:", err);
+  }
+};
+
 export const updateArtisanPhotoIfExists = async (
   userId: string,
   photoUri: string
@@ -1708,6 +1725,7 @@ export const ensureUserDocument = async (
       }
 
       const displayName = extraData?.name?.trim() || fallbackName;
+      const isPhoneAccount = isE164Phone || isOldPhoneEmail;
       await setDoc(
         ref,
         {
@@ -1716,6 +1734,8 @@ export const ensureUserDocument = async (
           role,
           balance: 0,
           phone: storedPhone,
+          phoneNumber: isPhoneAccount ? storedPhone : "",   // duplicate field used by some screens
+          isPhoneVerified: isPhoneAccount,                  // verified at registration via OTP
           photoUri: null,
           location: extraData?.location ?? null,
           // Always persist specialty (including "client") so profile screen renders correctly

@@ -38,6 +38,7 @@ import {
   uploadProfilePhoto,
   updateArtisanPhotoIfExists,
   createOrUpdateArtisan,
+  deleteArtisanIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
 } from "@/lib/db_logic";
@@ -366,8 +367,8 @@ export default function ProfileScreen() {
         role: newRole,
       });
 
-      // Sync artisan record when role is artisan
       if (newRole === "artisan" && editSpecialty) {
+        // Sync / create artisan record so user appears in service listings
         const profile = await getUserProfile(uid);
         await createOrUpdateArtisan(uid, {
           name: editName.trim(),
@@ -379,6 +380,9 @@ export default function ProfileScreen() {
           bio: editBio.trim(),
           isAvailable: true,
         });
+      } else if (newRole === "client") {
+        // Remove from artisan listings so user no longer appears in any service category
+        await deleteArtisanIfExists(uid);
       }
 
       // Reflect changes locally
