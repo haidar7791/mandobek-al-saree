@@ -37,8 +37,6 @@ import {
   uploadPortfolioImage,
   uploadProfilePhoto,
   updateArtisanPhotoIfExists,
-  createOrUpdateArtisan,
-  deleteArtisanIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
 } from "@/lib/db_logic";
@@ -360,30 +358,17 @@ export default function ProfileScreen() {
       const newRole: "client" | "artisan" =
         editSpecialty === "client" ? "client" : "artisan";
 
+      // Single write to users/{uid} — no separate artisans collection
       await setUserProfile(uid, {
         name: editName.trim(),
         bio: editBio.trim(),
         specialty: editSpecialty,
         role: newRole,
+        category: newRole === "artisan" && editSpecialty
+          ? getCategoryForSpecialty(editSpecialty)
+          : undefined,
+        isAvailable: newRole === "artisan",
       });
-
-      if (newRole === "artisan" && editSpecialty) {
-        // Sync / create artisan record so user appears in service listings
-        const profile = await getUserProfile(uid);
-        await createOrUpdateArtisan(uid, {
-          name: editName.trim(),
-          phone: phone,
-          photoUri: profile?.photoUri ?? photoUri,
-          specialty: editSpecialty,
-          category: getCategoryForSpecialty(editSpecialty),
-          location: profile?.location ?? null,
-          bio: editBio.trim(),
-          isAvailable: true,
-        });
-      } else if (newRole === "client") {
-        // Remove from artisan listings so user no longer appears in any service category
-        await deleteArtisanIfExists(uid);
-      }
 
       // Reflect changes locally
       setName(editName.trim());

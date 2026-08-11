@@ -420,6 +420,8 @@ export default function DashboardScreen() {
     let result = [...artisans];
 
     if (activeCategory !== "all") {
+      // Specialty sub-tabs: exclude clients, filter by category
+      result = result.filter((a) => a.specialty !== "client");
       result = result.filter((a) => a.category === activeCategory);
     }
     if (activeSpecialty !== "all") {

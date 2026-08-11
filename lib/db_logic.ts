@@ -208,20 +208,53 @@ export function calcDistanceKm(a: GeoLocation, b: GeoLocation): number {
 
 // ─── Artisan Functions ────────────────────────────────────────────────────────
 
+// ─── Helper: map a users/{userId} doc → ArtisanProfile shape ─────────────────
+// id === userId now that users collection is the single source of truth.
+function userDocToArtisanProfile(userId: string, data: UserProfile): ArtisanProfile {
+  return {
+    id: userId,
+    userId,
+    name: data.name ?? "",
+    phone: data.phone ?? "",
+    photoUri: data.photoUri ?? null,
+    specialty: data.specialty ?? "",
+    category: data.category ?? getCategoryForSpecialty(data.specialty ?? ""),
+    location: data.location ?? null,
+    bio: data.bio ?? "",
+    rating: data.rating ?? 0,
+    reviewCount: data.reviewCount ?? 0,
+    isAvailable: data.isAvailable ?? true,
+    featuredUntil: data.featuredUntil ?? null,
+    createdAt:
+      typeof data.createdAt === "string"
+        ? data.createdAt
+        : (data.createdAt?.toDate?.()?.toISOString() ?? ""),
+  };
+}
+
+/**
+ * Returns users for the services listing.
+ * • No category → ALL registered users (clients + artisans) for the "الكل" tab.
+ * • With category → artisans only, filtered by that category.
+ * Admin accounts are excluded in both cases.
+ */
 export const getArtisans = async (category?: ServiceCategory): Promise<ArtisanProfile[]> => {
   try {
     let q;
     if (category) {
       q = query(
-        collection(db, "artisans"),
+        collection(db, "users"),
+        where("role", "==", "artisan"),
         where("category", "==", category)
       );
     } else {
-      q = query(collection(db, "artisans"));
+      // "All" tab — every user except admins
+      q = query(collection(db, "users"));
     }
     const snap = await getDocs(q);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
-    // Featured (with valid expiry) come first, others keep original order
+    const list = snap.docs
+      .filter((d) => (d.data() as UserProfile).role !== "admin")
+      .map((d) => userDocToArtisanProfile(d.id, d.data() as UserProfile));
     return list.sort((a, b) => {
       const fa = isFeaturedActive(a) ? 1 : 0;
       const fb = isFeaturedActive(b) ? 1 : 0;
@@ -235,7 +268,7 @@ export const getArtisans = async (category?: ServiceCategory): Promise<ArtisanPr
 
 export const promoteArtisan = async (
   userId: string,
-  artisanId: string,
+  artisanId: string,  // artisanId === userId with users-only model
   days: number,
   cost: number
 ): Promise<{ ok: true; until: string } | { ok: false; reason: "no_balance" | "error"; balance?: number }> => {
@@ -244,16 +277,16 @@ export const promoteArtisan = async (
     if (balance < cost) {
       return { ok: false, reason: "no_balance", balance };
     }
-    // Compute new featured-until: extend if currently active
-    const artisanSnap = await getDoc(doc(db, "artisans", artisanId));
-    const current = artisanSnap.exists() ? (artisanSnap.data() as any).featuredUntil : null;
+    // Compute new featured-until from users collection; extend if still active
+    const userSnap = await getDoc(doc(db, "users", artisanId));
+    const current = userSnap.exists() ? (userSnap.data() as any).featuredUntil : null;
     const startMs = current && new Date(current).getTime() > Date.now()
       ? new Date(current).getTime()
       : Date.now();
     const untilIso = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
 
     await adjustBalanceByDelta(userId, -cost);
-    await updateDoc(doc(db, "artisans", artisanId), { featuredUntil: untilIso });
+    await updateDoc(doc(db, "users", artisanId), { featuredUntil: untilIso });
     return { ok: true, until: untilIso };
   } catch (err) {
     console.error("promoteArtisan error:", err);
@@ -263,11 +296,9 @@ export const promoteArtisan = async (
 
 export const getArtisanByUserId = async (userId: string): Promise<ArtisanProfile | null> => {
   try {
-    const q = query(collection(db, "artisans"), where("userId", "==", userId));
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as ArtisanProfile;
+    const profile = await getUserProfile(userId);
+    if (!profile) return null;
+    return userDocToArtisanProfile(userId, profile);
   } catch (err) {
     console.error("getArtisanByUserId error:", err);
     return null;
@@ -275,96 +306,73 @@ export const getArtisanByUserId = async (userId: string): Promise<ArtisanProfile
 };
 
 export const getArtisanById = async (artisanId: string): Promise<ArtisanProfile | null> => {
-  try {
-    const snap = await getDoc(doc(db, "artisans", artisanId));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as ArtisanProfile;
-  } catch (err) {
-    console.error("getArtisanById error:", err);
-    return null;
-  }
+  // artisanId === userId with users-only model
+  return getArtisanByUserId(artisanId);
 };
 
 export const createOrUpdateArtisan = async (
   userId: string,
   data: Omit<ArtisanProfile, "id" | "userId" | "rating" | "reviewCount" | "createdAt">
 ): Promise<string> => {
-  const existing = await getArtisanByUserId(userId);
-  if (existing) {
-    await updateDoc(doc(db, "artisans", existing.id), { ...data });
-    return existing.id;
-  }
-  const docRef = await addDoc(collection(db, "artisans"), {
-    ...data,
-    userId,
-    rating: 0,
-    reviewCount: 0,
-    createdAt: new Date().toISOString(),
-  });
-  return docRef.id;
+  // Write artisan fields directly into the user document (single collection model)
+  const { name, phone, photoUri, specialty, category, location, bio, isAvailable } = data;
+  await setDoc(doc(db, "users", userId), {
+    name, phone, photoUri, specialty, category, location, bio, isAvailable,
+    role: "artisan",
+  }, { merge: true });
+  return userId;
 };
 
 // Lightweight sync used when only the photo changes (e.g. immediate profile-photo
 // save) — avoids requiring the full ArtisanProfile payload that createOrUpdateArtisan needs.
 /**
- * Deletes the artisan document for userId (if it exists).
- * Called when a user switches their role from artisan → client so they
- * no longer appear in service/category listings.
+ * No-op: with the users-only model, visibility is controlled by role/specialty
+ * fields on the user document. The caller already updates role → "client" via
+ * setUserProfile, so there is nothing to delete here.
  */
-export const deleteArtisanIfExists = async (userId: string): Promise<void> => {
-  try {
-    const existing = await getArtisanByUserId(userId);
-    if (existing) {
-      await deleteDoc(doc(db, "artisans", existing.id));
-      console.log(`[deleteArtisanIfExists] removed artisan doc ${existing.id} for user ${userId}`);
-    }
-  } catch (err) {
-    console.error("deleteArtisanIfExists error:", err);
-  }
+export const deleteArtisanIfExists = async (_userId: string): Promise<void> => {
+  // intentionally empty — single-collection model
 };
 
 export const updateArtisanPhotoIfExists = async (
   userId: string,
   photoUri: string
 ): Promise<void> => {
-  const existing = await getArtisanByUserId(userId);
-  if (existing) {
-    await updateDoc(doc(db, "artisans", existing.id), { photoUri });
+  try {
+    await updateDoc(doc(db, "users", userId), { photoUri });
+  } catch (err) {
+    console.error("updateArtisanPhotoIfExists error:", err);
   }
 };
 
-// Lightweight sync used by the automatic location-tracking hook to push a
-// fresh GPS fix into the artisan's document without requiring the full
-// ArtisanProfile payload.
+// Push a fresh GPS fix into the user document (artisanId === userId).
 export const updateArtisanLocation = async (
-  artisanId: string,
+  artisanId: string,  // artisanId === userId with users-only model
   location: GeoLocation
 ): Promise<void> => {
-  await updateDoc(doc(db, "artisans", artisanId), { location });
+  await updateDoc(doc(db, "users", artisanId), { location });
 };
 
 export const subscribeToArtisans = (
   callback: (artisans: ArtisanProfile[]) => void,
   category?: ServiceCategory
 ): Unsubscribe => {
-  let q;
-  if (category) {
-    q = query(collection(db, "artisans"), where("category", "==", category));
-  } else {
-    q = query(collection(db, "artisans"));
-  }
+  const q = category
+    ? query(collection(db, "users"), where("role", "==", "artisan"), where("category", "==", category))
+    : query(collection(db, "users"), where("role", "==", "artisan"));
   return onSnapshot(q, (snap) => {
-    const artisans = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+    const artisans = snap.docs.map((d) => userDocToArtisanProfile(d.id, d.data() as UserProfile));
     callback(artisans);
   });
 };
 
-// ─── Reviews (subcollection: artisans/{artisanId}/reviews) ────────────────────
+// ─── Reviews (subcollection: users/{userId}/reviews) ─────────────────────────
+// artisanId parameter is now the userId (id === userId in users-only model).
 
 export const getReviews = async (artisanId: string): Promise<Review[]> => {
   try {
     const q = query(
-      collection(db, "artisans", artisanId, "reviews"),
+      collection(db, "users", artisanId, "reviews"),
       orderBy("createdAt", "desc")
     );
     const snap = await getDocs(q);
@@ -380,7 +388,7 @@ export const subscribeToReviews = (
   callback: (reviews: Review[]) => void
 ): Unsubscribe => {
   const q = query(
-    collection(db, "artisans", artisanId, "reviews"),
+    collection(db, "users", artisanId, "reviews"),
     orderBy("createdAt", "desc")
   );
   return onSnapshot(
@@ -398,25 +406,21 @@ export const addReview = async (
   review: Omit<Review, "id" | "createdAt">
 ): Promise<void> => {
   // One review per client per artisan: deterministic doc ID prevents duplicates.
-  // Re-submitting an existing review updates it in place instead of creating a new one.
   const reviewId = `${review.clientId}_${review.artisanId}`;
   await setDoc(
-    doc(db, "artisans", review.artisanId, "reviews", reviewId),
-    {
-      ...review,
-      createdAt: new Date().toISOString(),
-    },
+    doc(db, "users", review.artisanId, "reviews", reviewId),
+    { ...review, createdAt: new Date().toISOString() },
     { merge: true }
   );
 
-  // Recalculate average from all reviews now in the subcollection
+  // Recalculate average and update user document
   const allReviews = await getReviews(review.artisanId);
   const avg =
     allReviews.length > 0
       ? allReviews.reduce((a, r) => a + r.rating, 0) / allReviews.length
       : review.rating;
 
-  await updateDoc(doc(db, "artisans", review.artisanId), {
+  await updateDoc(doc(db, "users", review.artisanId), {
     rating: Math.round(avg * 10) / 10,
     reviewCount: allReviews.length,
   });
@@ -697,8 +701,10 @@ export const subscribeToClientServiceRequests = (
 
 export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
   try {
-    const snap = await getDocs(query(collection(db, "artisans")));
-    const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ArtisanProfile));
+    const snap = await getDocs(
+      query(collection(db, "users"), where("role", "==", "artisan"))
+    );
+    const all = snap.docs.map((d) => userDocToArtisanProfile(d.id, d.data() as UserProfile));
     return all.filter(isFeaturedActive);
   } catch (err) {
     console.error("getPromotedArtisans error:", err);
@@ -1210,17 +1216,23 @@ export const rejectWalletRequest = async (reqId: string): Promise<void> => {
 export interface UserProfile {
   name: string;
   phone: string;
+  phoneNumber?: string;
   isPhoneVerified?: boolean;
   photoUri: string | null;
   role: "client" | "artisan" | "admin";
   location?: GeoLocation | null;
   specialty?: string;
+  category?: ServiceCategory;
   bio?: string;
   portfolio?: string[];
   pushToken?: string | null;
   createdAt?: any;
   email?: string;
   featuredUntil?: string | null;
+  rating?: number;
+  reviewCount?: number;
+  isAvailable?: boolean;
+  balance?: number;
 }
 
 export const setUserPushToken = async (
@@ -1726,6 +1738,7 @@ export const ensureUserDocument = async (
 
       const displayName = extraData?.name?.trim() || fallbackName;
       const isPhoneAccount = isE164Phone || isOldPhoneEmail;
+      const specialty = extraData?.specialty ?? null;
       await setDoc(
         ref,
         {
@@ -1734,12 +1747,18 @@ export const ensureUserDocument = async (
           role,
           balance: 0,
           phone: storedPhone,
-          phoneNumber: isPhoneAccount ? storedPhone : "",   // duplicate field used by some screens
-          isPhoneVerified: isPhoneAccount,                  // verified at registration via OTP
+          phoneNumber: isPhoneAccount ? storedPhone : "",
+          isPhoneVerified: isPhoneAccount,
           photoUri: null,
           location: extraData?.location ?? null,
-          // Always persist specialty (including "client") so profile screen renders correctly
-          specialty: extraData?.specialty ?? null,
+          specialty,
+          // Derived fields for listings/filtering (artisans only)
+          category: specialty && specialty !== "client"
+            ? getCategoryForSpecialty(specialty)
+            : null,
+          isAvailable: role === "artisan",
+          rating: 0,
+          reviewCount: 0,
           createdAt: serverTimestamp(),
         },
         { merge: true }

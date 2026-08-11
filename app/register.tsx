@@ -27,7 +27,6 @@ import {
 import { auth } from "@/lib/firebase";
 import {
   ensureUserDocument,
-  createOrUpdateArtisan,
   getCategoryForSpecialty,
   HOME_SERVICES,
   CAR_SERVICES,
@@ -465,26 +464,12 @@ export default function RegisterScreen() {
       const uid = credential.user.uid;
       console.log("[OTP-Register] signed in with custom token, uid:", uid);
 
-      // 3. Create Firestore user document + artisan record
+      // 3. Create Firestore user document (category + isAvailable saved inside ensureUserDocument)
       await ensureUserDocument(uid, e164, role, {
         name: trimmedName,
         specialty,
         location: savedLocation,
       });
-
-      if (role === "artisan" && specialty) {
-        const category = getCategoryForSpecialty(specialty);
-        await createOrUpdateArtisan(uid, {
-          name: trimmedName,
-          phone: e164,
-          photoUri: null,
-          specialty,
-          category,
-          location: savedLocation,
-          bio: "",
-          isAvailable: true,
-        });
-      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
@@ -535,20 +520,6 @@ export default function RegisterScreen() {
         specialty,
         location: savedLocation,
       });
-
-      if (role === "artisan" && specialty) {
-        const category = getCategoryForSpecialty(specialty);
-        await createOrUpdateArtisan(uid, {
-          name: trimmedName,
-          phone: "",
-          photoUri: null,
-          specialty,
-          category,
-          location: savedLocation,
-          bio: "",
-          isAvailable: true,
-        });
-      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
