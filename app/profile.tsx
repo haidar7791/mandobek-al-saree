@@ -302,7 +302,7 @@ export default function ProfileScreen() {
       const r = await fetch(`${getServerUrl()}api/send-whatsapp-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: trimmed }),
+        body: JSON.stringify({ phone: trimmed, forRegistration: false }),
       });
       const d = await r.json();
       if (!r.ok || !d.ok) throw new Error(d.error || "فشل إرسال الرمز");
