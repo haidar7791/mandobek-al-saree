@@ -163,14 +163,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  /** Convert any Iraqi phone input to E.164 (+9647xxxxxxxx) */
+  /**
+   * Convert any Iraqi phone input to E.164 (+9647xxxxxxxx).
+   * Handles: spaces/dashes/parens/plus signs, 00964/+964/964 prefix with
+   * optional redundant leading zero (e.g. 96407… → +9647…), and bare
+   * local formats (07…, 7…).
+   */
   function toE164Server(phone: string): string {
-    const t = phone.trim().replace(/[\s\-]/g, "");
-    if (t.startsWith("+")) return t;
-    if (t.startsWith("00964")) return "+" + t.slice(2);
-    if (t.startsWith("964"))   return "+" + t;
-    if (t.startsWith("07"))    return "+964" + t.slice(1);
-    if (t.startsWith("7"))     return "+964" + t;
+    // Strip everything that isn't a digit
+    const t = phone.trim().replace(/[\s\-()+]/g, "");
+
+    if (t.startsWith("00964")) {
+      const rest = t.slice(5);                          // digits after 00964
+      return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
+    }
+    if (t.startsWith("964")) {
+      const rest = t.slice(3);                          // digits after 964
+      return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
+    }
+    if (t.startsWith("07")) return "+964" + t.slice(1); // 07… → +9647…
+    if (t.startsWith("0"))  return "+964" + t.slice(1); // 0…  → +964…
+    if (t.startsWith("7"))  return "+964" + t;           // 7…  → +9647…
     return "+964" + t;
   }
 

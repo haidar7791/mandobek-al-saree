@@ -140,16 +140,26 @@ function isValidContact(s: string): boolean {
 }
 
 /**
- * Converts an Iraqi phone number to E.164 format.
- * 07xxxxxxxx → +9647xxxxxxxx
+ * Converts any Iraqi phone input to E.164 (+9647xxxxxxxx).
+ * Strips spaces, dashes, parens, and plus signs, then normalises:
+ *   00964/+964/964 + optional leading zero → +964 7xxxxxxx
+ *   07xxxxxxxx                             → +9647xxxxxxxx
+ *   7xxxxxxxx                              → +9647xxxxxxxx
  */
 function toE164(phone: string): string {
-  const t = phone.trim().replace(/[\s\-]/g, "");
-  if (t.startsWith("+")) return t;
-  if (t.startsWith("00964")) return "+" + t.slice(2);
-  if (t.startsWith("964")) return "+" + t;
+  const t = phone.trim().replace(/[\s\-()+]/g, "");
+
+  if (t.startsWith("00964")) {
+    const rest = t.slice(5);
+    return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
+  }
+  if (t.startsWith("964")) {
+    const rest = t.slice(3);
+    return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
+  }
   if (t.startsWith("07")) return "+964" + t.slice(1);
-  if (t.startsWith("7")) return "+964" + t;
+  if (t.startsWith("0"))  return "+964" + t.slice(1);
+  if (t.startsWith("7"))  return "+964" + t;
   return "+964" + t;
 }
 
