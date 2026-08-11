@@ -354,21 +354,29 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      // Determine new role from specialty selection
+      // Two explicit branches — no undefined values (Firestore/merge ignores undefined,
+      // leaving stale artisan fields behind).
+      if (editSpecialty === "client") {
+        await setUserProfile(uid, {
+          name: editName.trim(),
+          bio: editBio.trim(),
+          specialty: "client",
+          role: "client",
+          category: "client" as any,   // explicit overwrite so old artisan category is cleared
+          isAvailable: false,
+        });
+      } else {
+        await setUserProfile(uid, {
+          name: editName.trim(),
+          bio: editBio.trim(),
+          specialty: editSpecialty,
+          role: "artisan",
+          category: getCategoryForSpecialty(editSpecialty),
+          isAvailable: true,
+        });
+      }
       const newRole: "client" | "artisan" =
         editSpecialty === "client" ? "client" : "artisan";
-
-      // Single write to users/{uid} — no separate artisans collection
-      await setUserProfile(uid, {
-        name: editName.trim(),
-        bio: editBio.trim(),
-        specialty: editSpecialty,
-        role: newRole,
-        category: newRole === "artisan" && editSpecialty
-          ? getCategoryForSpecialty(editSpecialty)
-          : undefined,
-        isAvailable: newRole === "artisan",
-      });
 
       // Reflect changes locally
       setName(editName.trim());
