@@ -12,8 +12,10 @@ import {
   Linking,
   Platform,
   ActivityIndicator,
+  Share,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
+import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -131,6 +133,7 @@ export default function ArtisanProfileScreen() {
   // reusing the artisan/portfolio "refreshing" flag.
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
 
+  const [shareVisible, setShareVisible] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followCount, setFollowCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
@@ -389,24 +392,31 @@ export default function ArtisanProfileScreen() {
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
-          {!isOwnProfile && !isClientProfile && (
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable
-                style={[styles.reviewNavBtn, isFollowing && styles.reviewNavBtnActive]}
-                onPress={handleToggleFollow}
-                disabled={followLoading}
-              >
-                <Feather name={isFollowing ? "user-check" : "user-plus"} size={14} color={isFollowing ? C.primary : C.accent} />
-                <Text style={[styles.reviewNavText, isFollowing && { color: C.primary }]}>
-                  {isFollowing ? "مُتابَع" : "+ متابعة"}
-                </Text>
-              </Pressable>
-              <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
-                <Ionicons name="star" size={15} color={C.accent} />
-                <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
-              </Pressable>
-            </View>
-          )}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {/* Share — visible for everyone */}
+            <Pressable style={styles.reviewNavBtn} onPress={() => setShareVisible(true)}>
+              <Feather name="share-2" size={14} color={C.accent} />
+              <Text style={styles.reviewNavText}>مشاركة</Text>
+            </Pressable>
+            {!isOwnProfile && !isClientProfile && (
+              <>
+                <Pressable
+                  style={[styles.reviewNavBtn, isFollowing && styles.reviewNavBtnActive]}
+                  onPress={handleToggleFollow}
+                  disabled={followLoading}
+                >
+                  <Feather name={isFollowing ? "user-check" : "user-plus"} size={14} color={isFollowing ? C.primary : C.accent} />
+                  <Text style={[styles.reviewNavText, isFollowing && { color: C.primary }]}>
+                    {isFollowing ? "مُتابَع" : "+ متابعة"}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
+                  <Ionicons name="star" size={15} color={C.accent} />
+                  <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
         </View>
 
         <View style={styles.heroContent}>
@@ -574,6 +584,15 @@ export default function ArtisanProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Share modal ── */}
+      <ShareModal
+        visible={shareVisible}
+        onClose={() => setShareVisible(false)}
+        title={artisan.name}
+        shareText={`👤 ${artisan.name} — ${artisan.specialty ? getSpecialtyLabel(artisan.specialty) : "متخصص"}\nملف شخصي على تطبيق فورس`}
+        shareMessage={`👤 تعرّف على ${artisan.name}${artisan.specialty ? " (" + getSpecialtyLabel(artisan.specialty) + ")" : ""} على تطبيق فورس`}
+      />
 
       {/* Full-screen reviews modal — add a new review + browse all past reviews */}
       <Modal visible={reviewModal} transparent animationType="slide" onRequestClose={() => setReviewModal(false)}>

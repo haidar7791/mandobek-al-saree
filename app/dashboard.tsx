@@ -24,6 +24,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
+import { ShareModal } from "@/components/ShareModal";
 import {
   getArtisans,
   getUserProfile,
@@ -232,6 +233,9 @@ export default function DashboardScreen() {
   // ── Marketplace ──
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productsRefreshing, setProductsRefreshing] = useState(false);
+  const [productsRefreshKey, setProductsRefreshKey] = useState(0);
+  const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
@@ -328,26 +332,30 @@ export default function DashboardScreen() {
     return unsub;
   }, []);
 
-  // Marketplace: subscribe to products (realtime — updates immediately on publish)
-  // Depends on userId so we only subscribe after Firebase auth has restored the
-  // session. Subscribing before auth is ready causes PERMISSION_DENIED, which
-  // would clear the list and never retry.
+  // Marketplace: subscribe to products (realtime).
+  // productsRefreshKey increments on pull-to-refresh → cleanly re-subscribes.
   useEffect(() => {
     if (!userId) return;
-    setProductsLoading(true);
+    if (productsRefreshKey === 0) setProductsLoading(true);
     const unsub = subscribeToProducts(
       (data) => {
         setProducts(data);
         setProductsLoading(false);
+        setProductsRefreshing(false);
       },
       (_err) => {
-        // PERMISSION_DENIED or any other error — stop spinner, show empty list
         setProductsLoading(false);
+        setProductsRefreshing(false);
         setProducts([]);
       }
     );
     return unsub;
-  }, [userId]);
+  }, [userId, productsRefreshKey]);
+
+  const onProductsRefresh = useCallback(() => {
+    setProductsRefreshing(true);
+    setProductsRefreshKey((k) => k + 1);
+  }, []);
 
   // Badge: subscribe to active/pending service requests
   useEffect(() => {
@@ -615,7 +623,7 @@ export default function DashboardScreen() {
                 data={sortedProducts}
                 keyExtractor={(p) => p.id}
                 contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
-                refreshControl={<RefreshControl refreshing={productsLoading} onRefresh={onRefresh} tintColor={C.accent} />}
+                refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item: product }) => {
                   const isSold = product.status === "sold";
@@ -624,6 +632,14 @@ export default function DashboardScreen() {
                   const isLoadingP = buyingProductId === product.id;
                   return (
                     <View style={[styles.productCard, isSold && styles.productCardSold]}>
+                      {/* Share button — absolute overlay */}
+                      <Pressable
+                        style={styles.productShareBtn}
+                        onPress={() => { Haptics.selectionAsync(); setShareProduct(product); }}
+                        accessibilityLabel="مشاركة المنتج"
+                      >
+                        <Feather name="share-2" size={13} color={C.accent} />
+                      </Pressable>
                       <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenImage(product.imageUrl)}>
                         <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
                         {isSold && <View style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
@@ -718,6 +734,23 @@ export default function DashboardScreen() {
               />
             )}
           </View>
+
+      {/* ── Share product modal ── */}
+      <ShareModal
+        visible={!!shareProduct}
+        onClose={() => setShareProduct(null)}
+        title={shareProduct?.title || "منتج"}
+        shareText={
+          shareProduct
+            ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`
+            : ""
+        }
+        shareMessage={
+          shareProduct
+            ? `🛍️ منتج للبيع: ${shareProduct.title}\n💰 ${shareProduct.price.toLocaleString("ar-IQ")} د.ع — من تطبيق فورس`
+            : ""
+        }
+      />
 
       {/* ── Fullscreen image viewer ── */}
       <Modal
@@ -901,6 +934,25 @@ const styles = StyleSheet.create({
     lineHeight: 11,
   },
   btnDisabled: { opacity: 0.6 },
+
+  // ── Product card share button ──
+  productShareBtn: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    zIndex: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 3,
+  },
 
   // ── Floating add-product button ──
   floatingAddBtn: {

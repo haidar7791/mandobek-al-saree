@@ -8,9 +8,10 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, Image, Linking, Platform,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, Share,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
@@ -41,6 +42,7 @@ export default function UserProfileScreen() {
     location?: GeoLocation | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shareVisible, setShareVisible] = useState(false);
   // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
   const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
 
@@ -178,6 +180,10 @@ export default function UserProfileScreen() {
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
+          <Pressable style={styles.shareNavBtn} onPress={() => setShareVisible(true)}>
+            <Feather name="share-2" size={15} color={C.accent} />
+            <Text style={styles.shareNavBtnText}>مشاركة</Text>
+          </Pressable>
         </View>
         <View style={styles.heroContent}>
           {photoUri ? (
@@ -209,6 +215,15 @@ export default function UserProfileScreen() {
           )}
         </View>
       </LinearGradient>
+
+      {/* ── Share modal ── */}
+      <ShareModal
+        visible={shareVisible}
+        onClose={() => setShareVisible(false)}
+        title={displayName}
+        shareText={`👤 ${displayName} — ${roleLabel}\nملف شخصي على تطبيق فورس`}
+        shareMessage={`👤 تعرّف على ${displayName} على تطبيق فورس`}
+      />
 
       {!loading && (
         <>
@@ -256,12 +271,18 @@ export default function UserProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
   hero: { paddingHorizontal: 20, paddingBottom: 28 },
-  nav: { flexDirection: "row", marginBottom: 16 },
+  nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   backBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
   },
+  shareNavBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 10,
+    paddingVertical: 7, paddingHorizontal: 12,
+  },
+  shareNavBtnText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
   heroContent: { alignItems: "center", gap: 8 },
   photo: {
     width: 90, height: 90, borderRadius: 22,

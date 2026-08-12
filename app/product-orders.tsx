@@ -10,6 +10,7 @@ import {
   Image,
   ActivityIndicator,
   TouchableOpacity,
+  Share,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -90,6 +91,15 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
     } as any);
   };
 
+  const handleShare = async () => {
+    const raw = order.productPrice ?? (order as any).price;
+    const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    await Share.share({
+      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}\n👤 البائع: ${order.sellerName || ""}`,
+      title: order.productTitle,
+    });
+  };
+
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
@@ -100,7 +110,12 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
           </View>
-          <ProductThumb uri={order.productImageUrl} />
+          <View style={styles.thumbCol}>
+            <ProductThumb uri={order.productImageUrl} />
+            <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
+              <Feather name="share-2" size={13} color={C.accent} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Divider ── */}
@@ -175,6 +190,15 @@ function SaleCard({ order, onAccept, onReject }: {
     } as any);
   };
 
+  const handleShare = async () => {
+    const raw = order.productPrice ?? (order as any).price;
+    const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    await Share.share({
+      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}`,
+      title: order.productTitle,
+    });
+  };
+
   return (
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
@@ -185,7 +209,12 @@ function SaleCard({ order, onAccept, onReject }: {
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
           </View>
-          <ProductThumb uri={order.productImageUrl} />
+          <View style={styles.thumbCol}>
+            <ProductThumb uri={order.productImageUrl} />
+            <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
+              <Feather name="share-2" size={13} color={C.accent} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Divider ── */}
@@ -726,6 +755,13 @@ const styles = StyleSheet.create({
   },
   productThumb: { width: 72, height: 72, borderRadius: 14 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
+  thumbCol: { alignItems: "center", gap: 6 },
+  cardShareBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: "rgba(201,168,76,0.1)",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
+    alignItems: "center", justifyContent: "center",
+  },
   productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
   productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
 
