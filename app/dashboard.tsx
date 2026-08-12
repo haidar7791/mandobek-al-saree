@@ -607,20 +607,17 @@ export default function DashboardScreen() {
                 refreshControl={<RefreshControl refreshing={productsLoading} onRefresh={onRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
                 ListHeaderComponent={
-                  <TouchableOpacity
-                    style={styles.addProductBanner}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
-                    activeOpacity={0.85}
-                  >
-                    <LinearGradient
-                      colors={[C.accent, C.accentLight]}
-                      style={styles.addProductBannerGradient}
-                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  <View style={styles.productsListHeader}>
+                    <TouchableOpacity
+                      style={styles.addProductSmallBtn}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
+                      activeOpacity={0.8}
                     >
-                      <Ionicons name="add-circle-outline" size={22} color={C.primary} />
-                      <Text style={styles.addProductBannerText}>+ أضف منتجك للبيع</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <Feather name="plus" size={13} color={C.accent} />
+                      <Text style={styles.addProductSmallBtnText}>إضافة منتج</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.productsListTitle}>سوق المنتجات</Text>
+                  </View>
                 }
                 renderItem={({ item: product }) => {
                   const isSold = product.status === "sold";
@@ -907,19 +904,22 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
 
-  // ── Add-product banner (الرئيسية header) ──
-  addProductBanner: {
-    marginHorizontal: 16, marginTop: 14, marginBottom: 8, borderRadius: 14,
-    overflow: "hidden",
-    shadowColor: C.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10,
-    elevation: 6,
+  // ── Products list header row (title + add button) ──
+  productsListHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginHorizontal: 16, marginTop: 14, marginBottom: 8,
   },
-  addProductBannerGradient: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 10, paddingVertical: 15, paddingHorizontal: 20,
+  productsListTitle: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text,
   },
-  addProductBannerText: {
-    fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary, letterSpacing: 0.3,
+  addProductSmallBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "#FFF8EC",
+    borderRadius: 8, borderWidth: 1, borderColor: C.accent,
+    paddingVertical: 6, paddingHorizontal: 12,
+  },
+  addProductSmallBtnText: {
+    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent,
   },
 
   // ── Products bar ──
