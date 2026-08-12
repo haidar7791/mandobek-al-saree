@@ -472,13 +472,13 @@ export default function ProfileScreen() {
           {/* Name only — NO email/contact line */}
           <Text style={styles.displayName}>{name || "—"}</Text>
 
-          {/* Wallet pill */}
-          <View style={styles.balancePill}>
+          {/* Wallet pill — tapping opens the wallet screen */}
+          <Pressable style={styles.balancePill} onPress={() => router.push("/wallet" as any)}>
             <MaterialCommunityIcons name="wallet" size={14} color={C.accent} />
             <Text style={styles.balancePillText}>
               {balance.toLocaleString("ar-IQ")} د.ع
             </Text>
-          </View>
+          </Pressable>
         </View>
       </LinearGradient>
 

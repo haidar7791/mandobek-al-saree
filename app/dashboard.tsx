@@ -242,7 +242,7 @@ export default function DashboardScreen() {
 
   // search state — kept for filteredArtisans (search now lives in /search screen)
   const [search] = useState("");
-  const { profile: liveProfile, isPhoneOk, completionPercent } = useProfileCheck(userId);
+  const { profile: liveProfile } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
     if (!lastMsgSeen) return 0;
@@ -467,25 +467,6 @@ export default function DashboardScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
-        <View style={styles.headerTopRow}>
-          <View style={styles.locationRow}>
-            <Feather name="map-pin" size={12} color={C.accent} />
-            <Text style={styles.locationText}>
-              {userLocation ? "موقعك الحالي" : "الموقع غير متاح"}
-            </Text>
-          </View>
-          {!isPhoneOk && (
-            <View style={styles.phoneAlertWrap} pointerEvents="none">
-              <Text style={styles.phoneAlertText} numberOfLines={1}>
-                ⚠️ يرجى إضافة رقم هاتفك لتفعيل حسابك
-              </Text>
-            </View>
-          )}
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>ForUs</Text>
-          </View>
-        </View>
-
         <View style={styles.headerActions}>
           {userRole === "admin" && (
             <Pressable style={styles.headerIconCol} onPress={() => router.push("/admin-dashboard" as any)}>
@@ -527,17 +508,10 @@ export default function DashboardScreen() {
             </View>
             <Text style={styles.headerIconLabel}>خدمة العملاء</Text>
           </Pressable>
-          <Pressable style={styles.headerIconCol} onPress={() => router.push("/wallet" as any)}>
-            <View style={styles.headerIconBtn}>
-              <Feather name="credit-card" size={20} color="#FFF" />
-            </View>
-            <Text style={styles.headerIconLabel}>المحفظة</Text>
-          </Pressable>
           <View style={styles.headerIconCol}>
             <ProfileAvatar
               photoUri={liveProfile?.photoUri}
               name={userName}
-              percent={completionPercent}
               size={36}
             />
             <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
@@ -990,22 +964,6 @@ const styles = StyleSheet.create({
   stickyBar: { backgroundColor: "#FFF", borderBottomWidth: 1, borderBottomColor: C.border },
   listWrapper: { flex: 1, minHeight: 0 },
   headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
-  headerTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  phoneAlertWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  phoneAlertText: {
-    fontSize: 10.5,
-    fontFamily: "Cairo_600SemiBold",
-    color: "#FCD34D",
-    textAlign: "center",
-  },
-  logoMark: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: "rgba(201,168,76,0.2)",
-    alignItems: "center", justifyContent: "center",
-  },
-  logoMarkText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locationText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
   headerActions: {
     flexDirection: "row-reverse", justifyContent: "space-between",
     alignItems: "flex-start", gap: 4,
