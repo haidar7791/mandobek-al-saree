@@ -607,7 +607,6 @@ export default function DashboardScreen() {
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
           {activeCategory === "all" && (
             <View style={styles.productsSubBar}>
-              <Text style={styles.productsSubBarTitle}>السوق</Text>
               <TouchableOpacity
                 style={styles.addProductBtn}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
@@ -970,17 +969,12 @@ const styles = StyleSheet.create({
   productsSubBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     paddingHorizontal: 16,
     paddingVertical: 9,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderBottomColor: C.border,
-  },
-  productsSubBarTitle: {
-    fontSize: 15,
-    fontFamily: "Cairo_700Bold",
-    color: C.text,
   },
   addProductBtn: {
     flexDirection: "row",
