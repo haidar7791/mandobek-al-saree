@@ -596,117 +596,132 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* Artisans list */}
+          {/* ── Conditional list: Products (الرئيسية) OR Artisans (specialty tabs) ── */}
           <View style={styles.listWrapper}>
-            <FlatList
-              data={filteredArtisans}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item, index }) => (
-                <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
-              )}
-              ListHeaderComponent={
-                filteredArtisans.length > 0 && userLocation ? (
-                  <View style={styles.listHeader}>
-                    <View style={styles.sortedBadge}>
-                      <Feather name="navigation" size={11} color={C.accent} />
-                      <Text style={styles.sortedText}>مرتب حسب القرب</Text>
-                    </View>
-                  </View>
-                ) : null
-              }
-              ListEmptyComponent={
-                loading ? (
-                  <View style={styles.emptyState}>
-                    <Feather name="loader" size={36} color={C.textMuted} />
-                    <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.emptyState}>
-                    <Feather name="users" size={48} color={C.textMuted} />
-                    <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
-                    <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
-                  </View>
-                )
-              }
-              ListFooterComponent={
-                activeCategory === "all" ? (
-                  <View style={{ paddingBottom: bottomPad + 20 }}>
-                    {/* ── Products section ── */}
-                    <View style={styles.productsBar}>
-                      <TouchableOpacity style={styles.ordersBtn} onPress={() => router.push("/add-product" as any)} activeOpacity={0.8}>
-                        <Feather name="plus" size={14} color={C.accent} />
-                        <Text style={styles.ordersBtnText}>إضافة منتج</Text>
+            {activeCategory === "all" ? (
+              /* ══ PRODUCTS-ONLY VIEW ══ */
+              <FlatList
+                data={sortedProducts}
+                keyExtractor={(p) => p.id}
+                contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+                refreshControl={<RefreshControl refreshing={productsLoading} onRefresh={onRefresh} tintColor={C.accent} />}
+                showsVerticalScrollIndicator={false}
+                ListHeaderComponent={
+                  <TouchableOpacity
+                    style={styles.addProductBanner}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={[C.accent, C.accentLight]}
+                      style={styles.addProductBannerGradient}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    >
+                      <Ionicons name="add-circle-outline" size={22} color={C.primary} />
+                      <Text style={styles.addProductBannerText}>+ أضف منتجك للبيع</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                }
+                renderItem={({ item: product }) => {
+                  const isSold = product.status === "sold";
+                  const isMine = product.sellerId === userId;
+                  const pendingOrderId = myPendingOrders.get(product.id);
+                  const isLoadingP = buyingProductId === product.id;
+                  return (
+                    <View style={[styles.productCard, isSold && styles.productCardSold]}>
+                      <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenImage(product.imageUrl)}>
+                        <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
+                        {isSold && <View style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
                       </TouchableOpacity>
-                      <Text style={styles.productsBarTitle}>سوق المنتجات</Text>
-                    </View>
-                    {productsLoading ? (
-                      <View style={styles.emptyState}>
-                        <ActivityIndicator size="large" color={C.accent} />
-                      </View>
-                    ) : sortedProducts.length === 0 ? (
-                      <View style={styles.emptyState}>
-                        <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
-                        <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
-                        <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
-                      </View>
-                    ) : (
-                      sortedProducts.map((product) => {
-                        const isSold = product.status === "sold";
-                        const isMine = product.sellerId === userId;
-                        const pendingOrderId = myPendingOrders.get(product.id);
-                        const isLoadingP = buyingProductId === product.id;
-                        return (
-                          <View key={product.id} style={[styles.productCard, isSold && styles.productCardSold]}>
-                            <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenImage(product.imageUrl)}>
-                              <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
-                              {isSold && <View style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
-                            </TouchableOpacity>
-                            <View style={styles.productBody}>
-                              <View style={styles.productHeaderRow}>
-                                <TouchableOpacity activeOpacity={0.7} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any); }} style={styles.productSellerTouchable}>
-                                  <Text style={styles.productSellerName} numberOfLines={1}>{product.sellerName}</Text>
-                                  {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
-                                    <View style={styles.productFeaturedBadge}>
-                                      <Ionicons name="star" size={10} color={C.primary} />
-                                      <Text style={styles.productFeaturedText}>مميز</Text>
-                                    </View>
-                                  )}
-                                </TouchableOpacity>
-                                <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+                      <View style={styles.productBody}>
+                        <View style={styles.productHeaderRow}>
+                          <TouchableOpacity activeOpacity={0.7} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any); }} style={styles.productSellerTouchable}>
+                            <Text style={styles.productSellerName} numberOfLines={1}>{product.sellerName}</Text>
+                            {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
+                              <View style={styles.productFeaturedBadge}>
+                                <Ionicons name="star" size={10} color={C.primary} />
+                                <Text style={styles.productFeaturedText}>مميز</Text>
                               </View>
-                              <Text style={styles.productPrice}><Text style={styles.productPriceLabel}>السعر: </Text>{product.price.toLocaleString("ar-IQ")} <Text style={styles.productCurrency}>د.ع</Text></Text>
-                              {product.description ? <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text> : null}
-                            </View>
-                            {!isSold && (() => {
-                              if (isMine) return (
-                                <TouchableOpacity style={[styles.buyBtn, styles.deleteBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Alert.alert("حذف المنتج", `هل أنت متأكد من حذف "${product.title}"؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await deleteProduct(product.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch { Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                                  <View style={styles.deleteBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="trash-2" size={14} color="#FFF" /><Text style={styles.deleteBtnText}>حذف المنتج</Text></>}</View>
-                                </TouchableOpacity>
-                              );
-                              if (pendingOrderId) return (
-                                <TouchableOpacity style={[styles.buyBtn, styles.cancelOrderBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Alert.alert("إلغاء طلب الشراء", "هل تريد إلغاء طلبك المعلق لهذا المنتج؟", [{ text: "تراجع", style: "cancel" }, { text: "إلغاء الطلب", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await cancelProductOrder(pendingOrderId); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch { Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                                  <View style={styles.cancelOrderBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="x-circle" size={14} color="#FFF" /><Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text></>}</View>
-                                </TouchableOpacity>
-                              );
-                              return (
-                                <TouchableOpacity style={[styles.buyBtn, isLoadingP && styles.btnDisabled]} activeOpacity={0.85} disabled={isLoadingP} onPress={async () => { const user = auth.currentUser; if (!user) { router.replace("/login" as any); return; } const selfProfile = await getUserProfile(user.uid); Alert.alert("تأكيد الشراء", `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`, [{ text: "إلغاء", style: "cancel" }, { text: "إرسال الطلب", onPress: async () => { setBuyingProductId(product.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); try { await createProductOrder({ productId: product.id, productTitle: product.title, productImageUrl: product.imageUrl, productPrice: product.price, sellerId: product.sellerId, sellerName: product.sellerName, buyerId: user.uid, buyerName: selfProfile?.name || userName, buyerPhone: selfProfile?.phone || "", buyerLocation: userLocation }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً."); } catch { Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.buyBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                                    {isLoadingP ? <ActivityIndicator size="small" color={C.primary} /> : <><Ionicons name="cart-outline" size={14} color={C.primary} /><Text style={styles.buyBtnText}>شراء</Text></>}
-                                  </LinearGradient>
-                                </TouchableOpacity>
-                              );
-                            })()}
-                          </View>
+                            )}
+                          </TouchableOpacity>
+                          <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+                        </View>
+                        <Text style={styles.productPrice}><Text style={styles.productPriceLabel}>السعر: </Text>{product.price.toLocaleString("ar-IQ")} <Text style={styles.productCurrency}>د.ع</Text></Text>
+                        {product.description ? <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text> : null}
+                      </View>
+                      {!isSold && (() => {
+                        if (isMine) return (
+                          <TouchableOpacity style={[styles.buyBtn, styles.deleteBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Alert.alert("حذف المنتج", `هل أنت متأكد من حذف "${product.title}"؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await deleteProduct(product.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch { Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
+                            <View style={styles.deleteBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="trash-2" size={14} color="#FFF" /><Text style={styles.deleteBtnText}>حذف المنتج</Text></>}</View>
+                          </TouchableOpacity>
                         );
-                      })
-                    )}
-                  </View>
-                ) : null
-              }
-            />
+                        if (pendingOrderId) return (
+                          <TouchableOpacity style={[styles.buyBtn, styles.cancelOrderBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Alert.alert("إلغاء طلب الشراء", "هل تريد إلغاء طلبك المعلق لهذا المنتج؟", [{ text: "تراجع", style: "cancel" }, { text: "إلغاء الطلب", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await cancelProductOrder(pendingOrderId); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch { Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
+                            <View style={styles.cancelOrderBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="x-circle" size={14} color="#FFF" /><Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text></>}</View>
+                          </TouchableOpacity>
+                        );
+                        return (
+                          <TouchableOpacity style={[styles.buyBtn, isLoadingP && styles.btnDisabled]} activeOpacity={0.85} disabled={isLoadingP} onPress={async () => { const user = auth.currentUser; if (!user) { router.replace("/login" as any); return; } const selfProfile = await getUserProfile(user.uid); Alert.alert("تأكيد الشراء", `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`, [{ text: "إلغاء", style: "cancel" }, { text: "إرسال الطلب", onPress: async () => { setBuyingProductId(product.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); try { await createProductOrder({ productId: product.id, productTitle: product.title, productImageUrl: product.imageUrl, productPrice: product.price, sellerId: product.sellerId, sellerName: product.sellerName, buyerId: user.uid, buyerName: selfProfile?.name || userName, buyerPhone: selfProfile?.phone || "", buyerLocation: userLocation }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً."); } catch { Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
+                            <LinearGradient colors={[C.accent, C.accentLight]} style={styles.buyBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                              {isLoadingP ? <ActivityIndicator size="small" color={C.primary} /> : <><Ionicons name="cart-outline" size={14} color={C.primary} /><Text style={styles.buyBtnText}>شراء</Text></>}
+                            </LinearGradient>
+                          </TouchableOpacity>
+                        );
+                      })()}
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={
+                  productsLoading ? (
+                    <View style={styles.emptyState}>
+                      <ActivityIndicator size="large" color={C.accent} />
+                    </View>
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
+                      <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
+                      <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
+                    </View>
+                  )
+                }
+              />
+            ) : (
+              /* ══ ARTISANS VIEW (specialty categories) ══ */
+              <FlatList
+                data={filteredArtisans}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => (
+                  <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
+                )}
+                ListHeaderComponent={
+                  filteredArtisans.length > 0 && userLocation ? (
+                    <View style={styles.listHeader}>
+                      <View style={styles.sortedBadge}>
+                        <Feather name="navigation" size={11} color={C.accent} />
+                        <Text style={styles.sortedText}>مرتب حسب القرب</Text>
+                      </View>
+                    </View>
+                  ) : null
+                }
+                ListEmptyComponent={
+                  loading ? (
+                    <View style={styles.emptyState}>
+                      <Feather name="loader" size={36} color={C.textMuted} />
+                      <Text style={styles.emptySubtitle}>جارٍ التحميل...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Feather name="users" size={48} color={C.textMuted} />
+                      <Text style={styles.emptyTitle}>لا يوجد أصحاب اختصاص في هذا القسم حالياً</Text>
+                      <Text style={styles.emptySubtitle}>جرّب قسماً آخر أو عُد لاحقاً</Text>
+                    </View>
+                  )
+                }
+              />
+            )}
           </View>
 
       {/* ── Fullscreen image viewer ── */}
@@ -891,6 +906,21 @@ const styles = StyleSheet.create({
     lineHeight: 11,
   },
   btnDisabled: { opacity: 0.6 },
+
+  // ── Add-product banner (الرئيسية header) ──
+  addProductBanner: {
+    marginHorizontal: 16, marginTop: 14, marginBottom: 8, borderRadius: 14,
+    overflow: "hidden",
+    shadowColor: C.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10,
+    elevation: 6,
+  },
+  addProductBannerGradient: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, paddingVertical: 15, paddingHorizontal: 20,
+  },
+  addProductBannerText: {
+    fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary, letterSpacing: 0.3,
+  },
 
   // ── Products bar ──
   productsBar: {
