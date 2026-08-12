@@ -30,6 +30,12 @@ import {
   calcDistanceKm,
   buildChatId,
   getSpecialtyLabel,
+  getIsFollowing,
+  followArtisan,
+  unfollowArtisan,
+  getIsLiked,
+  likeArtisan,
+  unlikeArtisan,
   type ArtisanProfile,
   type Review,
   type GeoLocation,
@@ -125,6 +131,13 @@ export default function ArtisanProfileScreen() {
   // reusing the artisan/portfolio "refreshing" flag.
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
 
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followCount, setFollowCount] = useState(0);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
+
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -158,10 +171,24 @@ export default function ArtisanProfileScreen() {
       // the nav params (rating/availability may have changed since the list
       // was fetched).
       const artisanData = await getArtisanById(artisanId);
-      if (artisanData) setArtisan(artisanData);
+      if (artisanData) {
+        setArtisan(artisanData);
+        setFollowCount(artisanData.followCount ?? 0);
+        setLikesCount(artisanData.likesCount ?? 0);
+      }
       if (artisanData?.userId) {
         const artisanProfile = await getUserProfile(artisanData.userId);
         setPortfolioImages(artisanProfile?.portfolio || []);
+      }
+      // Load follow/like state for current user
+      const currentUser = auth.currentUser;
+      if (currentUser && artisanId && currentUser.uid !== artisanId) {
+        const [following, liked] = await Promise.all([
+          getIsFollowing(currentUser.uid, artisanId),
+          getIsLiked(currentUser.uid, artisanId),
+        ]);
+        setIsFollowing(following);
+        setIsLiked(liked);
       }
     } catch (err) {
       console.error("loadData error:", err);
@@ -264,6 +291,50 @@ export default function ArtisanProfileScreen() {
     }
   };
 
+  const handleToggleFollow = async () => {
+    const user = auth.currentUser;
+    if (!user || !artisanId) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unfollowArtisan(user.uid, artisanId);
+        setIsFollowing(false);
+        setFollowCount((c) => Math.max(0, c - 1));
+      } else {
+        await followArtisan(user.uid, artisanId);
+        setIsFollowing(true);
+        setFollowCount((c) => c + 1);
+      }
+      Haptics.selectionAsync();
+    } catch {
+      Alert.alert("خطأ", "تعذّرت عملية المتابعة، حاول مجدداً");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleToggleLike = async () => {
+    const user = auth.currentUser;
+    if (!user || !artisanId) return;
+    setLikeLoading(true);
+    try {
+      if (isLiked) {
+        await unlikeArtisan(user.uid, artisanId);
+        setIsLiked(false);
+        setLikesCount((c) => Math.max(0, c - 1));
+      } else {
+        await likeArtisan(user.uid, artisanId);
+        setIsLiked(true);
+        setLikesCount((c) => c + 1);
+      }
+      Haptics.selectionAsync();
+    } catch {
+      Alert.alert("خطأ", "تعذّرت عملية الإعجاب، حاول مجدداً");
+    } finally {
+      setLikeLoading(false);
+    }
+  };
+
   const handleAddReview = async () => {
     const user = auth.currentUser;
     if (!user || !artisan) return;
@@ -319,10 +390,22 @@ export default function ArtisanProfileScreen() {
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
           {!isOwnProfile && !isClientProfile && (
-            <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
-              <Ionicons name="star" size={15} color={C.accent} />
-              <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                style={[styles.reviewNavBtn, isFollowing && styles.reviewNavBtnActive]}
+                onPress={handleToggleFollow}
+                disabled={followLoading}
+              >
+                <Feather name={isFollowing ? "user-check" : "user-plus"} size={14} color={isFollowing ? C.primary : C.accent} />
+                <Text style={[styles.reviewNavText, isFollowing && { color: C.primary }]}>
+                  {isFollowing ? "مُتابَع" : "+ متابعة"}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
+                <Ionicons name="star" size={15} color={C.accent} />
+                <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
+              </Pressable>
+            </View>
           )}
         </View>
 
@@ -367,6 +450,20 @@ export default function ArtisanProfileScreen() {
                   </Text>
                   <Text style={styles.statLabel}>البعد</Text>
                 </View>
+                <View style={styles.statDiv} />
+                {/* Like button stat */}
+                <Pressable
+                  style={styles.statItem}
+                  onPress={!isOwnProfile ? handleToggleLike : undefined}
+                  disabled={likeLoading || isOwnProfile}
+                >
+                  <FontAwesome
+                    name={isLiked ? "heart" : "heart-o"}
+                    size={15}
+                    color={isLiked ? "#EF4444" : "rgba(255,255,255,0.7)"}
+                  />
+                  <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -579,6 +676,9 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
+  },
+  reviewNavBtnActive: {
+    backgroundColor: C.accent,
   },
   reviewNavBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,

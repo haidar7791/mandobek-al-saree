@@ -97,6 +97,8 @@ export interface ArtisanProfile {
   featuredUntil?: string | null;
   isPromoted?: boolean;
   createdAt: string;
+  followCount?: number;
+  likesCount?: number;
 }
 
 export function isFeaturedActive(a: { featuredUntil?: string | null }): boolean {
@@ -712,6 +714,44 @@ export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
   }
 };
 
+// ─── Follow / Unfollow ────────────────────────────────────────────────────────
+
+export const getIsFollowing = async (followerId: string, artisanId: string): Promise<boolean> => {
+  const snap = await getDoc(doc(db, "users", artisanId, "followers", followerId));
+  return snap.exists();
+};
+
+export const followArtisan = async (followerId: string, artisanId: string): Promise<void> => {
+  await setDoc(doc(db, "users", artisanId, "followers", followerId), {
+    followedAt: new Date().toISOString(),
+  });
+  await updateDoc(doc(db, "users", artisanId), { followCount: increment(1) });
+};
+
+export const unfollowArtisan = async (followerId: string, artisanId: string): Promise<void> => {
+  await deleteDoc(doc(db, "users", artisanId, "followers", followerId));
+  await updateDoc(doc(db, "users", artisanId), { followCount: increment(-1) });
+};
+
+// ─── Like / Unlike ────────────────────────────────────────────────────────────
+
+export const getIsLiked = async (likerId: string, artisanId: string): Promise<boolean> => {
+  const snap = await getDoc(doc(db, "users", artisanId, "likes", likerId));
+  return snap.exists();
+};
+
+export const likeArtisan = async (likerId: string, artisanId: string): Promise<void> => {
+  await setDoc(doc(db, "users", artisanId, "likes", likerId), {
+    likedAt: new Date().toISOString(),
+  });
+  await updateDoc(doc(db, "users", artisanId), { likesCount: increment(1) });
+};
+
+export const unlikeArtisan = async (likerId: string, artisanId: string): Promise<void> => {
+  await deleteDoc(doc(db, "users", artisanId, "likes", likerId));
+  await updateDoc(doc(db, "users", artisanId), { likesCount: increment(-1) });
+};
+
 export const subscribeToServiceRequest = (
   requestId: string,
   callback: (request: ServiceRequest | null) => void
@@ -1233,6 +1273,8 @@ export interface UserProfile {
   reviewCount?: number;
   isAvailable?: boolean;
   balance?: number;
+  followCount?: number;
+  likesCount?: number;
 }
 
 export const setUserPushToken = async (
