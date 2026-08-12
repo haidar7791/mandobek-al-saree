@@ -598,6 +598,17 @@ export default function DashboardScreen() {
 
           {/* ── Conditional list: Products (الرئيسية) OR Artisans (specialty tabs) ── */}
           <View style={styles.listWrapper}>
+            {/* Floating add-product button — above the products list */}
+            {activeCategory === "all" && (
+              <TouchableOpacity
+                style={styles.floatingAddBtn}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus" size={13} color={C.accent} />
+                <Text style={styles.floatingAddBtnText}>إضافة منتج</Text>
+              </TouchableOpacity>
+            )}
             {activeCategory === "all" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
@@ -606,19 +617,6 @@ export default function DashboardScreen() {
                 contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsLoading} onRefresh={onRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                  <View style={styles.productsListHeader}>
-                    <TouchableOpacity
-                      style={styles.addProductSmallBtn}
-                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
-                      activeOpacity={0.8}
-                    >
-                      <Feather name="plus" size={13} color={C.accent} />
-                      <Text style={styles.addProductSmallBtnText}>إضافة منتج</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.productsListTitle}>سوق المنتجات</Text>
-                  </View>
-                }
                 renderItem={({ item: product }) => {
                   const isSold = product.status === "sold";
                   const isMine = product.sellerId === userId;
@@ -904,22 +902,31 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
 
-  // ── Products list header row (title + add button) ──
-  productsListHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginHorizontal: 16, marginTop: 14, marginBottom: 8,
-  },
-  productsListTitle: {
-    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text,
-  },
-  addProductSmallBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
+  // ── Floating add-product button ──
+  floatingAddBtn: {
+    position: "absolute",
+    top: 10,
+    left: 15,
+    zIndex: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     backgroundColor: "#FFF8EC",
-    borderRadius: 8, borderWidth: 1, borderColor: C.accent,
-    paddingVertical: 6, paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: C.accent,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  addProductSmallBtnText: {
-    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent,
+  floatingAddBtnText: {
+    fontSize: 13,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
   },
 
   // ── Products bar ──
