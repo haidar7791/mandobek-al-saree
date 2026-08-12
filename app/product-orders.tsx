@@ -94,8 +94,9 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
     const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    const deepLink = order.productId ? `\n🔗 forus://product/${order.productId}` : "";
     await Share.share({
-      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}\n👤 البائع: ${order.sellerName || ""}`,
+      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}\n👤 البائع: ${order.sellerName || ""}${deepLink}`,
       title: order.productTitle,
     });
   };
@@ -193,8 +194,9 @@ function SaleCard({ order, onAccept, onReject }: {
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
     const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    const deepLink = order.productId ? `\n🔗 forus://product/${order.productId}` : "";
     await Share.share({
-      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}`,
+      message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}${deepLink}`,
       title: order.productTitle,
     });
   };

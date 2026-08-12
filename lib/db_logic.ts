@@ -854,10 +854,14 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   read?: boolean;
-  type?: "text" | "image" | "audio";
+  type?: "text" | "image" | "audio" | "card";
   mediaUrl?: string;
   duration?: number;
   deleted?: boolean;
+  /** Card message fields — populated when type === "card" */
+  cardImage?: string;   // image URL for the card thumbnail
+  cardTitle?: string;   // display title inside the card bubble
+  cardRoute?: string;   // internal Expo Router path to push on tap
 }
 
 export const DELETED_MESSAGE_TEXT = "تم حذف هذه الرسالة";
@@ -914,6 +918,58 @@ export const sendMessage = async (
     }
   } catch (err) {
     console.error("notify on sendMessage failed:", err);
+  }
+};
+
+/**
+ * Send a rich card message (profile / product card) to a chat.
+ * The card is stored with type:"card" and renders as an interactive bubble
+ * with thumbnail + title + "عرض" button that navigates to cardRoute.
+ */
+export const sendCardMessage = async (
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  cardImage: string,
+  cardTitle: string,
+  cardRoute: string,
+  previewText: string
+): Promise<void> => {
+  await addDoc(collection(db, "chats", chatId, "messages"), {
+    chatId,
+    senderId,
+    senderName,
+    text: previewText,
+    type: "card",
+    cardImage,
+    cardTitle,
+    cardRoute,
+    createdAt: new Date().toISOString(),
+  });
+  await setDoc(
+    doc(db, "chats", chatId),
+    {
+      participants: chatId.split("_"),
+      lastMessage: previewText,
+      lastAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+  try {
+    const otherUid = chatId.split("_").find((u) => u !== senderId);
+    if (otherUid) {
+      const profile = await getUserProfile(otherUid);
+      if (profile?.pushToken) {
+        await sendExpoPush(
+          profile.pushToken,
+          `رسالة جديدة من ${senderName}`,
+          previewText.length > 80 ? `${previewText.slice(0, 80)}…` : previewText,
+          { type: "chat", chatId, senderId, senderName }
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on sendCardMessage failed:", err);
   }
 };
 

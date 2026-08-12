@@ -590,6 +590,10 @@ export default function ArtisanProfileScreen() {
         visible={shareVisible}
         onClose={() => setShareVisible(false)}
         title={artisan.name}
+        cardImage={artisan.photoUri ?? undefined}
+        cardTitle={artisan.name}
+        cardRoute={artisanId ? `/artisan-profile?artisanId=${artisanId}` : undefined}
+        deepLinkPath={artisanId ? `profile/${artisanId}` : undefined}
         shareText={`👤 ${artisan.name} — ${artisan.specialty ? getSpecialtyLabel(artisan.specialty) : "متخصص"}\nملف شخصي على تطبيق فورس`}
         shareMessage={`👤 تعرّف على ${artisan.name}${artisan.specialty ? " (" + getSpecialtyLabel(artisan.specialty) + ")" : ""} على تطبيق فورس`}
       />

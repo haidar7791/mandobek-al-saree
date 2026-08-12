@@ -740,6 +740,14 @@ export default function DashboardScreen() {
         visible={!!shareProduct}
         onClose={() => setShareProduct(null)}
         title={shareProduct?.title || "منتج"}
+        cardImage={shareProduct?.imageUrl}
+        cardTitle={shareProduct?.title}
+        cardRoute={
+          shareProduct
+            ? `/user-profile?userId=${shareProduct.sellerId}&userName=${encodeURIComponent(shareProduct.sellerName || "")}`
+            : undefined
+        }
+        deepLinkPath={shareProduct ? `product/${shareProduct.id}` : undefined}
         shareText={
           shareProduct
             ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`

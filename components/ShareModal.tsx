@@ -2,7 +2,10 @@
  * ShareModal.tsx
  * Bottom-sheet that lets the user share content:
  *  - Externally via the device's native Share sheet (WhatsApp, Telegram, …)
- *  - Internally by picking a recent chat and auto-sending a message
+ *    → appends a forus:// deep link when deepLinkPath is provided
+ *  - Internally by picking a recent chat and auto-sending:
+ *    → a card message (thumbnail + title + "عرض" button) when cardImage/cardRoute provided
+ *    → a plain text message otherwise
  */
 import React, { useEffect, useState } from "react";
 import {
@@ -15,6 +18,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -22,6 +26,7 @@ import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
 import {
   sendMessage,
+  sendCardMessage,
   getUserChats,
   getUserProfile,
   type ChatSummary,
@@ -33,12 +38,28 @@ const C = Colors.light;
 export interface ShareModalProps {
   visible: boolean;
   onClose: () => void;
-  /** Full text for the native share sheet */
+  /** Full text for the native share sheet (deep link appended automatically) */
   shareText: string;
-  /** Shorter text to send as an in-app chat message */
+  /** Shorter text used as preview when sending a plain-text in-app message */
   shareMessage: string;
-  /** Optional title shown in the native share sheet */
+  /** Optional title shown in the native share sheet header */
   title?: string;
+
+  // ── Card / deep-link props ──────────────────────────────────────────────────
+  /** Thumbnail URL shown in the card bubble and on the preview row */
+  cardImage?: string;
+  /** Title text rendered inside the card bubble (falls back to title prop) */
+  cardTitle?: string;
+  /**
+   * Internal Expo Router path pushed when the receiver taps the card's "عرض"
+   * button, e.g. "/artisan-profile?artisanId=XXX"
+   */
+  cardRoute?: string;
+  /**
+   * Deep-link path segment appended to forus:// for external shares,
+   * e.g. "profile/artisanId" → "forus://profile/artisanId"
+   */
+  deepLinkPath?: string;
 }
 
 export function ShareModal({
@@ -47,6 +68,10 @@ export function ShareModal({
   shareText,
   shareMessage,
   title,
+  cardImage,
+  cardTitle,
+  cardRoute,
+  deepLinkPath,
 }: ShareModalProps) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
@@ -66,26 +91,41 @@ export function ShareModal({
     });
   }, [visible]);
 
+  // ── External share (native sheet) ──────────────────────────────────────────
   const handleExternalShare = async () => {
     try {
-      await Share.share({ message: shareText, title });
+      const deepLink = deepLinkPath ? `\n🔗 forus://${deepLinkPath}` : "";
+      await Share.share({ message: shareText + deepLink, title });
     } catch {
       // user cancelled or not supported — silently ignore
     }
   };
 
+  // ── Internal chat send ──────────────────────────────────────────────────────
   const handleSendToChat = async (chat: ChatSummary) => {
     const user = auth.currentUser;
     if (!user) return;
     setSendingId(chat.chatId);
     try {
       const myProfile = await getUserProfile(user.uid);
-      await sendMessage(
-        chat.chatId,
-        user.uid,
-        myProfile?.name || "مستخدم",
-        shareMessage
-      );
+      const senderName = myProfile?.name || "مستخدم";
+
+      if (cardRoute) {
+        // Send a rich card message
+        await sendCardMessage(
+          chat.chatId,
+          user.uid,
+          senderName,
+          cardImage || "",
+          cardTitle || title || shareMessage,
+          cardRoute,
+          `📎 ${cardTitle || title || shareMessage}`
+        );
+      } else {
+        // Fallback: plain text
+        await sendMessage(chat.chatId, user.uid, senderName, shareMessage);
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
       router.push({
@@ -115,8 +155,28 @@ export function ShareModal({
         <View style={styles.handle} />
         <Text style={styles.sheetTitle}>مشاركة</Text>
 
+        {/* ── Card preview row (shown when card props are available) ── */}
+        {(cardImage || cardTitle) && (
+          <View style={styles.cardPreview}>
+            {cardImage ? (
+              <Image source={{ uri: cardImage }} style={styles.cardPreviewImg} />
+            ) : (
+              <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}>
+                <Feather name="image" size={18} color={C.textMuted} />
+              </View>
+            )}
+            <Text style={styles.cardPreviewTitle} numberOfLines={2}>
+              {cardTitle || title}
+            </Text>
+          </View>
+        )}
+
         {/* ── External share ── */}
-        <Pressable style={styles.externalBtn} onPress={handleExternalShare} accessibilityRole="button">
+        <Pressable
+          style={styles.externalBtn}
+          onPress={handleExternalShare}
+          accessibilityRole="button"
+        >
           <Feather name="share-2" size={17} color="#FFF" />
           <Text style={styles.externalBtnText}>مشاركة خارجية (واتساب، تيليغرام…)</Text>
         </Pressable>
@@ -199,6 +259,33 @@ const styles = StyleSheet.create({
     color: C.text,
     textAlign: "center",
     marginBottom: 16,
+  },
+  // Card preview strip
+  cardPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  cardPreviewImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+  },
+  cardPreviewImgFallback: {
+    backgroundColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardPreviewTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.text,
+    textAlign: "right",
   },
   externalBtn: {
     flexDirection: "row",

@@ -574,6 +574,70 @@ export default function ChatRoom({
           </View>
         </View>
       );
+    } else if (item.type === "card" && item.cardRoute) {
+      bubbleContent = (
+        <View style={styles.cardBubble}>
+          {item.cardImage ? (
+            <Image
+              source={{ uri: item.cardImage }}
+              style={styles.cardBubbleImage}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.cardBubbleImage, styles.cardBubbleImageFallback]}>
+              <Feather name="image" size={24} color={C.textMuted} />
+            </View>
+          )}
+          <View style={styles.cardBubbleBody}>
+            <Text
+              style={[
+                styles.cardBubbleTitle,
+                isMine ? { color: "#FFF" } : { color: C.text },
+              ]}
+              numberOfLines={2}
+            >
+              {item.cardTitle || item.text}
+            </Text>
+            <Pressable
+              style={[
+                styles.cardBubbleBtn,
+                isMine ? styles.cardBubbleBtnMine : styles.cardBubbleBtnTheirs,
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(item.cardRoute as any);
+              }}
+            >
+              <Feather
+                name="arrow-left"
+                size={13}
+                color={isMine ? C.primary : "#FFF"}
+              />
+              <Text
+                style={[
+                  styles.cardBubbleBtnText,
+                  { color: isMine ? C.primary : "#FFF" },
+                ]}
+              >
+                عرض
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.readIndicatorRow}>
+            {readIndicator}
+            <Text
+              style={[
+                styles.msgTime,
+                isMine
+                  ? { color: "rgba(255,255,255,0.6)" }
+                  : { color: C.textMuted },
+              ]}
+            >
+              {time}
+            </Text>
+          </View>
+        </View>
+      );
     } else if (item.type === "audio") {
       const isPlaying = playingId === item.id;
       bubbleContent = (
@@ -940,6 +1004,33 @@ const styles = StyleSheet.create({
   },
   confirmRecordingBtn: { width: 44, height: 44, borderRadius: 14, overflow: "hidden" },
   confirmRecordingGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // ── Card bubble ──
+  cardBubble: { gap: 8, minWidth: 210 },
+  cardBubbleImage: { width: "100%", height: 120, borderRadius: 10 },
+  cardBubbleImageFallback: {
+    backgroundColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardBubbleBody: { gap: 7 },
+  cardBubbleTitle: {
+    fontSize: 14,
+    fontFamily: "Cairo_600SemiBold",
+    textAlign: "right",
+    lineHeight: 22,
+  },
+  cardBubbleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    borderRadius: 9,
+    paddingVertical: 7,
+  },
+  cardBubbleBtnMine: { backgroundColor: "rgba(255,255,255,0.2)" },
+  cardBubbleBtnTheirs: { backgroundColor: C.primary },
+  cardBubbleBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold" },
+
   deletedRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   deletedText: { fontSize: 13, fontFamily: "Cairo_400Regular", fontStyle: "italic" },
   pendingBar: {

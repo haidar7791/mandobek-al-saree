@@ -221,6 +221,10 @@ export default function UserProfileScreen() {
         visible={shareVisible}
         onClose={() => setShareVisible(false)}
         title={displayName}
+        cardImage={photoUri}
+        cardTitle={displayName}
+        cardRoute={`/user-profile?userId=${userId}`}
+        deepLinkPath={`user/${userId}`}
         shareText={`👤 ${displayName} — ${roleLabel}\nملف شخصي على تطبيق فورس`}
         shareMessage={`👤 تعرّف على ${displayName} على تطبيق فورس`}
       />

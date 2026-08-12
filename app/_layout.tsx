@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import React, { useEffect, useState } from "react";
@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
-import { I18nManager } from "react-native";
+import { I18nManager, Linking } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { configurePushHandler, registerForPushNotifications } from "@/lib/push_notifications";
@@ -135,6 +135,34 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsReady, authChecked]);
+
+  // ── Deep-link handler ──────────────────────────────────────────────────────
+  // Only navigate after auth is confirmed and the user is logged in, so the
+  // protected stack is already mounted and router.push works correctly.
+  useEffect(() => {
+    if (!authChecked || !isLoggedIn) return;
+
+    const navigate = (url: string) => {
+      if (!url.startsWith("forus://")) return;
+      const withoutScheme = url.replace(/^forus:\/\//, "");
+      const [type, id] = withoutScheme.split("/");
+      if (!id) return;
+      if (type === "profile") {
+        router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
+      } else if (type === "user") {
+        router.push({ pathname: "/user-profile", params: { userId: id } } as any);
+      } else if (type === "product") {
+        // No dedicated product screen — navigate to the marketplace
+        router.push("/dashboard" as any);
+      }
+    };
+
+    // Cold-start: app was launched via a deep link
+    Linking.getInitialURL().then((url) => { if (url) navigate(url); }).catch(() => {});
+    // Foreground: deep link arrived while app is already open
+    const sub = Linking.addEventListener("url", ({ url }) => navigate(url));
+    return () => sub.remove();
+  }, [authChecked, isLoggedIn]);
 
   // Show a recoverable error screen if Firebase/network threw during boot.
   // The user sees a "Try Again" button (reloadAppAsync) instead of a blank crash.
