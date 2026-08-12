@@ -604,19 +604,23 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          {/* ── Conditional list: Products (الرئيسية) OR Artisans (specialty tabs) ── */}
-          <View style={styles.listWrapper}>
-            {/* Floating add-product button — above the products list */}
-            {activeCategory === "all" && (
+          {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
+          {activeCategory === "all" && (
+            <View style={styles.productsSubBar}>
+              <Text style={styles.productsSubBarTitle}>السوق</Text>
               <TouchableOpacity
-                style={styles.floatingAddBtn}
+                style={styles.addProductBtn}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
                 activeOpacity={0.8}
               >
                 <Feather name="plus" size={13} color={C.accent} />
-                <Text style={styles.floatingAddBtnText}>إضافة منتج</Text>
+                <Text style={styles.addProductBtnText}>إضافة منتج</Text>
               </TouchableOpacity>
-            )}
+            </View>
+          )}
+
+          {/* ── Conditional list: Products (الرئيسية) OR Artisans (specialty tabs) ── */}
+          <View style={styles.listWrapper}>
             {activeCategory === "all" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
@@ -962,12 +966,23 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // ── Floating add-product button ──
-  floatingAddBtn: {
-    position: "absolute",
-    top: 10,
-    left: 15,
-    zIndex: 999,
+  // ── Products sub-header bar (fixed, pushes list down) ──
+  productsSubBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  productsSubBarTitle: {
+    fontSize: 15,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+  },
+  addProductBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
@@ -977,13 +992,8 @@ const styles = StyleSheet.create({
     borderColor: C.accent,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  floatingAddBtnText: {
+  addProductBtnText: {
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
     color: C.accent,
@@ -1005,12 +1015,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
   },
   ordersBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  addProductBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: C.primary, borderRadius: 10,
-    paddingHorizontal: 11, paddingVertical: 6,
-  },
-  addProductBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: "#FFF" },
 
   // ── Product cards ──
   productsContent: { paddingTop: 12 },

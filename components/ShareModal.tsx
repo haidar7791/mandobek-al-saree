@@ -94,7 +94,10 @@ export function ShareModal({
   // ── External share (native sheet) ──────────────────────────────────────────
   const handleExternalShare = async () => {
     try {
-      const deepLink = deepLinkPath ? `\n🔗 forus://${deepLinkPath}` : "";
+      // Use a universal https URL so WhatsApp / Telegram render it as a
+      // tappable hyperlink. When the domain later supports Universal Links /
+      // App Links, this same URL will also open the app directly.
+      const deepLink = deepLinkPath ? `\n🔗 https://forus.app/${deepLinkPath}` : "";
       await Share.share({ message: shareText + deepLink, title });
     } catch {
       // user cancelled or not supported — silently ignore
