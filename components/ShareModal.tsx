@@ -94,11 +94,13 @@ export function ShareModal({
   // ── External share (native sheet) ──────────────────────────────────────────
   const handleExternalShare = async () => {
     try {
-      // Use a universal https URL so WhatsApp / Telegram render it as a
-      // tappable hyperlink. When the domain later supports Universal Links /
-      // App Links, this same URL will also open the app directly.
-      const deepLink = deepLinkPath ? `\n🔗 https://forus.app/${deepLinkPath}` : "";
-      await Share.share({ message: shareText + deepLink, title });
+      // Send the registered app scheme first so tapping the message opens the
+      // installed app directly. Keep an HTTPS fallback for recipients who do
+      // not have the app installed yet.
+      const shareLinks = deepLinkPath
+        ? `\n\n🔗 افتح في تطبيق فورس: forus://${deepLinkPath}\n📲 لا تملك التطبيق؟ حمّله وافتح الرابط من هنا: https://forus.app/${deepLinkPath}`
+        : "";
+      await Share.share({ message: shareText + shareLinks, title });
     } catch {
       // user cancelled or not supported — silently ignore
     }

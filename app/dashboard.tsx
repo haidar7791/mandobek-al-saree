@@ -625,7 +625,7 @@ export default function DashboardScreen() {
               <FlatList
                 data={sortedProducts}
                 keyExtractor={(p) => p.id}
-                contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+                contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item: product }) => {
@@ -969,8 +969,8 @@ const styles = StyleSheet.create({
   productsSubBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-    paddingHorizontal: 16,
+    justifyContent: "flex-start",
+    paddingHorizontal: 0,
     paddingVertical: 9,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
@@ -1012,9 +1012,10 @@ const styles = StyleSheet.create({
 
   // ── Product cards ──
   productsContent: { paddingTop: 12 },
+  productListContent: { paddingHorizontal: 0 },
   productCard: {
-    marginHorizontal: 12, marginBottom: 14,
-    backgroundColor: C.card, borderRadius: 16, overflow: "hidden",
+    marginHorizontal: 2, marginBottom: 12,
+    backgroundColor: C.card, borderRadius: 6, overflow: "hidden",
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.10, shadowRadius: 10, elevation: 4,
   },

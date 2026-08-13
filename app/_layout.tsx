@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
@@ -43,6 +43,8 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="profile" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="artisan-profile" />
+        <Stack.Screen name="user-profile" />
+        <Stack.Screen name="product/[id]" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="reservations" />
@@ -59,6 +61,8 @@ export default function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
+  const pendingDeepLink = useRef<string | null>(null);
+  const handledDeepLink = useRef<string | null>(null);
   // Catches async errors from Firebase / network that can't be caught by the
   // class-based ErrorBoundary (which only intercepts render-phase throws).
   const [fatalError, setFatalError] = useState<Error | null>(null);
@@ -137,25 +141,40 @@ export default function RootLayout() {
   }, [fontsReady, authChecked]);
 
   // ── Deep-link handler ──────────────────────────────────────────────────────
-  // Only navigate after auth is confirmed and the user is logged in, so the
-  // protected stack is already mounted and router.push works correctly.
+  // Keep the link while auth is loading or the user is logged out. This lets a
+  // user tap a shared link first, sign in, and still land on the requested
+  // product/profile once the protected stack is mounted.
   useEffect(() => {
-    if (!authChecked || !isLoggedIn) return;
+    if (!authChecked) return;
 
     const navigate = (url: string) => {
       if (!url.startsWith("forus://")) return;
-      const withoutScheme = url.replace(/^forus:\/\//, "");
-      const [type, id] = withoutScheme.split("/");
-      if (!id) return;
-      if (type === "profile") {
-        router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
-      } else if (type === "user") {
-        router.push({ pathname: "/user-profile", params: { userId: id } } as any);
-      } else if (type === "product") {
-        // No dedicated product screen — navigate to the marketplace
-        router.push("/dashboard" as any);
+      if (!isLoggedIn) {
+        pendingDeepLink.current = url;
+        return;
       }
+      if (handledDeepLink.current === url) return;
+      handledDeepLink.current = url;
+
+        const withoutScheme = url.replace(/^forus:\/\//, "");
+        const [type, rawId] = withoutScheme.split("/");
+        const id = rawId ? decodeURIComponent(rawId.split("?")[0]) : "";
+        if (!id) return;
+
+        if (type === "profile") {
+          router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
+        } else if (type === "user") {
+          router.push({ pathname: "/user-profile", params: { userId: id } } as any);
+        } else if (type === "product") {
+          router.push({ pathname: "/product/[id]", params: { id } } as any);
+        }
     };
+
+    if (isLoggedIn && pendingDeepLink.current) {
+      const url = pendingDeepLink.current;
+      pendingDeepLink.current = null;
+      navigate(url);
+    }
 
     // Cold-start: app was launched via a deep link
     Linking.getInitialURL().then((url) => { if (url) navigate(url); }).catch(() => {});
