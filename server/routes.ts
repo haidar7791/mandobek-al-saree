@@ -193,7 +193,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Generates a 6-digit OTP, stores it for 5 minutes, and sends it via UltraMsg.
    */
   app.post("/api/send-whatsapp-otp", async (req: Request, res: Response) => {
-    const { phone, forRegistration } = req.body as { phone?: string; forRegistration?: boolean };
+    res.status(410).json({
+      ok: false,
+      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
+    });
+    return;
+    const { phone, forRegistration } = req.body as { phone: string; forRegistration?: boolean };
     if (!phone) {
       res.status(400).json({ error: "phone is required" });
       return;
@@ -302,8 +307,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Validates the OTP, then gets-or-creates a Firebase Auth user and returns a custom token.
    */
   app.post("/api/verify-whatsapp-otp", async (req: Request, res: Response) => {
+    res.status(410).json({
+      ok: false,
+      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
+    });
+    return;
     const { phone, code, password, forRegistration } = req.body as {
-      phone?: string; code?: string; password?: string; forRegistration?: boolean;
+      phone: string; code: string; password?: string; forRegistration?: boolean;
     };
     if (!phone || !code) {
       res.status(400).json({ error: "phone and code are required" });
@@ -311,7 +321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const e164  = toE164Server(phone);
-    const entry = otpStore.get(e164);
+    const entry = otpStore.get(e164)!;
 
     if (!entry) {
       res.status(400).json({ error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
@@ -337,7 +347,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fake-email used for password-based login compatibility (matches client toFirebaseEmail)
       const rawLocal  = e164ToIraqiLocal(e164); // 07xxxxxxxx
       const fakeEmail = `${rawLocal}@sanad.app`;
-      const safePass  = password && password.length >= 6 ? password : undefined;
+      const passwordValue: string = String(password ?? "");
+      const safePass  = passwordValue.length >= 6 ? passwordValue : undefined;
 
       let uid: string;
       try {
@@ -381,13 +392,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Used by the profile screen to verify a new phone number before persisting it.
    */
   app.post("/api/verify-otp-only", async (req: Request, res: Response) => {
-    const { phone, code } = req.body as { phone?: string; code?: string };
+    res.status(410).json({
+      ok: false,
+      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
+    });
+    return;
+    const { phone, code } = req.body as { phone: string; code: string };
     if (!phone || !code) {
       res.status(400).json({ ok: false, error: "phone and code are required" });
       return;
     }
     const e164  = toE164Server(phone);
-    const entry = otpStore.get(e164);
+    const entry = otpStore.get(e164)!;
     if (!entry) {
       res.status(400).json({ ok: false, error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
       return;
@@ -727,6 +743,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const trimmed = identifier.trim();
     const isPhone = /^[\d\+]/.test(trimmed) && !trimmed.includes("@");
+
+    if (isPhone) {
+      res.status(410).json({
+        ok: false,
+        error: "تم إيقاف إعادة تعيين الهاتف عبر الخادم — استخدم Firebase Phone Auth داخل التطبيق",
+      });
+      return;
+    }
 
     try {
       const admin = await getAdminApp();

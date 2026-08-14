@@ -25,8 +25,11 @@ import Animated, {
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import Constants from "expo-constants";
 import { auth } from "@/lib/firebase";
+import { linkWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
+import FirebaseRecaptcha, {
+  type FirebaseRecaptchaHandle,
+} from "@/components/FirebaseRecaptcha";
 import { performSignOut } from "@/lib/push_notifications";
 import {
   getBalance,
@@ -47,58 +50,15 @@ const SCREEN_W = Dimensions.get("window").width;
 // Portfolio images are full-width with a 4:3 aspect ratio
 const PORTFOLIO_IMG_H = Math.round((SCREEN_W - 18 * 2) * 0.75);
 
-// ─── Backend URL helpers (same logic as register.tsx) ────────────────────────
-const CLOUD_RUN_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app/";
-const REPLIT_BACKEND_HOST =
-  "7ad1563a-fd03-4049-b8e0-44592245fa3b-00-124n16ica1aqg.pike.replit.dev";
-
-function getServerUrl(): string {
-  const explicitUrl = process.env.EXPO_PUBLIC_SERVER_URL;
-  if (
-    typeof explicitUrl === "string" &&
-    explicitUrl.startsWith("https://") &&
-    !explicitUrl.includes("localhost") &&
-    !explicitUrl.includes("127.0.0.1")
-  ) {
-    return explicitUrl.endsWith("/") ? explicitUrl : explicitUrl + "/";
-  }
-  function withPort5000(raw: string): string {
-    const noProto = raw.replace(/^https?:\/\//, "");
-    const noPort = noProto.replace(/:\d+\/?$/, "").replace(/\/$/, "");
-    if (noPort.endsWith(".run.app")) return `https://${noPort}/`;
-    return `https://${noPort}:5000/`;
-  }
-  const bakedDomain: unknown = (Constants.expoConfig as any)?.extra?.replitDomain;
-  if (typeof bakedDomain === "string" && bakedDomain.length > 0) {
-    return withPort5000(bakedDomain);
-  }
-  const envDomain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (typeof envDomain === "string" && envDomain.length > 0) {
-    return withPort5000(envDomain);
-  }
-  if (typeof window !== "undefined" && window.location?.hostname) {
-    const h = window.location.hostname;
-    if (h !== "localhost" && h !== "127.0.0.1") return withPort5000(h);
-  }
-  return withPort5000(REPLIT_BACKEND_HOST);
-}
-
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 
-/**
- * Safe JSON parser: checks Content-Type before calling .json() so a stray
- * HTML error page never causes "JSON Parse error" in the UI.
- */
-async function safeJson(r: Response): Promise<any> {
-  const ct = r.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) {
-    const text = await r.text().catch(() => "");
-    throw new Error(
-      `خطأ في الاتصال بالخادم (${r.status})` +
-      (text ? `: ${text.slice(0, 120)}` : "")
-    );
-  }
-  return r.json();
+function toE164(phone: string): string {
+  const digits = phone.trim().replace(/\D/g, "");
+  if (digits.startsWith("00964")) return `+${digits.slice(2)}`;
+  if (digits.startsWith("964")) return `+${digits}`;
+  if (digits.startsWith("07")) return `+964${digits.slice(1)}`;
+  if (digits.startsWith("7")) return `+964${digits}`;
+  return `+964${digits}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -132,7 +92,10 @@ export default function ProfileScreen() {
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [phoneVerifiedInSession, setPhoneVerifiedInSession] = useState(false);
+  const [phoneConfirmation, setPhoneConfirmation] =
+    useState<ConfirmationResult | null>(null);
   const [saving, setSaving] = useState(false);
+  const recaptchaRef = React.useRef<FirebaseRecaptchaHandle>(null);
 
   const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -300,6 +263,7 @@ export default function ProfileScreen() {
     setOtpModalVisible(false);
     setOtpCode("");
     setPhoneVerifiedInSession(false);
+    setPhoneConfirmation(null);
     setEditModalVisible(true);
   };
 
@@ -314,18 +278,22 @@ export default function ProfileScreen() {
     }
     setSendingOtp(true);
     try {
-      const r = await fetch(`${getServerUrl()}api/send-whatsapp-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: trimmed, forRegistration: false }),
-      });
-      const d = await safeJson(r);
-      if (!r.ok || !d.ok) throw new Error(d.error || "فشل إرسال الرمز");
+      const currentUser = auth.currentUser;
+      const verifier = recaptchaRef.current?.verifier;
+      if (!currentUser || !verifier) {
+        throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
+      }
+      const confirmation = await linkWithPhoneNumber(
+        currentUser,
+        toE164(trimmed),
+        verifier,
+      );
+      setPhoneConfirmation(confirmation);
       setOtpCode("");
       setOtpModalVisible(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
-      Alert.alert("خطأ", err.message || "تعذّر إرسال رمز التحقق عبر الواتساب");
+      Alert.alert("خطأ", err.message || "تعذّر إرسال رمز التحقق عبر SMS");
     } finally {
       setSendingOtp(false);
     }
@@ -338,13 +306,8 @@ export default function ProfileScreen() {
     }
     setVerifyingOtp(true);
     try {
-      const r = await fetch(`${getServerUrl()}api/verify-otp-only`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: editPhone.trim(), code: otpCode.trim() }),
-      });
-      const d = await safeJson(r);
-      if (!r.ok || !d.ok) throw new Error(d.error || "الرمز غير صحيح");
+      if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
+      await phoneConfirmation.confirm(otpCode.trim());
       // Persist new phone + verified flag to Firestore immediately
       await setUserProfile(uid, {
         phone: editPhone.trim(),
@@ -355,6 +318,7 @@ export default function ProfileScreen() {
       setPhoneVerifiedInSession(true);
       setOtpModalVisible(false);
       setOtpCode("");
+      setPhoneConfirmation(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       Alert.alert("خطأ", err.message || "رمز التحقق غير صحيح");
@@ -634,6 +598,8 @@ export default function ProfileScreen() {
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <FirebaseRecaptcha ref={recaptchaRef} />
 
       {/* ══════════════════════════════════════════
           EDIT PROFILE MODAL
@@ -1027,11 +993,15 @@ export default function ProfileScreen() {
             <View style={styles.otpModalCard}>
               {/* Header */}
               <View style={styles.otpModalHeader}>
-                <MaterialCommunityIcons name="whatsapp" size={28} color="#25D366" />
+                <MaterialCommunityIcons
+                  name="message-text-outline"
+                  size={28}
+                  color={C.accent}
+                />
                 <Text style={styles.otpModalTitle}>أدخل رمز التحقق</Text>
               </View>
               <Text style={styles.otpModalSub}>
-                أُرسل إليك رمز مكوّن من 6 أرقام عبر الواتساب إلى{"\n"}
+                أُرسل إليك رمز مكوّن من 6 أرقام عبر SMS إلى{"\n"}
                 <Text style={styles.otpPhoneHighlight}>{editPhone}</Text>
               </Text>
 

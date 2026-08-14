@@ -22,9 +22,16 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import {
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithPhoneNumber,
   signInWithCustomToken,
+  type ConfirmationResult,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import FirebaseRecaptcha, {
+  type FirebaseRecaptchaHandle,
+} from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
   getCategoryForSpecialty,
@@ -137,6 +144,11 @@ function isValidContact(s: string): boolean {
   if (!t) return false;
   if (isPhoneInput(t)) return /[\d]{7,}/.test(t); // at least 7 digits
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t); // classic email regex
+}
+
+function toFirebaseEmail(contact: string): string {
+  const trimmed = contact.trim().toLowerCase();
+  return trimmed.includes("@") ? trimmed : `${trimmed}@sanad.app`;
 }
 
 /**
@@ -306,6 +318,7 @@ export default function RegisterScreen() {
   const [regOtpCode, setRegOtpCode] = useState("");
   const [regOtpSending, setRegOtpSending] = useState(false);
   const [regOtpVerifying, setRegOtpVerifying] = useState(false);
+  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
   const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
 
   // ── Email OTP flow ──
@@ -317,6 +330,7 @@ export default function RegisterScreen() {
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
+  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   // ── Explicit auth method toggle ──
   const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
@@ -363,33 +377,19 @@ export default function RegisterScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (authMethod === "phone") {
-      // ── Phone registration: send OTP via WhatsApp (UltraMsg) ──
+        // ── Phone registration: send OTP through Firebase Phone Auth ──
       setRegOtpSending(true);
       try {
         const location = await requestLocation();
         setSavedLocation(location);
-
-        const endpoint = `${getServerUrl()}api/send-whatsapp-otp`;
-        console.log("[OTP-Register] sending WhatsApp OTP to:", rawContact, "→", endpoint);
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: rawContact, forRegistration: true }),
-        });
-        const ct = res.headers.get("content-type") ?? "";
-        if (!ct.includes("application/json")) {
-          const text = await res.text();
-          console.error("[OTP-Register] non-JSON response:", text.slice(0, 300));
-          throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
-        }
-        const data = await res.json() as { ok?: boolean; error?: string };
-        console.log("[OTP-Register] server response:", data);
-
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error ?? "فشل إرسال رمز التحقق");
-        }
-
-        console.log("[OTP-Register] WhatsApp OTP sent ✓");
+          const verifier = recaptchaRef.current?.verifier;
+          if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
+          const confirmation = await signInWithPhoneNumber(
+            auth,
+            toE164(rawContact),
+            verifier,
+          );
+          setPhoneConfirmation(confirmation);
         setRegOtpCode("");
         setRegOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -437,7 +437,7 @@ export default function RegisterScreen() {
     }
   };
 
-  // ─── Verify WhatsApp OTP and complete registration ────────────────────────
+  // ─── Verify Firebase Phone OTP and complete registration ──────────────────
 
   const handleVerifyRegisterOtp = async () => {
     if (regOtpCode.length !== 6) return;
@@ -448,37 +448,27 @@ export default function RegisterScreen() {
 
     setRegOtpVerifying(true);
     try {
-      // 1. Verify OTP on server — returns a Firebase custom token
-      const endpoint = `${getServerUrl()}api/verify-whatsapp-otp`;
-      console.log("[OTP-Register] verifying WhatsApp OTP for", e164, "→", endpoint);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: rawContact, code: regOtpCode, password, forRegistration: true }),
-      });
-      const ct = res.headers.get("content-type") ?? "";
-      if (!ct.includes("application/json")) {
-        const text = await res.text();
-        console.error("[OTP-Register] non-JSON verify response:", text.slice(0, 300));
-        throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
-      }
-      const data = await res.json() as { ok?: boolean; customToken?: string; uid?: string; e164?: string; error?: string };
-      console.log("[OTP-Register] verify response:", { ok: data.ok, uid: data.uid });
-
-      if (!res.ok || !data.ok || !data.customToken) {
-        throw new Error(data.error ?? "الرمز غير صحيح أو منتهي الصلاحية");
-      }
-
-      // 2. Sign in to Firebase with the custom token
-      const credential = await signInWithCustomToken(auth, data.customToken);
+      if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
+      const credential = await phoneConfirmation.confirm(regOtpCode);
       const uid = credential.user.uid;
-      console.log("[OTP-Register] signed in with custom token, uid:", uid);
 
-      // 3. Create Firestore user document (category + isAvailable saved inside ensureUserDocument)
+      // Preserve the app's existing phone-to-email login compatibility by
+      // linking a real password provider after Phone Auth confirms the number.
+      try {
+        await linkWithCredential(
+          credential.user,
+          EmailAuthProvider.credential(toFirebaseEmail(rawContact), password),
+        );
+      } catch (linkErr: any) {
+        if (linkErr?.code !== "auth/provider-already-linked") throw linkErr;
+      }
+
+      // Create Firestore user document after the phone identity is confirmed.
       await ensureUserDocument(uid, e164, role, {
         name: trimmedName,
         specialty,
         location: savedLocation,
+        phone: rawContact,
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -664,16 +654,16 @@ export default function RegisterScreen() {
               onSubmitEditing={handleRegister}
             />
 
-            {/* Note: WhatsApp OTP for phone, Email OTP for email */}
+            {/* Firebase SMS OTP for phone, Email OTP for email */}
             <View style={styles.phoneNote}>
               <Ionicons
-                name={isPhone ? "logo-whatsapp" : "mail-outline"}
+                name={isPhone ? "phone-portrait-outline" : "mail-outline"}
                 size={16}
                 color={C.accent}
               />
               <Text style={styles.phoneNoteText}>
                 {isPhone
-                  ? "سيتم إرسال رمز تحقق إلى رقمك عبر واتساب"
+                  ? "سيتم إرسال رمز تحقق SMS إلى رقمك عبر Firebase"
                   : "سيتم إرسال رمز تحقق إلى بريدك الإلكتروني"}
               </Text>
             </View>
@@ -761,7 +751,9 @@ export default function RegisterScreen() {
         </View>
       </Modal>
 
-      {/* ── OTP modal: WhatsApp (phone) ── */}
+      {isPhone && <FirebaseRecaptcha ref={recaptchaRef} />}
+
+      {/* ── OTP modal: Firebase SMS (phone) ── */}
       <Modal
         visible={regOtpStep === "otp"}
         transparent
@@ -773,15 +765,14 @@ export default function RegisterScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconCircle}>
-                <Ionicons name="logo-whatsapp" size={22} color={C.accent} />
+                <Ionicons name="phone-portrait-outline" size={22} color={C.accent} />
               </View>
-              <Text style={styles.modalTitle}>رمز التحقق — واتساب</Text>
+              <Text style={styles.modalTitle}>رمز التحقق — SMS</Text>
             </View>
 
             <Text style={styles.modalDesc}>
-              أُرسل رمز مكون من 6 أرقام عبر{" "}
-              <Text style={styles.modalPhoneHighlight}>واتساب</Text>
-              {" "}إلى{"\n"}
+              أُرسل رمز مكون من 6 أرقام عبر رسالة SMS إلى{" "}
+              {"\n"}
               <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
             </Text>
 

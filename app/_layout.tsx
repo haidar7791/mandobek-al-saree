@@ -14,6 +14,7 @@ import { configurePushHandler, registerForPushNotifications } from "@/lib/push_n
 import { NetworkProvider } from "@/lib/network";
 import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
+import { isAuthRoutingSuspended } from "@/lib/auth_flow";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -98,6 +99,10 @@ export default function RootLayout() {
     try {
       unsub = onAuthStateChanged(auth, (user) => {
         try {
+          if (isAuthRoutingSuspended()) {
+            setAuthChecked(true);
+            return;
+          }
           setIsLoggedIn(!!user);
           setUid(user?.uid ?? null);
           setAuthChecked(true);

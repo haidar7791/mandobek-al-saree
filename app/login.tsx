@@ -25,10 +25,25 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithEmailAndPassword,
+  signInWithPhoneNumber,
+  signOut,
+  updatePassword,
+  type ConfirmationResult,
+} from "firebase/auth";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
+import FirebaseRecaptcha, {
+  type FirebaseRecaptchaHandle,
+} from "@/components/FirebaseRecaptcha";
+import {
+  resumeAuthRouting,
+  suspendAuthRouting,
+} from "@/lib/auth_flow";
 import Colors from "@/constants/colors";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -251,6 +266,17 @@ export default function LoginScreen() {
   const [forgotModalVisible, setForgotModalVisible] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState("");
   const [forgotSending, setForgotSending] = useState(false);
+  const [forgotPhoneConfirmation, setForgotPhoneConfirmation] =
+    useState<ConfirmationResult | null>(null);
+  const [forgotOtpCode, setForgotOtpCode] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotStep, setForgotStep] = useState<"identifier" | "otp" | "password">(
+    "identifier",
+  );
+  const [forgotVerifying, setForgotVerifying] = useState(false);
+  const [forgotPasswordSaving, setForgotPasswordSaving] = useState(false);
+  const forgotRecaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   // ── Biometric ──
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -375,10 +401,14 @@ export default function LoginScreen() {
   // ─── Forgot password — opens modal ────────────────────────────────────────
   const handleForgotPassword = () => {
     setForgotIdentifier(contact.trim());
+    setForgotStep("identifier");
+    setForgotOtpCode("");
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
     setForgotModalVisible(true);
   };
 
-  // ─── Forgot password — submit identifier to backend ───────────────────────
+  // ─── Forgot password — Firebase Phone Auth or existing email flow ─────────
   const handleForgotPasswordSubmit = async () => {
     const id = forgotIdentifier.trim();
     if (!id) {
@@ -387,6 +417,22 @@ export default function LoginScreen() {
     }
     setForgotSending(true);
     try {
+      if (isPhoneInput(id)) {
+        const verifier = forgotRecaptchaRef.current?.verifier;
+        if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
+        suspendAuthRouting();
+        const confirmation = await signInWithPhoneNumber(
+          auth,
+          toE164(id),
+          verifier,
+        );
+        setForgotPhoneConfirmation(confirmation);
+        setForgotOtpCode("");
+        setForgotStep("otp");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
+
       const res = await fetch(`${BACKEND_BASE}/api/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -400,17 +446,94 @@ export default function LoginScreen() {
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setForgotModalVisible(false);
-      const via = /^[\d\+]/.test(id) && !id.includes("@") ? "واتساب" : "البريد الإلكتروني";
+      const via = "البريد الإلكتروني";
       Alert.alert(
         "تم الإرسال ✓",
         `تم إرسال رابط إعادة التعيين إلى ${via} — تحقق من الوارد وافتح الرابط خلال 15 دقيقة`
       );
     } catch {
+      resumeAuthRouting();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert("خطأ", "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
       setForgotSending(false);
     }
+  };
+
+  const handleForgotPhoneOtp = async () => {
+    if (!forgotPhoneConfirmation || forgotOtpCode.length !== 6) return;
+    setForgotVerifying(true);
+    try {
+      await forgotPhoneConfirmation.confirm(forgotOtpCode);
+      setForgotStep("password");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("خطأ", err?.message ?? "رمز التحقق غير صحيح أو منتهي الصلاحية");
+    } finally {
+      setForgotVerifying(false);
+    }
+  };
+
+  const handleForgotPasswordSave = async () => {
+    if (forgotNewPassword.length < 6) {
+      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      Alert.alert("خطأ", "كلمتا المرور غير متطابقتين");
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("خطأ", "انتهت جلسة التحقق، أعد المحاولة");
+      return;
+    }
+
+    setForgotPasswordSaving(true);
+    try {
+      const hasPasswordProvider = user.providerData.some(
+        (provider) => provider.providerId === "password",
+      );
+      if (hasPasswordProvider) {
+        await updatePassword(user, forgotNewPassword);
+      } else {
+        await linkWithCredential(
+          user,
+          EmailAuthProvider.credential(toFirebaseEmail(forgotIdentifier), forgotNewPassword),
+        );
+      }
+
+      await signOut(auth);
+      resumeAuthRouting();
+      setForgotModalVisible(false);
+      setForgotStep("identifier");
+      setForgotPhoneConfirmation(null);
+      setForgotOtpCode("");
+      setForgotNewPassword("");
+      setForgotConfirmPassword("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("تم التحديث ✓", "تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.");
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("خطأ", err?.message ?? "تعذّر تحديث كلمة المرور");
+    } finally {
+      setForgotPasswordSaving(false);
+    }
+  };
+
+  const closeForgotModal = async () => {
+    if (forgotStep !== "identifier" && auth.currentUser) {
+      await signOut(auth).catch(() => {});
+    }
+    resumeAuthRouting();
+    setForgotModalVisible(false);
+    setForgotStep("identifier");
+    setForgotPhoneConfirmation(null);
+    setForgotOtpCode("");
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
   };
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -542,76 +665,151 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      <FirebaseRecaptcha ref={forgotRecaptchaRef} />
+
       {/* ── Forgot password modal ── */}
       <Modal
         visible={forgotModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setForgotModalVisible(false)}
+        onRequestClose={closeForgotModal}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setForgotModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={closeForgotModal}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeader}>
               <View style={styles.modalIconCircle}>
                 <Feather name="lock" size={22} color={C.accent} />
               </View>
-              <Text style={styles.modalTitle}>نسيت كلمة المرور؟</Text>
+              <Text style={styles.modalTitle}>
+                {forgotStep === "identifier"
+                  ? "نسيت كلمة المرور؟"
+                  : forgotStep === "otp"
+                    ? "رمز التحقق — SMS"
+                    : "كلمة مرور جديدة"}
+              </Text>
             </View>
 
-            <Text style={styles.modalDesc}>
-              أدخل رقم هاتفك أو بريدك الإلكتروني المسجّل وسنرسل لك رابط إعادة التعيين
-            </Text>
+            {forgotStep === "identifier" && (
+              <>
+                <Text style={styles.modalDesc}>
+                  أدخل رقم هاتفك لإرسال رمز SMS عبر Firebase، أو بريدك الإلكتروني لإرسال رابط التعيين
+                </Text>
+                <View style={[styles.inputRow, { marginTop: 4 }]}>
+                  <View style={styles.inputIcon}>
+                    <Feather name="user" size={18} color={C.textSecondary} />
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="07xxxxxxxxxx أو example@email.com"
+                    placeholderTextColor={C.textMuted}
+                    value={forgotIdentifier}
+                    onChangeText={setForgotIdentifier}
+                    keyboardType="default"
+                    textAlign="right"
+                    autoCapitalize="none"
+                    autoFocus
+                    returnKeyType="send"
+                    onSubmitEditing={handleForgotPasswordSubmit}
+                  />
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={closeForgotModal}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modalCancelText}>إلغاء</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalSendBtn, forgotSending && styles.btnDisabled]}
+                    onPress={handleForgotPasswordSubmit}
+                    activeOpacity={0.8}
+                    disabled={forgotSending}
+                  >
+                    <LinearGradient
+                      colors={[C.accent, C.accentLight]}
+                      style={styles.modalSendGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      {forgotSending ? (
+                        <ActivityIndicator size="small" color={C.primary} />
+                      ) : (
+                        <>
+                          <Text style={styles.modalSendText}>إرسال رمز التحقق</Text>
+                          <Feather name="send" size={15} color={C.primary} />
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
 
-            <View style={[styles.inputRow, { marginTop: 4 }]}>
-              <View style={styles.inputIcon}>
-                <Feather name="user" size={18} color={C.textSecondary} />
-              </View>
-              <TextInput
-                style={styles.input}
-                placeholder="07xxxxxxxxxx أو example@email.com"
-                placeholderTextColor={C.textMuted}
-                value={forgotIdentifier}
-                onChangeText={setForgotIdentifier}
-                keyboardType="default"
-                textAlign="right"
-                autoCapitalize="none"
-                autoFocus
-                returnKeyType="send"
-                onSubmitEditing={handleForgotPasswordSubmit}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setForgotModalVisible(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>إلغاء</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalSendBtn, forgotSending && styles.btnDisabled]}
-                onPress={handleForgotPasswordSubmit}
-                activeOpacity={0.8}
-                disabled={forgotSending}
-              >
-                <LinearGradient
-                  colors={[C.accent, C.accentLight]}
-                  style={styles.modalSendGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+            {forgotStep === "otp" && (
+              <>
+                <Text style={styles.modalDesc}>
+                  أُرسل رمز مكوّن من 6 أرقام عبر SMS إلى{"\n"}
+                  <Text style={styles.modalPhoneHighlight}>{toE164(forgotIdentifier)}</Text>
+                </Text>
+                <OtpInput value={forgotOtpCode} onChange={setForgotOtpCode} />
+                <TouchableOpacity
+                  style={[styles.modalSendBtn, (forgotVerifying || forgotOtpCode.length !== 6) && styles.btnDisabled]}
+                  onPress={handleForgotPhoneOtp}
+                  disabled={forgotVerifying || forgotOtpCode.length !== 6}
+                  activeOpacity={0.8}
                 >
-                  {forgotSending ? (
-                    <ActivityIndicator size="small" color={C.primary} />
-                  ) : (
-                    <>
-                      <Text style={styles.modalSendText}>إرسال الرابط</Text>
-                      <Feather name="send" size={15} color={C.primary} />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient}>
+                    {forgotVerifying ? (
+                      <ActivityIndicator size="small" color={C.primary} />
+                    ) : (
+                      <Text style={styles.modalSendText}>تأكيد الرمز</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={closeForgotModal}>
+                  <Text style={styles.modalCancelText}>إلغاء</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {forgotStep === "password" && (
+              <>
+                <Text style={styles.modalDesc}>اكتب كلمة المرور الجديدة لحسابك</Text>
+                <InputField
+                  label="كلمة المرور الجديدة"
+                  placeholder="6 أحرف على الأقل"
+                  value={forgotNewPassword}
+                  onChangeText={setForgotNewPassword}
+                  icon={<Feather name="lock" size={18} color={C.textSecondary} />}
+                  secureTextEntry
+                />
+                <InputField
+                  label="تأكيد كلمة المرور"
+                  placeholder="أعد إدخال كلمة المرور"
+                  value={forgotConfirmPassword}
+                  onChangeText={setForgotConfirmPassword}
+                  icon={<Feather name="check-circle" size={18} color={C.textSecondary} />}
+                  secureTextEntry
+                  returnKeyType="done"
+                  onSubmitEditing={handleForgotPasswordSave}
+                />
+                <TouchableOpacity
+                  style={[styles.modalSendBtn, forgotPasswordSaving && styles.btnDisabled]}
+                  onPress={handleForgotPasswordSave}
+                  disabled={forgotPasswordSaving}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient}>
+                    {forgotPasswordSaving ? (
+                      <ActivityIndicator size="small" color={C.primary} />
+                    ) : (
+                      <Text style={styles.modalSendText}>حفظ كلمة المرور</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
