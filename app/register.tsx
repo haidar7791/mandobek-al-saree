@@ -160,7 +160,7 @@ function toFirebaseEmail(contact: string): string {
  *   7xxxxxxxx                              → +9647xxxxxxxx
  */
 function toE164(phone: string): string {
-  const t = phone.trim().replace(/[\s\-()+]/g, "");
+  const t = phone.trim().replace(/[^\d]/g, "");
 
   if (t.startsWith("00964")) {
     const rest = t.slice(5);
@@ -174,6 +174,14 @@ function toE164(phone: string): string {
   if (t.startsWith("0"))  return "+964" + t.slice(1);
   if (t.startsWith("7"))  return "+964" + t;
   return "+964" + t;
+}
+
+function requireIraqiMobileE164(phone: string): string {
+  const normalized = toE164(phone);
+  if (!/^\+9647\d{9}$/.test(normalized)) {
+    throw new Error("يرجى إدخال رقم هاتف عراقي محمول صحيح بصيغة +9647xxxxxxxxx");
+  }
+  return normalized;
 }
 
 
@@ -387,7 +395,7 @@ export default function RegisterScreen() {
           if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
           const confirmation = await signInWithPhoneNumber(
             auth,
-            toE164(rawContact),
+            requireIraqiMobileE164(rawContact),
             verifier,
           );
           setPhoneConfirmation(confirmation);

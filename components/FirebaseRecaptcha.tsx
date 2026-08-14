@@ -58,6 +58,9 @@ export function getPhoneAuthErrorMessage(error: unknown): string {
       return "تعذّر إكمال التحقق الأمني، يرجى المحاولة مجدداً";
     case "auth/network-request-failed":
       return "تعذّر الاتصال بالخادم، تحقق من الإنترنت وأعد المحاولة";
+    case "auth/internal-error":
+    case "auth/invalid-app-credential":
+      return "تعذّر الاتصال بخدمة المصادقة، أعد المحاولة بعد لحظات";
     case "auth/operation-not-allowed":
       return "تسجيل الدخول برقم الهاتف غير مفعّل حالياً";
     case "auth/phone-number-already-exists":
