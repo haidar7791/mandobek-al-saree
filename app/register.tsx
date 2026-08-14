@@ -31,6 +31,7 @@ import {
 import { auth } from "@/lib/firebase";
 import FirebaseRecaptcha, {
   type FirebaseRecaptchaHandle,
+  getPhoneAuthErrorMessage,
 } from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
@@ -396,7 +397,7 @@ export default function RegisterScreen() {
       } catch (err: any) {
         console.error("[OTP-Register] send error:", err?.message ?? err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
+        Alert.alert("خطأ", getPhoneAuthErrorMessage(err));
       } finally {
         setRegOtpSending(false);
       }

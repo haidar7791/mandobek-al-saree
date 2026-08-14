@@ -36,6 +36,42 @@ export interface FirebaseRecaptchaHandle {
   readonly verifier: ApplicationVerifier;
 }
 
+/**
+ * Firebase's internal phone-auth flow uses this private method when it needs
+ * to reset a reCAPTCHA after a failed attempt. The public ApplicationVerifier
+ * type does not expose it, but the Web SDK expects it to exist at runtime.
+ */
+export function getPhoneAuthErrorMessage(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+
+  switch (code) {
+    case "auth/invalid-phone-number":
+      return "رقم الهاتف غير صحيح، يرجى التحقق منه والمحاولة مجدداً";
+    case "auth/too-many-requests":
+      return "تم تجاوز عدد المحاولات المسموح، يرجى الانتظار والمحاولة لاحقاً";
+    case "auth/quota-exceeded":
+      return "تم تجاوز حد إرسال الرسائل مؤقتاً، يرجى المحاولة لاحقاً";
+    case "auth/captcha-check-failed":
+    case "auth/missing-recaptcha-token":
+      return "تعذّر إكمال التحقق الأمني، يرجى المحاولة مجدداً";
+    case "auth/network-request-failed":
+      return "تعذّر الاتصال بالخادم، تحقق من الإنترنت وأعد المحاولة";
+    case "auth/operation-not-allowed":
+      return "تسجيل الدخول برقم الهاتف غير مفعّل حالياً";
+    case "auth/phone-number-already-exists":
+      return "رقم الهاتف مستخدم مسبقاً";
+    default: {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("verifier") || message.includes("_reset")) {
+        return "تعذّر تجهيز التحقق الأمني، أعد المحاولة";
+      }
+      return message || "تعذّر إرسال رمز التحقق، يرجى المحاولة مجدداً";
+    }
+  }
+}
+
 // ─── Internal verifier class ──────────────────────────────────────────────────
 
 class WebViewRecaptchaVerifier implements ApplicationVerifier {
@@ -115,6 +151,15 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
     this._reject = null;
     this._cachedToken = null;
     this._cachedError = null;
+  }
+
+  /**
+   * Firebase Auth calls ApplicationVerifier._reset() internally after an
+   * unsuccessful phone-auth attempt. Keep this compatibility method in sync
+   * with the public reset implementation instead of letting that call crash.
+   */
+  _reset() {
+    this.reset();
   }
 }
 

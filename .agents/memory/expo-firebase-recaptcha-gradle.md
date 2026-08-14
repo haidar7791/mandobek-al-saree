@@ -20,3 +20,5 @@ compat SDK from CDN, bound to this Firebase project's config/site key) and retur
 token wrapped as `{ type: "recaptcha", verify: () => Promise<string> }`, which can be passed
 directly to `linkWithPhoneNumber`/`signInWithPhoneNumber`. This avoids any native module or
 Gradle dependency. Do not reintroduce `expo-firebase-recaptcha` or `expo-firebase-core`.
+
+Firebase Auth may call the private `_reset()` hook on an `ApplicationVerifier` after a failed phone-auth attempt. A custom verifier must expose `_reset()` as a safe alias to its state reset method; implementing only `reset()` causes a runtime crash during retries.

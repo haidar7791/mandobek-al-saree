@@ -39,6 +39,7 @@ import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
 import FirebaseRecaptcha, {
   type FirebaseRecaptchaHandle,
+  getPhoneAuthErrorMessage,
 } from "@/components/FirebaseRecaptcha";
 import {
   resumeAuthRouting,
@@ -451,10 +452,12 @@ export default function LoginScreen() {
         "تم الإرسال ✓",
         `تم إرسال رابط إعادة التعيين إلى ${via} — تحقق من الوارد وافتح الرابط خلال 15 دقيقة`
       );
-    } catch {
+    } catch (err: any) {
       resumeAuthRouting();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
+      Alert.alert("خطأ", isPhoneInput(id)
+        ? getPhoneAuthErrorMessage(err)
+        : "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
       setForgotSending(false);
     }
