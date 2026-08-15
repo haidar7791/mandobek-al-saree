@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   FlatList,
   Image,
@@ -10,7 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Video, ResizeMode } from "expo-av";
+import { Video, ResizeMode, VideoFullscreenUpdate } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import type { ProductMedia } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -42,10 +42,22 @@ export default function ProductMediaCarousel({
   onMediaPress,
 }: ProductMediaCarouselProps) {
   const listRef = useRef<FlatList<ProductMedia>>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const videoRefs = useRef<Record<number, Video | null>>({});
+  const [slideWidth, setSlideWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
-  const itemWidth = containerWidth || 1;
-  const dotItems = useMemo(() => media.slice(0, 8), [media]);
+  const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
+  const itemWidth = slideWidth || 1;
+
+  const toggleFullscreen = async (index: number) => {
+    const video = videoRefs.current[index];
+    if (!video) return;
+
+    if (fullscreenIndex === index) {
+      await video.dismissFullscreenPlayer();
+    } else {
+      await video.presentFullscreenPlayer();
+    }
+  };
 
   if (media.length === 0) {
     return (
@@ -59,13 +71,24 @@ export default function ProductMediaCarousel({
     const content =
       item.type === "video" ? (
         <Video
+          ref={(video) => {
+            videoRefs.current[index] = video;
+          }}
           source={{ uri: item.url }}
           style={{ width: itemWidth, height }}
-          resizeMode={ResizeMode.COVER}
+          resizeMode={ResizeMode.CONTAIN}
           shouldPlay={activeIndex === index}
           isLooping
-          isMuted
+          isMuted={false}
           useNativeControls={false}
+          onFullscreenUpdate={({ fullscreenUpdate }) => {
+            if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_DID_PRESENT) {
+              setFullscreenIndex(index);
+            }
+            if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_DID_DISMISS) {
+              setFullscreenIndex(null);
+            }
+          }}
         />
       ) : (
         <Image source={{ uri: item.url }} style={{ width: itemWidth, height }} resizeMode="cover" />
@@ -81,9 +104,28 @@ export default function ProductMediaCarousel({
           content
         )}
         {item.type === "video" && (
-          <View pointerEvents="none" style={styles.videoBadge}>
-            <Ionicons name="play" size={12} color="#FFF" />
-          </View>
+          <>
+            <View pointerEvents="none" style={styles.videoBadge}>
+              <Ionicons name="volume-high" size={13} color="#FFF" />
+            </View>
+            <Pressable
+              style={styles.fullscreenButton}
+              onPress={() => void toggleFullscreen(index)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={
+                fullscreenIndex === index
+                  ? "إغلاق ملء الشاشة"
+                  : "فتح الفيديو بملء الشاشة"
+              }
+            >
+              <Ionicons
+                name={fullscreenIndex === index ? "contract-outline" : "expand-outline"}
+                size={18}
+                color="#FFF"
+              />
+            </Pressable>
+          </>
         )}
       </View>
     );
@@ -92,7 +134,7 @@ export default function ProductMediaCarousel({
   return (
     <View
       style={[styles.container, { height }, style]}
-      onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
+      onLayout={(event) => setSlideWidth(event.nativeEvent.layout.width)}
     >
       <FlatList
         ref={listRef}
@@ -103,8 +145,10 @@ export default function ProductMediaCarousel({
         keyExtractor={(item, index) => `${item.url}-${index}`}
         renderItem={renderItem}
         onMomentumScrollEnd={(event) => {
-          if (containerWidth <= 0) return;
-          const nextIndex = Math.round(event.nativeEvent.contentOffset.x / containerWidth);
+          if (slideWidth <= 0) return;
+          const nextIndex = Math.round(
+            event.nativeEvent.contentOffset.x / slideWidth,
+          );
           setActiveIndex(Math.max(0, Math.min(nextIndex, media.length - 1)));
         }}
         scrollEventThrottle={16}
@@ -116,13 +160,12 @@ export default function ProductMediaCarousel({
             <Text style={styles.counterText}>{activeIndex + 1}/{media.length}</Text>
           </View>
           <View pointerEvents="none" style={styles.dots}>
-            {dotItems.map((_, index) => (
+            {media.map((_, index) => (
               <View
                 key={index}
                 style={[styles.dot, index === activeIndex && styles.activeDot]}
               />
             ))}
-            {media.length > dotItems.length && <Text style={styles.moreDots}>…</Text>}
           </View>
         </>
       )}
@@ -164,6 +207,17 @@ const styles = StyleSheet.create({
     height: 27,
     borderRadius: 14,
     backgroundColor: "rgba(0,0,0,0.62)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenButton: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(0,0,0,0.68)",
     alignItems: "center",
     justifyContent: "center",
   },
