@@ -169,7 +169,8 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
 // ─── HTML page for the invisible reCAPTCHA ────────────────────────────────────
 
 function buildHtml(config: typeof firebaseConfig): string {
-  const sdkVersion = "10.12.2";
+  // Keep the compat SDK aligned with the Firebase JS SDK used by the app.
+  const sdkVersion = "12.17.0";
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -205,16 +206,13 @@ function buildHtml(config: typeof firebaseConfig): string {
         }
       );
 
-      // render() فقط — التوكن يصل عبر callback أعلاه، لا عبر verify()
-      // هذا يتجنب أخطاء "Failed to initialize reCAPTCHA Enterprise config"
-      // التي تُفشل سلسلة verify() لكن لا تمنع callback من الاستجابة
-      verifier.render().catch(function(err) {
+      // render() alone does not execute an invisible verifier. Calling verify()
+      // after render is what actually requests the one-time token. The
+      // callback above forwards that token to the React Native verifier.
+      verifier.render().then(function() {
+        return verifier.verify();
+      }).catch(function(err) {
         var msg = (err && err.message) ? err.message : String(err);
-        // أخطاء Enterprise تحذيرية فقط وليست فادحة — تجاهلها
-        if (msg.indexOf('Enterprise') !== -1 || msg.indexOf('enterprise') !== -1) {
-          console.warn('[reCAPTCHA] Enterprise init warning (ignored):', msg);
-          return;
-        }
         postMsg({ type: 'error', message: msg });
       });
     } catch(e) {
@@ -284,9 +282,17 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
       <WebView
         key={webviewKey}
         style={styles.webview}
-        source={{ html: buildHtml(firebaseConfig) }}
+        source={{
+          html: buildHtml(firebaseConfig),
+          // about:blank is not an authorized Firebase Auth domain. Supplying
+          // the project's auth domain lets Google's reCAPTCHA validate the
+          // WebView origin correctly.
+          baseUrl: `https://${firebaseConfig.authDomain}`,
+        }}
         onMessage={handleMessage}
         javaScriptEnabled
+        domStorageEnabled
+        originWhitelist={["*"]}
         focusable={false}
         accessible={false}
       />

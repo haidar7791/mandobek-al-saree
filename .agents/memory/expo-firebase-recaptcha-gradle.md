@@ -22,3 +22,5 @@ directly to `linkWithPhoneNumber`/`signInWithPhoneNumber`. This avoids any nativ
 Gradle dependency. Do not reintroduce `expo-firebase-recaptcha` or `expo-firebase-core`.
 
 Firebase Auth may call the private `_reset()` hook on an `ApplicationVerifier` after a failed phone-auth attempt. A custom verifier must expose `_reset()` as a safe alias to its state reset method; implementing only `reset()` causes a runtime crash during retries.
+
+For the WebView verifier, `render()` alone does not execute an invisible challenge; the page must call `verify()` after rendering. Give the WebView a `baseUrl` on the Firebase Auth domain instead of leaving it on `about:blank`, or Firebase may reject the token as `auth/internal-error`.

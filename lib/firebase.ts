@@ -44,7 +44,11 @@ if (Platform.OS === "web") {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     });
-  } catch {
+  } catch (error) {
+    // Fast Refresh can leave an Auth instance registered already. Reuse it
+    // in that case, but keep the reason visible instead of silently masking a
+    // real persistence/configuration problem.
+    console.warn("[Firebase] initializeAuth reused existing instance:", error);
     auth = getAuth(app);
   }
 }
