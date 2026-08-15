@@ -243,8 +243,10 @@ export default function DashboardScreen() {
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   const [visibleProductIds, setVisibleProductIds] = useState<Set<string>>(new Set());
-  const productsViewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
-  const onProductsViewableItemsChanged = useRef(
+  const viewabilityConfig = useRef({
+    viewAreaCoveragePercentThreshold: 50,
+  }).current;
+  const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       setVisibleProductIds(
         new Set(
@@ -255,7 +257,8 @@ export default function DashboardScreen() {
         ),
       );
     },
-  ).current;
+    [],
+  );
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
   const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
 
@@ -646,8 +649,8 @@ export default function DashboardScreen() {
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
-                viewabilityConfig={productsViewabilityConfig}
-                onViewableItemsChanged={onProductsViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                onViewableItemsChanged={onViewableItemsChanged}
                 renderItem={({ item: product }) => {
                   const isSold = product.status === "sold";
                   const isMine = product.sellerId === userId;
