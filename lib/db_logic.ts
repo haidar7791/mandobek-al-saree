@@ -1461,6 +1461,7 @@ export interface Product {
   price: number;
   description?: string;
   imageUrl: string;
+  media?: ProductMedia[];
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
@@ -1468,6 +1469,13 @@ export interface Product {
   status: "available" | "sold";
   soldAt?: string | null;
   createdAt: string;
+}
+
+export type ProductMediaType = "image" | "video";
+
+export interface ProductMedia {
+  url: string;
+  type: ProductMediaType;
 }
 
 export interface ProductOrder {
@@ -1490,16 +1498,20 @@ export interface ProductOrder {
   hiddenForBuyer?: string[];
 }
 
-export const uploadProductImage = async (
-  localUri: string,
-  productId: string
-): Promise<string> => {
+export interface LocalProductMedia {
+  uri: string;
+  type: ProductMediaType;
+  mimeType?: string | null;
+  fileName?: string | null;
+}
+
+const localUriToBlob = async (localUri: string, fallbackMime = "image/jpeg"): Promise<Blob> => {
   let blob: Blob;
 
   if (localUri.startsWith("data:")) {
     // Web: expo-image-picker may return a base64 data URI
     const [header, base64] = localUri.split(",");
-    const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+    const mime = header.match(/:(.*?);/)?.[1] ?? fallbackMime;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -1507,26 +1519,50 @@ export const uploadProductImage = async (
   } else {
     // Native / blob URL
     const resp = await fetch(localUri);
-    if (!resp.ok) throw new Error(`fetch image failed: ${resp.status}`);
+    if (!resp.ok) throw new Error(`fetch media failed: ${resp.status}`);
     blob = await resp.blob();
   }
+  return blob;
+};
 
-  const storageRef = ref(storage, `products/${productId}/image.jpg`);
-  await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
-  return getDownloadURL(storageRef);
+const mediaExtension = (media: LocalProductMedia, mimeType: string): string => {
+  const fileNameExtension = media.fileName?.split(".").pop()?.toLowerCase();
+  if (fileNameExtension && /^[a-z0-9]{2,5}$/.test(fileNameExtension)) return fileNameExtension;
+  return mimeType.includes("mp4") ? "mp4" : mimeType.includes("quicktime") ? "mov" : "jpg";
+};
+
+export const uploadProductMedia = async (
+  media: LocalProductMedia,
+  productId: string,
+  index: number
+): Promise<ProductMedia> => {
+  const fallbackMime = media.type === "video" ? "video/mp4" : "image/jpeg";
+  const blob = await localUriToBlob(media.uri, fallbackMime);
+  const contentType = media.mimeType || blob.type || fallbackMime;
+  const extension = mediaExtension(media, contentType);
+  const storageRef = ref(storage, `products/${productId}/media/${index}-${Date.now()}.${extension}`);
+  await uploadBytes(storageRef, blob, { contentType });
+  return {
+    url: await getDownloadURL(storageRef),
+    type: media.type,
+  };
 };
 
 export const createProduct = async (data: {
   title: string;
   price: number;
   description?: string;
-  localImageUri: string;
+  localMedia: LocalProductMedia[];
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
 }): Promise<string> => {
   const docRef = doc(collection(db, "products"));
-  const imageUrl = await uploadProductImage(data.localImageUri, docRef.id);
+  if (data.localMedia.length === 0) throw new Error("At least one media item is required");
+  const media = await Promise.all(
+    data.localMedia.map((item, index) => uploadProductMedia(item, docRef.id, index))
+  );
+  const imageUrl = media.find((item) => item.type === "image")?.url || media[0].url;
 
   // Carry seller's active featured-until so the marketplace can sort/badge instantly
   const sellerSnap = await getDoc(doc(db, "users", data.sellerId));
@@ -1539,6 +1575,7 @@ export const createProduct = async (data: {
     price: data.price,
     description: data.description || "",
     imageUrl,
+    media,
     sellerId: data.sellerId,
     sellerName: data.sellerName,
     sellerPhone: data.sellerPhone,

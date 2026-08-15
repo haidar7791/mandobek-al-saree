@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { subscribeToProducts, type Product } from "@/lib/db_logic";
+import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -50,7 +50,10 @@ export default function ProductScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Image source={{ uri: product.imageUrl }} style={styles.image} resizeMode="cover" />
+           <ProductMediaCarousel
+             media={normalizeProductMedia(product.media, product.imageUrl)}
+             height={320}
+           />
           <View style={styles.details}>
             <View style={styles.titleRow}>
               <View style={styles.priceBadge}>
@@ -97,7 +100,6 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 38 },
   headerTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text },
   content: { paddingBottom: 32 },
-  image: { width: "100%", height: 320, backgroundColor: C.border },
   details: { padding: 18 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
   title: { flex: 1, fontSize: 22, lineHeight: 32, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },

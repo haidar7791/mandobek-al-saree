@@ -57,6 +57,7 @@ import {
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
+import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 
 const C = Colors.light;
 
@@ -643,8 +644,14 @@ export default function DashboardScreen() {
                       >
                         <Feather name="share-2" size={13} color={C.accent} />
                       </Pressable>
-                      <TouchableOpacity activeOpacity={0.85} onPress={() => setFullscreenImage(product.imageUrl)}>
-                        <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
+                      <TouchableOpacity activeOpacity={0.85}>
+                        <ProductMediaCarousel
+                          media={normalizeProductMedia(product.media, product.imageUrl)}
+                          height={210}
+                          onMediaPress={(item) => {
+                            if (item.type === "image") setFullscreenImage(item.url);
+                          }}
+                        />
                         {isSold && <View style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
                       </TouchableOpacity>
                       <View style={styles.productBody}>

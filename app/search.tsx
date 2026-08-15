@@ -22,6 +22,7 @@ import {
   type Product,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 
 const C = Colors.light;
 
@@ -178,7 +179,7 @@ export default function SearchScreen() {
       ) : totalResults === 0 ? (
         <View style={styles.center}>
           <Feather name="alert-circle" size={48} color={C.textMuted} />
-          <Text style={styles.emptyTitle}>لا نتائج لـ "{query}"</Text>
+          <Text style={styles.emptyTitle}>{`لا نتائج لـ "${query}"`}</Text>
           <Text style={styles.emptySub}>جرّب مصطلحاً مختلفاً</Text>
         </View>
       ) : (
@@ -248,8 +249,13 @@ export default function SearchScreen() {
                   setSelectedProduct(p);
                 }}
               >
-                {p.imageUrl ? (
-                  <Image source={{ uri: p.imageUrl }} style={styles.productThumb} resizeMode="cover" />
+                {normalizeProductMedia(p.media, p.imageUrl).length > 0 ? (
+                  <ProductMediaCarousel
+                    media={normalizeProductMedia(p.media, p.imageUrl)}
+                    height={60}
+                    showIndicators={false}
+                    style={styles.productThumb}
+                  />
                 ) : (
                   <View style={[styles.productThumb, styles.thumbFallback]}>
                     <Feather name="image" size={18} color={C.textMuted} />
@@ -302,12 +308,12 @@ export default function SearchScreen() {
                   <View style={styles.sheetHandle} />
 
                   <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-                    {/* Product image */}
-                    {p.imageUrl ? (
-                      <Image
-                        source={{ uri: p.imageUrl }}
-                        style={styles.detailImage}
-                        resizeMode="cover"
+                    {/* Product media */}
+                    {normalizeProductMedia(p.media, p.imageUrl).length > 0 ? (
+                      <ProductMediaCarousel
+                        media={normalizeProductMedia(p.media, p.imageUrl)}
+                        height={240}
+                        showIndicators
                       />
                     ) : (
                       <View style={[styles.detailImage, styles.detailImageFallback]}>

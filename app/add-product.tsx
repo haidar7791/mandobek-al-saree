@@ -9,7 +9,6 @@ import {
   Platform,
   KeyboardAvoidingView,
   Alert,
-  Image,
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
@@ -20,7 +19,8 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
-import { createProduct, getUserProfile } from "@/lib/db_logic";
+import { createProduct, getUserProfile, type LocalProductMedia } from "@/lib/db_logic";
+import ProductMediaCarousel from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -30,7 +30,7 @@ export default function AddProductScreen() {
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<LocalProductMedia[]>([]);
   const [loading, setLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -42,13 +42,20 @@ export default function AddProductScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsMultipleSelection: true,
       quality: 0.85,
     });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      const media = result.assets
+        .filter((asset) => asset.type === "image" || asset.type === "video")
+        .map((asset) => ({
+          uri: asset.uri,
+          type: asset.type as "image" | "video",
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+        }));
+      setSelectedMedia(media);
     }
   };
 
@@ -58,7 +65,10 @@ export default function AddProductScreen() {
     if (!price || isNaN(parsedPrice) || parsedPrice <= 0) {
       Alert.alert("خطأ", "يرجى إدخال سعر صحيح"); return;
     }
-    if (!imageUri) { Alert.alert("خطأ", "يرجى إضافة صورة للمنتج"); return; }
+    if (selectedMedia.length === 0) {
+      Alert.alert("خطأ", "يرجى إضافة صورة أو مقطع فيديو للمنشور");
+      return;
+    }
 
     const user = auth.currentUser;
     if (!user) { router.replace("/login" as any); return; }
@@ -71,7 +81,7 @@ export default function AddProductScreen() {
         title: title.trim(),
         price: parsedPrice,
         description: description.trim(),
-        localImageUri: imageUri,
+        localMedia: selectedMedia,
         sellerId: user.uid,
         sellerName: profile?.name || "مجهول",
         sellerPhone: profile?.phone || "",
@@ -82,7 +92,7 @@ export default function AddProductScreen() {
       setTitle("");
       setPrice("");
       setDescription("");
-      setImageUri(null);
+      setSelectedMedia([]);
 
       // Navigate back immediately — don't wait for the user to tap "حسناً"
       router.back();
@@ -128,12 +138,16 @@ export default function AddProductScreen() {
         >
           {/* Image Picker */}
           <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
-            {imageUri ? (
+            {selectedMedia.length > 0 ? (
               <>
-                <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
+                <ProductMediaCarousel
+                  media={selectedMedia.map((item) => ({ url: item.uri, type: item.type }))}
+                  height={200}
+                  showIndicators
+                />
                 <View style={styles.changeImageOverlay}>
                   <Feather name="camera" size={20} color="#FFF" />
-                  <Text style={styles.changeImageText}>تغيير الصورة</Text>
+                  <Text style={styles.changeImageText}>تغيير الصور أو الفيديو</Text>
                 </View>
               </>
             ) : (
@@ -141,11 +155,16 @@ export default function AddProductScreen() {
                 <View style={styles.imagePlaceholderIcon}>
                   <Feather name="camera" size={32} color={C.accent} />
                 </View>
-                <Text style={styles.imagePlaceholderText}>اضغط لإضافة صورة المنتج</Text>
-                <Text style={styles.imagePlaceholderSub}>مطلوب · JPG أو PNG</Text>
+                <Text style={styles.imagePlaceholderText}>اضغط لإضافة صور أو فيديو</Text>
+                <Text style={styles.imagePlaceholderSub}>يمكنك اختيار عدة ملفات في نفس المنشور</Text>
               </View>
             )}
           </TouchableOpacity>
+          {selectedMedia.length > 0 && (
+            <Text style={styles.mediaCount}>
+              {selectedMedia.length} {selectedMedia.length === 1 ? "ملف" : "ملفات"} محددة · اسحب يميناً ويساراً للمعاينة
+            </Text>
+          )}
 
           {/* Form */}
           <View style={styles.card}>
@@ -279,6 +298,13 @@ const styles = StyleSheet.create({
   },
   imagePlaceholderText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.text },
   imagePlaceholderSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  mediaCount: {
+    marginTop: -8,
+    fontSize: 11,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "right",
+  },
   card: {
     backgroundColor: C.card, borderRadius: 18, padding: 20, gap: 18,
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 3 },
