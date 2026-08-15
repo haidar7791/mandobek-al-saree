@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import {
   FlatList,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -10,7 +11,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Video, ResizeMode, VideoFullscreenUpdate } from "expo-av";
+import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import type { ProductMedia } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -32,6 +33,7 @@ type ProductMediaCarouselProps = {
   style?: StyleProp<ViewStyle>;
   showIndicators?: boolean;
   onMediaPress?: (item: ProductMedia) => void;
+  isVisible?: boolean;
 };
 
 export default function ProductMediaCarousel({
@@ -40,22 +42,24 @@ export default function ProductMediaCarousel({
   style,
   showIndicators = true,
   onMediaPress,
+  isVisible = true,
 }: ProductMediaCarouselProps) {
-  const listRef = useRef<FlatList<ProductMedia>>(null);
   const videoRefs = useRef<Record<number, Video | null>>({});
   const [slideWidth, setSlideWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [fullscreenIndex, setFullscreenIndex] = useState<number | null>(null);
+  const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const itemWidth = slideWidth || 1;
 
-  const toggleFullscreen = async (index: number) => {
-    const video = videoRefs.current[index];
-    if (!video) return;
+  const handleMediaPress = (item: ProductMedia, index: number) => {
+    if (onMediaPress) {
+      onMediaPress(item);
+      return;
+    }
 
-    if (fullscreenIndex === index) {
-      await video.dismissFullscreenPlayer();
+    if (item.type === "video") {
+      void videoRefs.current[index]?.presentFullscreenPlayer();
     } else {
-      await video.presentFullscreenPlayer();
+      setFullscreenMedia(item);
     }
   };
 
@@ -77,18 +81,10 @@ export default function ProductMediaCarousel({
           source={{ uri: item.url }}
           style={{ width: itemWidth, height }}
           resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={activeIndex === index}
+          shouldPlay={isVisible && activeIndex === index}
           isLooping
-          isMuted={false}
+          isMuted={!isVisible}
           useNativeControls={false}
-          onFullscreenUpdate={({ fullscreenUpdate }) => {
-            if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_DID_PRESENT) {
-              setFullscreenIndex(index);
-            }
-            if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_DID_DISMISS) {
-              setFullscreenIndex(null);
-            }
-          }}
         />
       ) : (
         <Image source={{ uri: item.url }} style={{ width: itemWidth, height }} resizeMode="cover" />
@@ -96,36 +92,22 @@ export default function ProductMediaCarousel({
 
     return (
       <View style={{ width: itemWidth, height }}>
-        {onMediaPress ? (
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => onMediaPress(item)}>
-            {content}
-          </Pressable>
-        ) : (
-          content
-        )}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => handleMediaPress(item, index)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            item.type === "video"
+              ? "فتح الفيديو بملء الشاشة"
+              : "فتح الصورة بملء الشاشة"
+          }
+        >
+          {content}
+        </Pressable>
         {item.type === "video" && (
-          <>
-            <View pointerEvents="none" style={styles.videoBadge}>
-              <Ionicons name="volume-high" size={13} color="#FFF" />
-            </View>
-            <Pressable
-              style={styles.fullscreenButton}
-              onPress={() => void toggleFullscreen(index)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={
-                fullscreenIndex === index
-                  ? "إغلاق ملء الشاشة"
-                  : "فتح الفيديو بملء الشاشة"
-              }
-            >
-              <Ionicons
-                name={fullscreenIndex === index ? "contract-outline" : "expand-outline"}
-                size={18}
-                color="#FFF"
-              />
-            </Pressable>
-          </>
+          <View pointerEvents="none" style={styles.videoBadge}>
+            <Ionicons name="volume-high" size={13} color="#FFF" />
+          </View>
         )}
       </View>
     );
@@ -137,7 +119,6 @@ export default function ProductMediaCarousel({
       onLayout={(event) => setSlideWidth(event.nativeEvent.layout.width)}
     >
       <FlatList
-        ref={listRef}
         data={media}
         horizontal
         pagingEnabled
@@ -169,6 +150,36 @@ export default function ProductMediaCarousel({
           </View>
         </>
       )}
+
+      <Modal
+        visible={!!fullscreenMedia}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setFullscreenMedia(null)}
+      >
+        <Pressable
+          style={styles.fullscreenOverlay}
+          onPress={() => setFullscreenMedia(null)}
+        >
+          {fullscreenMedia?.type === "video" ? (
+            <Video
+              source={{ uri: fullscreenMedia.url }}
+              style={styles.fullscreenMedia}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+              isMuted={false}
+              useNativeControls
+            />
+          ) : fullscreenMedia ? (
+            <Image
+              source={{ uri: fullscreenMedia.url }}
+              style={styles.fullscreenMedia}
+              resizeMode="contain"
+            />
+          ) : null}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -198,7 +209,6 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.55)" },
   activeDot: { width: 18, backgroundColor: "#FFF" },
-  moreDots: { color: "#FFF", fontSize: 12, lineHeight: 8, marginLeft: 1 },
   videoBadge: {
     position: "absolute",
     top: 10,
@@ -210,15 +220,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fullscreenButton: {
+  fullscreenOverlay: {
     position: "absolute",
-    right: 10,
-    bottom: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(0,0,0,0.68)",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0,0,0,0.94)",
     alignItems: "center",
     justifyContent: "center",
   },
+  fullscreenMedia: { width: "100%", height: "100%" },
 });

@@ -15,6 +15,7 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
+  type ViewToken,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,6 +25,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
+import { Video, ResizeMode } from "expo-av";
 import { ShareModal } from "@/components/ShareModal";
 import {
   getArtisans,
@@ -33,6 +35,7 @@ import {
   type ServiceCategory,
   type GeoLocation,
   type Product,
+  type ProductMedia,
   HOME_SERVICES,
   CAR_SERVICES,
   GENERAL_SERVICES,
@@ -237,8 +240,22 @@ export default function DashboardScreen() {
   const [productsRefreshing, setProductsRefreshing] = useState(false);
   const [productsRefreshKey, setProductsRefreshKey] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
+  const [visibleProductIds, setVisibleProductIds] = useState<Set<string>>(new Set());
+  const productsViewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+  const onProductsViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      setVisibleProductIds(
+        new Set(
+          viewableItems.map((viewableItem) => {
+            const product = viewableItem.item as Product | undefined;
+            return product?.id ?? viewableItem.key;
+          }),
+        ),
+      );
+    },
+  ).current;
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
   const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
 
@@ -629,6 +646,8 @@ export default function DashboardScreen() {
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
+                viewabilityConfig={productsViewabilityConfig}
+                onViewableItemsChanged={onProductsViewableItemsChanged}
                 renderItem={({ item: product }) => {
                   const isSold = product.status === "sold";
                   const isMine = product.sellerId === userId;
@@ -644,16 +663,15 @@ export default function DashboardScreen() {
                       >
                         <Feather name="share-2" size={13} color={C.accent} />
                       </Pressable>
-                      <TouchableOpacity activeOpacity={0.85}>
+                      <View>
                         <ProductMediaCarousel
                           media={normalizeProductMedia(product.media, product.imageUrl)}
-                          height={210}
-                          onMediaPress={(item) => {
-                            if (item.type === "image") setFullscreenImage(item.url);
-                          }}
+                          height={380}
+                          isVisible={visibleProductIds.has(product.id)}
+                          onMediaPress={(item) => setFullscreenMedia(item)}
                         />
-                        {isSold && <View style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
-                      </TouchableOpacity>
+                        {isSold && <View pointerEvents="none" style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
+                      </View>
                       <View style={styles.productBody}>
                         <View style={styles.productHeaderRow}>
                           <TouchableOpacity activeOpacity={0.7} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any); }} style={styles.productSellerTouchable}>
@@ -772,21 +790,30 @@ export default function DashboardScreen() {
 
       {/* ── Fullscreen image viewer ── */}
       <Modal
-        visible={!!fullscreenImage}
+          visible={!!fullscreenMedia}
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => setFullscreenImage(null)}
+          onRequestClose={() => setFullscreenMedia(null)}
       >
-        <Pressable style={styles.fullscreenOverlay} onPress={() => setFullscreenImage(null)}>
-          {fullscreenImage && (
-            <Image
-              source={{ uri: fullscreenImage }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
-          )}
-          <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenImage(null)}>
+          <Pressable style={styles.fullscreenOverlay} onPress={() => setFullscreenMedia(null)}>
+            {fullscreenMedia?.type === "video" ? (
+              <Video
+                source={{ uri: fullscreenMedia.url }}
+                style={styles.fullscreenImage}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isMuted={false}
+                useNativeControls
+              />
+            ) : fullscreenMedia ? (
+              <Image
+                source={{ uri: fullscreenMedia.url }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+            ) : null}
+            <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenMedia(null)}>
             <Feather name="x" size={22} color="#FFF" />
           </TouchableOpacity>
         </Pressable>
