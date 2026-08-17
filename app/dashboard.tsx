@@ -969,7 +969,7 @@ export default function DashboardScreen() {
         statusBarTranslucent
           onRequestClose={() => setFullscreenMedia(null)}
       >
-          <Pressable style={styles.fullscreenOverlay} onPress={() => setFullscreenMedia(null)}>
+          <View style={styles.fullscreenOverlay}>
             {fullscreenMedia?.type === "video" ? (
               <Video
                 source={{ uri: fullscreenMedia.url }}
@@ -978,6 +978,7 @@ export default function DashboardScreen() {
                 shouldPlay
                 isMuted={false}
                 useNativeControls
+                progressUpdateIntervalMillis={250}
               />
             ) : fullscreenMedia ? (
               <Image
@@ -989,7 +990,7 @@ export default function DashboardScreen() {
             <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenMedia(null)}>
             <Feather name="x" size={22} color="#FFF" />
           </TouchableOpacity>
-        </Pressable>
+        </View>
       </Modal>
     </View>
   );

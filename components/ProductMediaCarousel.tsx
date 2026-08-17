@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   type ListRenderItemInfo,
   type StyleProp,
@@ -82,6 +83,7 @@ export default function ProductMediaCarousel({
           style={{ width: itemWidth, height }}
           resizeMode={ResizeMode.CONTAIN}
           shouldPlay={isVisible && activeIndex === index}
+          progressUpdateIntervalMillis={250}
           isLooping
           isMuted={!isVisible}
           useNativeControls={false}
@@ -158,10 +160,7 @@ export default function ProductMediaCarousel({
         statusBarTranslucent
         onRequestClose={() => setFullscreenMedia(null)}
       >
-        <Pressable
-          style={styles.fullscreenOverlay}
-          onPress={() => setFullscreenMedia(null)}
-        >
+        <View style={styles.fullscreenOverlay}>
           {fullscreenMedia?.type === "video" ? (
             <Video
               source={{ uri: fullscreenMedia.url }}
@@ -170,6 +169,7 @@ export default function ProductMediaCarousel({
               shouldPlay
               isMuted={false}
               useNativeControls
+              progressUpdateIntervalMillis={250}
             />
           ) : fullscreenMedia ? (
             <Image
@@ -178,7 +178,15 @@ export default function ProductMediaCarousel({
               resizeMode="contain"
             />
           ) : null}
-        </Pressable>
+          <TouchableOpacity
+            style={styles.fullscreenClose}
+            onPress={() => setFullscreenMedia(null)}
+            accessibilityRole="button"
+            accessibilityLabel="إغلاق العرض بملء الشاشة"
+          >
+            <Ionicons name="close" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
@@ -231,4 +239,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fullscreenMedia: { width: "100%", height: "100%" },
+  fullscreenClose: {
+    position: "absolute",
+    top: 44,
+    right: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(0,0,0,0.68)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
 });
