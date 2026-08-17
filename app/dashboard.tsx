@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
@@ -15,9 +15,9 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
-  type ViewToken,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -218,6 +218,243 @@ function ArtisanCard({
   );
 }
 
+function ProductCard({
+  product,
+  userId,
+  userName,
+  userLocation,
+  pendingOrderId,
+  isLoading,
+  isActive,
+  onShare,
+  onMediaPress,
+  onLoadingChange,
+}: {
+  product: Product;
+  userId: string | null;
+  userName: string;
+  userLocation: GeoLocation | null;
+  pendingOrderId?: string;
+  isLoading: boolean;
+  isActive: boolean;
+  onShare: () => void;
+  onMediaPress: (item: ProductMedia) => void;
+  onLoadingChange: (productId: string | null) => void;
+}) {
+  const isFocused = useIsFocused();
+  const isVisible = isFocused && isActive;
+  const isSold = product.status === "sold";
+  const isMine = product.sellerId === userId;
+
+  const handleDelete = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert("حذف المنتج", `هل أنت متأكد من حذف "${product.title}"؟`, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          onLoadingChange(product.id);
+          try {
+            await deleteProduct(product.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch {
+            Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً.");
+          } finally {
+            onLoadingChange(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCancelOrder = () => {
+    if (!pendingOrderId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert("إلغاء طلب الشراء", "هل تريد إلغاء طلبك المعلق لهذا المنتج؟", [
+      { text: "تراجع", style: "cancel" },
+      {
+        text: "إلغاء الطلب",
+        style: "destructive",
+        onPress: async () => {
+          onLoadingChange(product.id);
+          try {
+            await cancelProductOrder(pendingOrderId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          } catch {
+            Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً.");
+          } finally {
+            onLoadingChange(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleBuy = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      router.replace("/login" as any);
+      return;
+    }
+
+    const selfProfile = await getUserProfile(user.uid);
+    Alert.alert(
+      "تأكيد الشراء",
+      `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "إرسال الطلب",
+          onPress: async () => {
+            onLoadingChange(product.id);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              await createProductOrder({
+                productId: product.id,
+                productTitle: product.title,
+                productImageUrl: product.imageUrl,
+                productPrice: product.price,
+                sellerId: product.sellerId,
+                sellerName: product.sellerName,
+                buyerId: user.uid,
+                buyerName: selfProfile?.name || userName,
+                buyerPhone: selfProfile?.phone || "",
+                buyerLocation: userLocation,
+              });
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
+            } catch {
+              Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
+            } finally {
+              onLoadingChange(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <View style={[styles.productCard, isSold && styles.productCardSold]}>
+      <Pressable
+        style={styles.productShareBtn}
+        onPress={onShare}
+        accessibilityLabel="مشاركة المنتج"
+      >
+        <Feather name="share-2" size={13} color={C.accent} />
+      </Pressable>
+      <View>
+        <ProductMediaCarousel
+          media={normalizeProductMedia(product.media, product.imageUrl)}
+          height={380}
+          isVisible={isVisible}
+          onMediaPress={onMediaPress}
+        />
+        {isSold && (
+          <View pointerEvents="none" style={styles.soldOverlay}>
+            <Text style={styles.soldOverlayText}>مباع</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.productBody}>
+        <View style={styles.productHeaderRow}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push({
+                pathname: "/user-profile",
+                params: { userId: product.sellerId, userName: product.sellerName },
+              } as any);
+            }}
+            style={styles.productSellerTouchable}
+          >
+            <Text style={styles.productSellerName} numberOfLines={1}>{product.sellerName}</Text>
+            {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
+              <View style={styles.productFeaturedBadge}>
+                <Ionicons name="star" size={10} color={C.primary} />
+                <Text style={styles.productFeaturedText}>مميز</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+        </View>
+        <Text style={styles.productPrice}>
+          <Text style={styles.productPriceLabel}>السعر: </Text>
+          {product.price.toLocaleString("ar-IQ")}{" "}
+          <Text style={styles.productCurrency}>د.ع</Text>
+        </Text>
+        {product.description ? (
+          <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
+        ) : null}
+      </View>
+      {!isSold && (
+        isMine ? (
+          <TouchableOpacity
+            style={[styles.buyBtn, styles.deleteBtn]}
+            activeOpacity={0.85}
+            disabled={isLoading}
+            onPress={handleDelete}
+          >
+            <View style={styles.deleteBtnInner}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Feather name="trash-2" size={14} color="#FFF" />
+                  <Text style={styles.deleteBtnText}>حذف المنتج</Text>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        ) : pendingOrderId ? (
+          <TouchableOpacity
+            style={[styles.buyBtn, styles.cancelOrderBtn]}
+            activeOpacity={0.85}
+            disabled={isLoading}
+            onPress={handleCancelOrder}
+          >
+            <View style={styles.cancelOrderBtnInner}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Feather name="x-circle" size={14} color="#FFF" />
+                  <Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.buyBtn, isLoading && styles.btnDisabled]}
+            activeOpacity={0.85}
+            disabled={isLoading}
+            onPress={handleBuy}
+          >
+            <LinearGradient
+              colors={[C.accent, C.accentLight]}
+              style={styles.buyBtnGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color={C.primary} />
+              ) : (
+                <>
+                  <Ionicons name="cart-outline" size={14} color={C.primary} />
+                  <Text style={styles.buyBtnText}>شراء</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        )
+      )}
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
@@ -242,23 +479,6 @@ export default function DashboardScreen() {
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
-  const [visibleProductIds, setVisibleProductIds] = useState<Set<string>>(new Set());
-  const viewabilityConfig = useRef({
-    viewAreaCoveragePercentThreshold: 50,
-  }).current;
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      setVisibleProductIds(
-        new Set(
-          viewableItems.map((viewableItem) => {
-            const product = viewableItem.item as Product | undefined;
-            return product?.id ?? viewableItem.key;
-          }),
-        ),
-      );
-    },
-    [],
-  );
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
   const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
 
@@ -649,70 +869,20 @@ export default function DashboardScreen() {
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
-                viewabilityConfig={viewabilityConfig}
-                onViewableItemsChanged={onViewableItemsChanged}
-                renderItem={({ item: product }) => {
-                  const isSold = product.status === "sold";
-                  const isMine = product.sellerId === userId;
-                  const pendingOrderId = myPendingOrders.get(product.id);
-                  const isLoadingP = buyingProductId === product.id;
-                  return (
-                    <View style={[styles.productCard, isSold && styles.productCardSold]}>
-                      {/* Share button — absolute overlay */}
-                      <Pressable
-                        style={styles.productShareBtn}
-                        onPress={() => { Haptics.selectionAsync(); setShareProduct(product); }}
-                        accessibilityLabel="مشاركة المنتج"
-                      >
-                        <Feather name="share-2" size={13} color={C.accent} />
-                      </Pressable>
-                      <View>
-                        <ProductMediaCarousel
-                          media={normalizeProductMedia(product.media, product.imageUrl)}
-                          height={380}
-                          isVisible={visibleProductIds.has(product.id)}
-                          onMediaPress={(item) => setFullscreenMedia(item)}
-                        />
-                        {isSold && <View pointerEvents="none" style={styles.soldOverlay}><Text style={styles.soldOverlayText}>مباع</Text></View>}
-                      </View>
-                      <View style={styles.productBody}>
-                        <View style={styles.productHeaderRow}>
-                          <TouchableOpacity activeOpacity={0.7} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/user-profile", params: { userId: product.sellerId, userName: product.sellerName } } as any); }} style={styles.productSellerTouchable}>
-                            <Text style={styles.productSellerName} numberOfLines={1}>{product.sellerName}</Text>
-                            {isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }) && (
-                              <View style={styles.productFeaturedBadge}>
-                                <Ionicons name="star" size={10} color={C.primary} />
-                                <Text style={styles.productFeaturedText}>مميز</Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                          <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
-                        </View>
-                        <Text style={styles.productPrice}><Text style={styles.productPriceLabel}>السعر: </Text>{product.price.toLocaleString("ar-IQ")} <Text style={styles.productCurrency}>د.ع</Text></Text>
-                        {product.description ? <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text> : null}
-                      </View>
-                      {!isSold && (() => {
-                        if (isMine) return (
-                          <TouchableOpacity style={[styles.buyBtn, styles.deleteBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Alert.alert("حذف المنتج", `هل أنت متأكد من حذف "${product.title}"؟`, [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await deleteProduct(product.id); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch { Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                            <View style={styles.deleteBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="trash-2" size={14} color="#FFF" /><Text style={styles.deleteBtnText}>حذف المنتج</Text></>}</View>
-                          </TouchableOpacity>
-                        );
-                        if (pendingOrderId) return (
-                          <TouchableOpacity style={[styles.buyBtn, styles.cancelOrderBtn]} activeOpacity={0.85} disabled={isLoadingP} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Alert.alert("إلغاء طلب الشراء", "هل تريد إلغاء طلبك المعلق لهذا المنتج؟", [{ text: "تراجع", style: "cancel" }, { text: "إلغاء الطلب", style: "destructive", onPress: async () => { setBuyingProductId(product.id); try { await cancelProductOrder(pendingOrderId); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch { Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                            <View style={styles.cancelOrderBtnInner}>{isLoadingP ? <ActivityIndicator size="small" color="#FFF" /> : <><Feather name="x-circle" size={14} color="#FFF" /><Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text></>}</View>
-                          </TouchableOpacity>
-                        );
-                        return (
-                          <TouchableOpacity style={[styles.buyBtn, isLoadingP && styles.btnDisabled]} activeOpacity={0.85} disabled={isLoadingP} onPress={async () => { const user = auth.currentUser; if (!user) { router.replace("/login" as any); return; } const selfProfile = await getUserProfile(user.uid); Alert.alert("تأكيد الشراء", `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`, [{ text: "إلغاء", style: "cancel" }, { text: "إرسال الطلب", onPress: async () => { setBuyingProductId(product.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); try { await createProductOrder({ productId: product.id, productTitle: product.title, productImageUrl: product.imageUrl, productPrice: product.price, sellerId: product.sellerId, sellerName: product.sellerName, buyerId: user.uid, buyerName: selfProfile?.name || userName, buyerPhone: selfProfile?.phone || "", buyerLocation: userLocation }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً."); } catch { Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً."); } finally { setBuyingProductId(null); } } }]); }}>
-                            <LinearGradient colors={[C.accent, C.accentLight]} style={styles.buyBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                              {isLoadingP ? <ActivityIndicator size="small" color={C.primary} /> : <><Ionicons name="cart-outline" size={14} color={C.primary} /><Text style={styles.buyBtnText}>شراء</Text></>}
-                            </LinearGradient>
-                          </TouchableOpacity>
-                        );
-                      })()}
-                    </View>
-                  );
-                }}
+                renderItem={({ item: product }) => (
+                  <ProductCard
+                    product={product}
+                    userId={userId}
+                    userName={userName}
+                    userLocation={userLocation}
+                    pendingOrderId={myPendingOrders.get(product.id)}
+                    isLoading={buyingProductId === product.id}
+                    isActive={activeCategory === "all"}
+                    onShare={() => { Haptics.selectionAsync(); setShareProduct(product); }}
+                    onMediaPress={(item) => setFullscreenMedia(item)}
+                    onLoadingChange={setBuyingProductId}
+                  />
+                )}
                 ListEmptyComponent={
                   productsLoading ? (
                     <View style={styles.emptyState}>
