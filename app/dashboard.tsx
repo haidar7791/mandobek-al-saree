@@ -822,7 +822,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* ── شريط الأدوات الثابت: ترويج + بحث — يظهر لجميع المستخدمين ── */}
+        {/* ── شريط الأدوات الثابت: ترويج — يظهر لجميع المستخدمين ── */}
         <View style={styles.headerUtilRow}>
           <Pressable
             style={styles.promoteHeaderBtn}
@@ -832,13 +832,34 @@ export default function DashboardScreen() {
             <Ionicons name="rocket" size={13} color={C.accent} />
             <Text style={styles.promoteHeaderBtnText}>روّج حسابك</Text>
           </Pressable>
-          <Pressable
-            style={styles.searchCircleBtn}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/search" as any); }}
-            accessibilityLabel="بحث"
-          >
-            <Feather name="search" size={18} color="rgba(255,255,255,0.9)" />
-          </Pressable>
+        </View>
+
+        {/* ── Contextual search bar — above category tabs, inside header ── */}
+        <View style={styles.searchBarRow}>
+          <Feather name="search" size={14} color="rgba(255,255,255,0.6)" />
+          <TextInput
+            style={styles.searchBarInput}
+            placeholder={
+              activeCategory === "all"
+                ? "ابحث في المنتجات..."
+                : "ابحث في الحرفيين..."
+            }
+            placeholderTextColor="rgba(255,255,255,0.45)"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            textAlign="right"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
+              style={styles.searchClearBtn}
+              hitSlop={8}
+              accessibilityLabel="مسح البحث"
+            >
+              <Feather name="x" size={14} color="rgba(255,255,255,0.7)" />
+            </Pressable>
+          )}
         </View>
 
       </LinearGradient>
@@ -902,34 +923,6 @@ export default function DashboardScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
-            )}
-          </View>
-
-          {/* ── Contextual search bar — filters products (الرئيسية) or artisans (other tabs) ── */}
-          <View style={styles.searchBarRow}>
-            <Feather name="search" size={14} color={C.textMuted} />
-            <TextInput
-              style={styles.searchBarInput}
-              placeholder={
-                activeCategory === "all"
-                  ? "ابحث في المنتجات..."
-                  : "ابحث في الحرفيين..."
-              }
-              placeholderTextColor={C.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              textAlign="right"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
-                style={styles.searchClearBtn}
-                hitSlop={8}
-                accessibilityLabel="مسح البحث"
-              >
-                <Feather name="x" size={14} color={C.textMuted} />
-              </Pressable>
             )}
           </View>
 
@@ -1271,19 +1264,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: C.inputBg,
-    marginHorizontal: 12,
-    marginVertical: 7,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "ios" ? 9 : 6,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 12,
+    borderRadius: 11,
+    paddingHorizontal: 13,
+    paddingVertical: Platform.OS === "ios" ? 10 : 7,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   searchBarInput: {
     flex: 1,
     fontSize: 13,
-    color: C.text,
+    color: "#FFF",
     textAlign: "right",
     paddingVertical: 0,
   },
