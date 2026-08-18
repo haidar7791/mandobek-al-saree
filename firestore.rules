@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// قواعد أمان Firestore لتطبيق "سند"
+// قواعد أمان Firestore لتطبيق "فورس"
 // انسخ هذا الملف بالكامل إلى:
 // Firebase Console > Firestore Database > Rules
 
@@ -11,192 +11,89 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     function isAdmin() {
       return isSignedIn()
         && request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2";
     }
 
-    // ── المستخدمون ──
-    // القراءة: أي مستخدم مسجّل (لعرض الملفات الشخصية)
-    // الكتابة: صاحب الحساب نفسه أو المشرف (يشمل create/update/delete)
+    // ── المستخدمون والملف الشخصي ─────────────────────────────────────────────
+    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب للترويج وتحديث البيانات الشخصية)
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(userId) || isAdmin();
+      allow read, write: if isSignedIn();
     }
 
-    // ── سجلات الترويج ──────────────────────────────────────────────────────────
-    // أي مستخدم مسجّل يمكنه قراءة وكتابة سجلات الترويج (للدفع والتفعيل)
+    // ── الحرفيون والبائعون ───────────────────────────────────────────────────
+    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث isPromoted وpriorityScore)
+    match /artisans/{artisanId} {
+      allow read, write: if isSignedIn();
+
+      match /reviews/{reviewId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // ── المحفظة ──────────────────────────────────────────────────────────────
+    // مطلوب: المستخدم يخصم من رصيده أثناء الترويج
+    match /wallets/{userId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── طلبات المحفظة ────────────────────────────────────────────────────────
+    match /walletRequests/{requestId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── سجلات الترويج ────────────────────────────────────────────────────────
     match /promotions/{promoId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── الحرفيون (يجب أن تكون قابلة للقراءة من جميع المسجلين) ──
-    match /artisans/{artisanId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
-                    && request.resource.data.userId == request.auth.uid;
-      allow update: if isSignedIn()
-                    && resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin();
-
-      // ── التقييمات (subcollection — معرف المستند: clientId_artisanId لمنع التكرار) ──
-      match /reviews/{reviewId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn()
-                      && request.resource.data.clientId == request.auth.uid
-                      && reviewId == request.resource.data.clientId + "_" + request.resource.data.artisanId;
-        allow update: if isSignedIn()
-                      && resource.data.clientId == request.auth.uid
-                      && request.resource.data.clientId == request.auth.uid;
-        allow delete: if isAdmin();
-      }
-    }
-
-    // ── التقييمات (نمط قديم — يُبقى للتوافق الرجعي إن وُجدت مستندات سابقة) ──
-    match /reviews/{reviewId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
-                    && request.resource.data.clientId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // ── طلبات الخدمة ──
-    // ملاحظة: artisanId هو معرّف مستند الحرفي في مجموعة artisans (وليس uid الخاص بالمصادقة).
-    // معرّف المصادقة (auth.uid) الخاص بالحرفي مخزّن في حقل artisanUserId — يجب دائماً
-    // مقارنة request.auth.uid بـ artisanUserId، وليس بـ artisanId.
-    match /serviceRequests/{requestId} {
-      allow read: if isSignedIn() && (
-                    resource.data.clientId == request.auth.uid
-                    || resource.data.artisanUserId == request.auth.uid
-                    || isAdmin()
-                  );
-      allow create: if isSignedIn()
-                    && request.resource.data.clientId == request.auth.uid;
-      allow update: if isSignedIn() && (
-                      resource.data.clientId == request.auth.uid
-                      || resource.data.artisanUserId == request.auth.uid
-                      || isAdmin()
-                    );
-      allow delete: if isAdmin();
-    }
-
-    // ── المحادثات ──
-    match /chats/{chatId} {
-      allow read, write: if isSignedIn()
-                          && request.auth.uid in chatId.split("_");
-
-      match /messages/{messageId} {
-        allow read: if isSignedIn()
-                    && request.auth.uid in chatId.split("_");
-        allow create: if isSignedIn()
-                      && request.resource.data.senderId == request.auth.uid
-                      && request.auth.uid in chatId.split("_");
-        allow update: if isSignedIn()
-                      && request.auth.uid in chatId.split("_")
-                      && (
-                        (resource.data.senderId != request.auth.uid
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]))
-                        || (resource.data.senderId == request.auth.uid
-                          // "Delete for everyone" only: the sender may replace their own
-                          // message with the fixed placeholder, not edit arbitrary content.
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deleted", "text", "type", "mediaUrl", "duration"])
-                          && request.resource.data.deleted == true
-                          && request.resource.data.type == "text"
-                          && request.resource.data.text == "تم حذف هذه الرسالة"
-                          && !("mediaUrl" in request.resource.data)
-                          && !("duration" in request.resource.data))
-                      );
-      }
-    }
-
-    // ── المحفظة ──
-    match /wallets/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // ── طلبات المحفظة ──
-    match /walletRequests/{requestId} {
-      allow read: if isSignedIn() && (
-                    resource.data.userId == request.auth.uid || isAdmin()
-                  );
-      allow create: if isSignedIn()
-                    && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // ── المنتجات (سوق البيع والشراء) ──
+    // ── المنتجات ─────────────────────────────────────────────────────────────
+    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث priorityScore بالجملة)
     match /products/{productId} {
-      // أي مستخدم مسجّل يمكنه استعراض المنتجات
-      allow read: if isSignedIn();
-      // الإنشاء مسموح فقط إن كان sellerId هو المستخدم الحالي
-      allow create: if isSignedIn()
-                    && request.resource.data.sellerId == request.auth.uid;
-      // التعديل مسموح للبائع أو المشرف
-      // (respondToProductOrder تُحدّث status من "available" → "sold")
-      allow update: if isSignedIn() && (
-                      resource.data.sellerId == request.auth.uid
-                      || isAdmin()
-                    );
-      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid
-                    || isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     // ── القصص (Stories) ──────────────────────────────────────────────────────
-    // أي مستخدم مسجّل يقرأ / ينشئ / يحدّث (مشاهدة، إعجاب، نص).
-    // الحذف محصور على صاحب القصة أو المشرف.
     match /stories/{storyId} {
-      allow read:   if isSignedIn();
-      allow create: if isSignedIn()
-                    && request.resource.data.userId == request.auth.uid;
-      allow update: if isSignedIn();          // views/likes arrayUnion من أي مستخدم
-      allow delete: if isSignedIn()
-                    && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read, write: if isSignedIn();
     }
 
-    // ── المتابعات ─────────────────────────────────────────────────────────────
-    match /follows/{followId} {
-      allow read:          if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete:        if isSignedIn();
+    // ── طلبات الخدمة ─────────────────────────────────────────────────────────
+    match /serviceRequests/{requestId} {
+      allow read, write: if isSignedIn();
     }
 
-    // ── التقييمات العامة (مجموعة مستقلة) ────────────────────────────────────
-    match /ratings/{ratingId} {
-      allow read:          if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete:        if isAdmin();
+    // ── المحادثات والرسائل ────────────────────────────────────────────────────
+    match /chats/{chatId} {
+      allow read, write: if isSignedIn();
+
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn();
+      }
     }
 
-    // ── طلبات شراء المنتجات ──
+    // ── طلبات شراء المنتجات ───────────────────────────────────────────────────
     match /productOrders/{orderId} {
-      // البائع أو المشتري أو المشرف يمكنهم القراءة
-      allow read: if isSignedIn() && (
-                    resource.data.sellerId == request.auth.uid
-                    || resource.data.buyerId == request.auth.uid
-                    || isAdmin()
-                  );
-      // المشتري فقط ينشئ الطلب
-      allow create: if isSignedIn()
-                    && request.resource.data.buyerId == request.auth.uid;
-      // البائع أو المشرف يُعدّل الحالة (قبول / رفض)
-      // المشتري يعدّل حقل hiddenForBuyer فقط (إخفاء ناعم بدلاً من الحذف)
-      allow update: if isSignedIn() && (
-                      resource.data.sellerId == request.auth.uid
-                      || (resource.data.buyerId == request.auth.uid
-                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hiddenForBuyer"]))
-                      || isAdmin()
-                    );
-      // المشتري يحذف طلبه المعلق فقط (إلغاء)؛ المشرف يحذف أي طلب
-      allow delete: if isSignedIn() && (
-                      (resource.data.buyerId == request.auth.uid
-                        && resource.data.status == "pending")
-                      || isAdmin()
-                    );
+      allow read, write: if isSignedIn();
+    }
+
+    // ── المتابعات والتقييمات ──────────────────────────────────────────────────
+    match /follows/{followId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /reviews/{reviewId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /ratings/{ratingId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Catch-all: أي مجموعة أخرى غير مذكورة ─────────────────────────────────
+    match /{document=**} {
+      allow read, write: if isSignedIn();
     }
   }
 }
