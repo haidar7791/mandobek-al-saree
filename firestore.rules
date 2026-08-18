@@ -139,6 +139,32 @@ service cloud.firestore {
                     || isAdmin();
     }
 
+    // ── القصص (Stories) ──────────────────────────────────────────────────────
+    // أي مستخدم مسجّل يقرأ / ينشئ / يحدّث (مشاهدة، إعجاب، نص).
+    // الحذف محصور على صاحب القصة أو المشرف.
+    match /stories/{storyId} {
+      allow read:   if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn();          // views/likes arrayUnion من أي مستخدم
+      allow delete: if isSignedIn()
+                    && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ── المتابعات ─────────────────────────────────────────────────────────────
+    match /follows/{followId} {
+      allow read:          if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete:        if isSignedIn();
+    }
+
+    // ── التقييمات العامة (مجموعة مستقلة) ────────────────────────────────────
+    match /ratings/{ratingId} {
+      allow read:          if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete:        if isAdmin();
+    }
+
     // ── طلبات شراء المنتجات ──
     match /productOrders/{orderId} {
       // البائع أو المشتري أو المشرف يمكنهم القراءة
