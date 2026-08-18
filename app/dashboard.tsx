@@ -836,6 +836,7 @@ export default function DashboardScreen() {
                   style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
                   onPress={() => {
                     Haptics.selectionAsync();
+                    setFocusedProductId(null); // stop any playing video immediately
                     setActiveCategory(tab.key);
                     setActiveSpecialty("all");
                   }}
@@ -901,6 +902,7 @@ export default function DashboardScreen() {
             {activeCategory === "all" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
+                key={`feed-list-${activeCategory}`}
                 data={sortedProducts}
                 keyExtractor={(p) => p.id}
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
