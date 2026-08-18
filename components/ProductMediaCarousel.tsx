@@ -68,15 +68,23 @@ export default function ProductMediaCarousel({
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const itemWidth = slideWidth || 1;
 
-  // Proactively pause all mounted videos the moment this card scrolls out of view
-  // or the screen loses focus — belt-and-suspenders on top of shouldPlay=false
+  // Explicitly play/pause the active-slide video when visibility changes.
+  // expo-av's shouldPlay prop is not always reactive enough on its own (known quirk),
+  // so we belt-and-suspenders with an imperative call.
+  // Story screens (story-viewer / story-creator) manage their own separate Video
+  // instances and do NOT share this ref, so there is no cross-screen interference.
   useEffect(() => {
-    if (!isVisible) {
+    const activeVideo = videoRefs.current[activeIndex];
+    if (isVisible) {
+      // Explicitly resume the centred video after returning from any overlay screen
+      activeVideo?.playAsync().catch(() => {});
+    } else {
+      // Pause every mounted video in this carousel immediately
       Object.values(videoRefs.current).forEach((video) => {
         video?.pauseAsync().catch(() => {});
       });
     }
-  }, [isVisible]);
+  }, [isVisible, activeIndex]);
 
   const handleMediaPress = (item: ProductMedia, index: number) => {
     if (!item?.url) return; // guard: ignore taps on malformed media entries

@@ -443,6 +443,19 @@ export default function ProfileScreen() {
               {balance.toLocaleString("ar-IQ")} د.ع
             </Text>
           </Pressable>
+
+          {/* Promote button — directly below wallet */}
+          <Pressable
+            style={styles.promoteBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/promote" as any);
+            }}
+            accessibilityLabel="روّج حسابك"
+          >
+            <Ionicons name="rocket" size={14} color={C.primary} />
+            <Text style={styles.promoteBtnText}>روّج حسابك</Text>
+          </Pressable>
         </View>
       </LinearGradient>
 
@@ -1149,6 +1162,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
     color: C.accent,
+  },
+  promoteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: C.accent,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginTop: 2,
+  },
+  promoteBtnText: {
+    fontSize: 13,
+    fontFamily: "Cairo_700Bold",
+    color: C.primary,
   },
 
   // ── Body ──

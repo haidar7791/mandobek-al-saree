@@ -907,18 +907,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* ── شريط الأدوات الثابت: ترويج — يظهر لجميع المستخدمين ── */}
-        <View style={styles.headerUtilRow}>
-          <Pressable
-            style={styles.promoteHeaderBtn}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/promote" as any); }}
-            accessibilityLabel="روّج حسابك"
-          >
-            <Ionicons name="rocket" size={13} color={C.accent} />
-            <Text style={styles.promoteHeaderBtnText}>روّج حسابك</Text>
-          </Pressable>
-        </View>
-
         {/* ── Contextual search bar — above category tabs, inside header ── */}
         <View style={styles.searchBarRow}>
           <Feather name="search" size={14} color="rgba(255,255,255,0.6)" />
