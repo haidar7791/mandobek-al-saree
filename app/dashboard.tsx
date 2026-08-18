@@ -487,29 +487,37 @@ export default function DashboardScreen() {
   // ── Video focus tracking (Instagram-style: only the centred card plays) ──
   const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
 
-  // Mirror isFocused into a ref so onViewableItemsChanged stays dependency-free
-  // (FlatList requires a perfectly stable callback — deps would cause remounting)
+  // ── Screen-focus guard ──────────────────────────────────────────────────────
+  // Mirror isFocused into a ref so the handler below stays reference-stable
+  // (FlatList compares props by reference; recreating the callback breaks tracking)
   const isFocusedRef = useRef(false);
   useEffect(() => {
     isFocusedRef.current = isFocused;
-    if (!isFocused) {
-      // Screen lost focus (user switched tab) → immediately clear the playing card
-      setFocusedProductId(null);
-    }
+    if (!isFocused) setFocusedProductId(null); // switched to another app screen
   }, [isFocused]);
 
-  // Stable refs required by FlatList — must not be recreated on re-render
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 });
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    try {
-      // Ignore callbacks that arrive mid-transition or after the screen blurs
-      if (!isFocusedRef.current) return;
-      const focused = viewableItems?.find((v: any) => v.isViewable);
-      setFocusedProductId(focused?.item?.id ?? null);
-    } catch {
-      // Swallow errors from rapid tab switches so we never show the crash screen
+  // Clear focused video when user switches to any non-Home tab
+  useEffect(() => {
+    if (activeCategory !== "all") setFocusedProductId(null);
+  }, [activeCategory]);
+
+  // ── Viewability refs — created ONCE, never reassigned ───────────────────────
+  // useRef(...).current freezes the value at mount time → perfectly stable reference
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<any> }) => {
+      try {
+        // Reject events that arrive during tab transitions or after screen blur
+        if (!isFocusedRef.current) return;
+        if (!viewableItems?.length) return;
+        const visibleId =
+          viewableItems[0]?.item?.id ?? viewableItems[0]?.item?._id;
+        if (visibleId) setFocusedProductId(visibleId);
+      } catch {
+        // Swallow any error during rapid navigation to prevent the crash screen
+      }
     }
-  }, []);
+  ).current;
 
   // search state — kept for filteredArtisans (search now lives in /search screen)
   const [search] = useState("");
@@ -899,7 +907,7 @@ export default function DashboardScreen() {
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
                 // Instagram-style: only the centred card is "active" → its video plays
-                viewabilityConfig={viewabilityConfig.current}
+                viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 renderItem={({ item: product }) => (
                   <ProductCard
