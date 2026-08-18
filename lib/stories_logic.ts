@@ -156,7 +156,19 @@ export function subscribeToActiveStories(
         group.stories.push(story);
         if (!story.views.includes(currentUserId)) group.hasUnseen = true;
       }
-      onData(Array.from(map.values()));
+      // Sort groups: promoted users (priorityScore > 0) first, then by latest story
+      const groups = Array.from(map.values());
+      groups.sort((a, b) => {
+        const pa = Math.max(...a.stories.map((s: any) => s.priorityScore ?? 0), 0);
+        const pb = Math.max(...b.stories.map((s: any) => s.priorityScore ?? 0), 0);
+        if (pb !== pa) return pb - pa;
+        // Within same tier: unseen first, then by most-recent story
+        if (a.hasUnseen !== b.hasUnseen) return a.hasUnseen ? -1 : 1;
+        const latestA = a.stories[a.stories.length - 1]?.createdAt ?? "";
+        const latestB = b.stories[b.stories.length - 1]?.createdAt ?? "";
+        return latestB.localeCompare(latestA);
+      });
+      onData(groups);
     },
     () => onData([])
   );

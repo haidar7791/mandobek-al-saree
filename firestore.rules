@@ -21,10 +21,17 @@ service cloud.firestore {
     }
 
     // ── المستخدمون ──
+    // القراءة: أي مستخدم مسجّل (لعرض الملفات الشخصية)
+    // الكتابة: صاحب الحساب نفسه أو المشرف (يشمل create/update/delete)
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // ── سجلات الترويج ──────────────────────────────────────────────────────────
+    // أي مستخدم مسجّل يمكنه قراءة وكتابة سجلات الترويج (للدفع والتفعيل)
+    match /promotions/{promoId} {
+      allow read, write: if isSignedIn();
     }
 
     // ── الحرفيون (يجب أن تكون قابلة للقراءة من جميع المسجلين) ──

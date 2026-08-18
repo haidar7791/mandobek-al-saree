@@ -1466,6 +1466,10 @@ export interface Product {
   sellerName: string;
   sellerPhone: string;
   sellerFeaturedUntil?: string | null;
+  /** Set to 100 when seller is promoted; absent/0 for regular sellers */
+  priorityScore?: number;
+  /** True while seller has an active promotion */
+  isPromoted?: boolean;
   status: "available" | "sold";
   soldAt?: string | null;
   createdAt: string;
@@ -1608,23 +1612,56 @@ export const promoteUser = async (
     const untilIso = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
 
     await adjustBalanceByDelta(userId, -cost);
-    await setDoc(doc(db, "users", userId), { featuredUntil: untilIso }, { merge: true });
+    await setDoc(
+      doc(db, "users", userId),
+      { featuredUntil: untilIso, isPromoted: true },
+      { merge: true }
+    );
 
-    // Batch-update sellerFeaturedUntil on all products by this seller
+    // Batch-update sellerFeaturedUntil + priorityScore + isPromoted on all products
     const prodSnap = await getDocs(
       query(collection(db, "products"), where("sellerId", "==", userId))
     );
     if (prodSnap.docs.length > 0) {
       const batch = writeBatch(db);
-      prodSnap.docs.forEach((d) => batch.update(d.ref, { sellerFeaturedUntil: untilIso }));
+      prodSnap.docs.forEach((d) =>
+        batch.update(d.ref, {
+          sellerFeaturedUntil: untilIso,
+          priorityScore: 100,
+          isPromoted: true,
+        })
+      );
       await batch.commit();
     }
+
+    // Batch-update priorityScore + isPromoted on all active stories by this user
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const storySnap = await getDocs(
+        query(
+          collection(db, "stories"),
+          where("userId", "==", userId),
+          where("createdAt", ">", since)
+        )
+      );
+      if (storySnap.docs.length > 0) {
+        const storyBatch = writeBatch(db);
+        storySnap.docs.forEach((d) =>
+          storyBatch.update(d.ref, { priorityScore: 100, isPromoted: true })
+        );
+        await storyBatch.commit();
+      }
+    } catch { /* stories update is best-effort */ }
 
     // If user is also an artisan, promote their artisan profile too
     try {
       const artisan = await getArtisanByUserId(userId);
       if (artisan) {
-        await updateDoc(doc(db, "artisans", artisan.id), { featuredUntil: untilIso });
+        await updateDoc(doc(db, "artisans", artisan.id), {
+          featuredUntil: untilIso,
+          isPromoted: true,
+          priorityScore: 100,
+        });
       }
     } catch { /* not an artisan — ignore */ }
 
@@ -1641,6 +1678,8 @@ export const subscribeToProducts = (
   callback: (products: Product[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
+  // Single-field orderBy keeps Firestore happy (no composite index needed).
+  // Client-side sort below applies the full priority → date order.
   const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
   return onSnapshot(
     q,
@@ -1653,7 +1692,6 @@ export const subscribeToProducts = (
         .filter((p) => {
           if (p.status !== "sold") return true;
           if (!p.soldAt) {
-            // No soldAt — treat as expired and remove
             expired.push(p.id);
             return false;
           }
@@ -1671,6 +1709,16 @@ export const subscribeToProducts = (
           console.error("subscribeToProducts: failed to delete expired sold products", err)
         );
       }
+
+      // Client-side priority sort:
+      //   1. priorityScore desc  (promoted sellers score 100, others 0)
+      //   2. createdAt desc      (newer first within same tier)
+      products.sort((a, b) => {
+        const pa = a.priorityScore ?? 0;
+        const pb = b.priorityScore ?? 0;
+        if (pb !== pa) return pb - pa;
+        return (b.createdAt || "").localeCompare(a.createdAt || "");
+      });
 
       callback(products);
     },

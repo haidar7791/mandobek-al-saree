@@ -760,9 +760,15 @@ export default function DashboardScreen() {
     return result;
   }, [artisans, activeCategory, activeSpecialty, userLocation, searchQuery]);
 
-  // Sort products: featured sellers first, then by creation date (newest first)
+  // Sort products:
+  //   1. priorityScore desc  — promoted sellers (score=100) always top 3
+  //   2. featuredUntil active — second tier (paid but score not set yet)
+  //   3. createdAt desc      — recency as tiebreaker
   const sortedProducts = React.useMemo(() => {
     return [...products].sort((a, b) => {
+      const pa = a.priorityScore ?? 0;
+      const pb = b.priorityScore ?? 0;
+      if (pb !== pa) return pb - pa;
       const aF = isFeaturedActive({ featuredUntil: a.sellerFeaturedUntil }) ? 0 : 1;
       const bF = isFeaturedActive({ featuredUntil: b.sellerFeaturedUntil }) ? 0 : 1;
       if (aF !== bF) return aF - bF;
