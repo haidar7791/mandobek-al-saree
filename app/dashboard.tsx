@@ -519,8 +519,8 @@ export default function DashboardScreen() {
     }
   ).current;
 
-  // search state — kept for filteredArtisans (search now lives in /search screen)
-  const [search] = useState("");
+  // Contextual search — filters products (الرئيسية) and artisans (specialty tabs)
+  const [searchQuery, setSearchQuery] = useState("");
   const { profile: liveProfile } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
@@ -710,8 +710,17 @@ export default function DashboardScreen() {
     if (activeSpecialty !== "all") {
       result = result.filter((a) => a.specialty === activeSpecialty);
     }
-    // search is now handled in /search screen; keep variable reference to avoid TS warning
-    void search;
+    // Contextual text search — name, profession, or phone number
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (a) =>
+          a.name?.toLowerCase().includes(q) ||
+          a.specialty?.toLowerCase().includes(q) ||
+          a.bio?.toLowerCase().includes(q) ||
+          a.phone?.includes(q)
+      );
+    }
 
     if (userLocation) {
       result.sort((a, b) => {
@@ -733,7 +742,7 @@ export default function DashboardScreen() {
     }
 
     return result;
-  }, [artisans, activeCategory, activeSpecialty, userLocation]);
+  }, [artisans, activeCategory, activeSpecialty, userLocation, searchQuery]);
 
   // Sort products: featured sellers first, then by creation date (newest first)
   const sortedProducts = React.useMemo(() => {
@@ -744,6 +753,18 @@ export default function DashboardScreen() {
       return (b.createdAt || "").localeCompare(a.createdAt || "");
     });
   }, [products]);
+
+  // Filter sorted products by search query (empty query → all products)
+  const filteredProducts = React.useMemo(() => {
+    if (!searchQuery.trim()) return sortedProducts;
+    const q = searchQuery.toLowerCase().trim();
+    return sortedProducts.filter(
+      (p) =>
+        p.title?.toLowerCase().includes(q) ||
+        p.sellerName?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q)
+    );
+  }, [sortedProducts, searchQuery]);
 
   const specialtyFilters = SPECIALTY_FILTERS[activeCategory];
 
@@ -837,6 +858,7 @@ export default function DashboardScreen() {
                   onPress={() => {
                     Haptics.selectionAsync();
                     setFocusedProductId(null); // stop any playing video immediately
+                    setSearchQuery("");         // clear search when switching tabs
                     setActiveCategory(tab.key);
                     setActiveSpecialty("all");
                   }}
@@ -883,6 +905,34 @@ export default function DashboardScreen() {
             )}
           </View>
 
+          {/* ── Contextual search bar — filters products (الرئيسية) or artisans (other tabs) ── */}
+          <View style={styles.searchBarRow}>
+            <Feather name="search" size={14} color={C.textMuted} />
+            <TextInput
+              style={styles.searchBarInput}
+              placeholder={
+                activeCategory === "all"
+                  ? "ابحث في المنتجات..."
+                  : "ابحث في الحرفيين..."
+              }
+              placeholderTextColor={C.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              textAlign="right"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
+                style={styles.searchClearBtn}
+                hitSlop={8}
+                accessibilityLabel="مسح البحث"
+              >
+                <Feather name="x" size={14} color={C.textMuted} />
+              </Pressable>
+            )}
+          </View>
+
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
           {activeCategory === "all" && (
             <View style={styles.productsSubBar}>
@@ -903,7 +953,7 @@ export default function DashboardScreen() {
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
                 key={`feed-list-${activeCategory}`}
-                data={sortedProducts}
+                data={filteredProducts}
                 keyExtractor={(p) => p.id}
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
@@ -1216,6 +1266,30 @@ const styles = StyleSheet.create({
   },
 
   // ── Products sub-header bar (fixed, pushes list down) ──
+  // ── Inline search bar ──────────────────────────────────────────────────────
+  searchBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.inputBg,
+    marginHorizontal: 12,
+    marginVertical: 7,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 9 : 6,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  searchBarInput: {
+    flex: 1,
+    fontSize: 13,
+    color: C.text,
+    textAlign: "right",
+    paddingVertical: 0,
+  },
+  searchClearBtn: {
+    padding: 2,
+  },
   productsSubBar: {
     flexDirection: "row",
     alignItems: "center",
