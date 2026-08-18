@@ -8,7 +8,7 @@
  *    instantly affects all other cards too.
  *  - Fullscreen video always plays with sound regardless of global mute.
  */
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FlatList,
   Image,
@@ -68,17 +68,24 @@ export default function ProductMediaCarousel({
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const itemWidth = slideWidth || 1;
 
+  // Proactively pause all mounted videos the moment this card scrolls out of view
+  // or the screen loses focus — belt-and-suspenders on top of shouldPlay=false
+  useEffect(() => {
+    if (!isVisible) {
+      Object.values(videoRefs.current).forEach((video) => {
+        video?.pauseAsync().catch(() => {});
+      });
+    }
+  }, [isVisible]);
+
   const handleMediaPress = (item: ProductMedia, index: number) => {
+    if (!item?.url) return; // guard: ignore taps on malformed media entries
     if (onMediaPress) {
       onMediaPress(item);
       return;
     }
-    if (item.type === "video") {
-      // Use our fullscreen modal (with sound on) instead of native player
-      setFullscreenMedia(item);
-    } else {
-      setFullscreenMedia(item);
-    }
+    // Open fullscreen viewer (videos auto-unmute, images display full-res)
+    setFullscreenMedia(item);
   };
 
   const handleToggleMute = () => {

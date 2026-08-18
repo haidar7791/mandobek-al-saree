@@ -456,6 +456,8 @@ function ProductCard({
 }
 
 export default function DashboardScreen() {
+  // Screen-level focus — drives video start/stop & viewability guard
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
@@ -484,11 +486,29 @@ export default function DashboardScreen() {
 
   // ── Video focus tracking (Instagram-style: only the centred card plays) ──
   const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
+
+  // Mirror isFocused into a ref so onViewableItemsChanged stays dependency-free
+  // (FlatList requires a perfectly stable callback — deps would cause remounting)
+  const isFocusedRef = useRef(false);
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+    if (!isFocused) {
+      // Screen lost focus (user switched tab) → immediately clear the playing card
+      setFocusedProductId(null);
+    }
+  }, [isFocused]);
+
   // Stable refs required by FlatList — must not be recreated on re-render
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 });
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    const focused = viewableItems.find((v: any) => v.isViewable);
-    setFocusedProductId(focused?.item?.id ?? null);
+    try {
+      // Ignore callbacks that arrive mid-transition or after the screen blurs
+      if (!isFocusedRef.current) return;
+      const focused = viewableItems?.find((v: any) => v.isViewable);
+      setFocusedProductId(focused?.item?.id ?? null);
+    } catch {
+      // Swallow errors from rapid tab switches so we never show the crash screen
+    }
   }, []);
 
   // search state — kept for filteredArtisans (search now lives in /search screen)
