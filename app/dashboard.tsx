@@ -845,26 +845,42 @@ export default function DashboardScreen() {
           style={styles.storyStrip}
           contentContainerStyle={styles.storyStripContent}
         >
-          {/* My Story circle */}
-          <Pressable
-            style={styles.storyCircleWrap}
-            onPress={() => { Haptics.selectionAsync(); router.push("/story-creator" as any); }}
-          >
-            <View style={[
-              styles.storyRing,
-              myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
-            ]}>
-              <View style={styles.storyInner}>
-                <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
-              </View>
-              {myStories.length === 0 && (
-                <View style={styles.storyAddBadge}>
-                  <Feather name="plus" size={11} color="#FFF" />
+          {/* My Story circle — Instagram-style:
+              • No active stories  → tap circle (or + badge) → story-creator
+              • Has active stories → tap circle → story-viewer (own); tap + badge → story-creator */}
+          <View style={styles.storyCircleWrap}>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                if (myStories.length === 0) {
+                  router.push("/story-creator" as any);
+                } else {
+                  router.push({ pathname: "/story-viewer", params: { userId } } as any);
+                }
+              }}
+            >
+              <View style={[
+                styles.storyRing,
+                myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
+              ]}>
+                <View style={styles.storyInner}>
+                  <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
                 </View>
-              )}
-            </View>
+                {/* + badge always visible: taps independently to add a new story */}
+                <Pressable
+                  style={styles.storyAddBadge}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    router.push("/story-creator" as any);
+                  }}
+                  hitSlop={6}
+                >
+                  <Feather name="plus" size={11} color="#FFF" />
+                </Pressable>
+              </View>
+            </Pressable>
             <Text style={styles.storyLabel} numberOfLines={1}>قصتك</Text>
-          </Pressable>
+          </View>
 
           {/* Other users' story circles */}
           {storyGroups.map((group) => (
