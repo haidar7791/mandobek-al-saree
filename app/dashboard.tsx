@@ -28,6 +28,12 @@ import { auth } from "../lib/firebase";
 import { Video, ResizeMode } from "expo-av";
 import { ShareModal } from "@/components/ShareModal";
 import {
+  subscribeToActiveStories,
+  subscribeToMyStories,
+  type Story,
+  type StoryGroup,
+} from "@/lib/stories_logic";
+import {
   getArtisans,
   getUserProfile,
   calcDistanceKm,
@@ -521,6 +527,16 @@ export default function DashboardScreen() {
 
   // Contextual search — filters products (الرئيسية) and artisans (specialty tabs)
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Stories ───────────────────────────────────────────────────────────────
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [myStories, setMyStories] = useState<Story[]>([]);
+  useEffect(() => {
+    if (!userId) return;
+    const unsub1 = subscribeToActiveStories(userId, setStoryGroups);
+    const unsub2 = subscribeToMyStories(userId, setMyStories);
+    return () => { unsub1(); unsub2(); };
+  }, [userId]);
   const { profile: liveProfile } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
@@ -822,6 +838,59 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* ── Story Strip — between header icons and promote button ── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.storyStrip}
+          contentContainerStyle={styles.storyStripContent}
+        >
+          {/* My Story circle */}
+          <Pressable
+            style={styles.storyCircleWrap}
+            onPress={() => { Haptics.selectionAsync(); router.push("/story-creator" as any); }}
+          >
+            <View style={[
+              styles.storyRing,
+              myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
+            ]}>
+              <View style={styles.storyInner}>
+                <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
+              </View>
+              {myStories.length === 0 && (
+                <View style={styles.storyAddBadge}>
+                  <Feather name="plus" size={11} color="#FFF" />
+                </View>
+              )}
+            </View>
+            <Text style={styles.storyLabel} numberOfLines={1}>قصتك</Text>
+          </Pressable>
+
+          {/* Other users' story circles */}
+          {storyGroups.map((group) => (
+            <Pressable
+              key={group.userId}
+              style={styles.storyCircleWrap}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(`/story-viewer?userId=${group.userId}` as any);
+              }}
+            >
+              <View style={[
+                styles.storyRing,
+                group.hasUnseen ? styles.storyRingUnseen : styles.storyRingSeen,
+              ]}>
+                <View style={styles.storyInner}>
+                  <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} />
+                </View>
+              </View>
+              <Text style={styles.storyLabel} numberOfLines={1}>
+                {group.userName.split(" ")[0]}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
         {/* ── شريط الأدوات الثابت: ترويج — يظهر لجميع المستخدمين ── */}
         <View style={styles.headerUtilRow}>
           <Pressable
@@ -1089,6 +1158,60 @@ const styles = StyleSheet.create({
   stickyBar: { backgroundColor: "#FFF", borderBottomWidth: 1, borderBottomColor: C.border },
   listWrapper: { flex: 1, minHeight: 0 },
   headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
+
+  // ── Story strip ────────────────────────────────────────────────────────────
+  storyStrip: { flexGrow: 0, marginHorizontal: -20 },
+  storyStripContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  storyCircleWrap: { alignItems: "center", gap: 5 },
+  /** Outer ring — provides the coloured border */
+  storyRing: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2.5,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  storyRingUnseen: { borderColor: C.accent },          // gold = new story
+  storyRingSeen:   { borderColor: "rgba(255,255,255,0.25)" }, // dim = already seen
+  storyRingMine:   { borderColor: "#4BFF8A" },          // green = I have a story
+  storyRingEmpty:  { borderColor: "rgba(255,255,255,0.2)" },  // plain = no story yet
+  /** Inner clip circle */
+  storyInner: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  /** + badge on the user's own circle */
+  storyAddBadge: {
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#0D1B3E",
+  },
+  storyLabel: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 10,
+    fontWeight: "600",
+    textAlign: "center",
+    maxWidth: 64,
+  },
   headerActions: {
     flexDirection: "row-reverse", justifyContent: "space-between",
     alignItems: "flex-start", gap: 4,
