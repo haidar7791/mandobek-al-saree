@@ -86,14 +86,28 @@ export default function StoryViewerScreen() {
 
   // ── Load stories ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!userId) { router.back(); return; }
-    fetchUserStories(userId as string)
-      .then((data) => {
-        if (data.length === 0) { router.back(); return; }
+    // Normalize param — Expo Router can return string | string[]
+    const uid = Array.isArray(userId) ? userId[0] : userId;
+    if (!uid) { router.back(); return; }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchUserStories(uid);
+        if (cancelled) return;
+        if (!data || data.length === 0) {
+          router.back();
+          return;
+        }
         setStories(data);
         setLoading(false);
-      })
-      .catch(() => router.back());
+      } catch {
+        // Permission error or network failure — exit gracefully, never crash
+        if (!cancelled) router.back();
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [userId]);
 
   // ── Progress animation ──────────────────────────────────────────────────

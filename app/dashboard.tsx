@@ -573,10 +573,15 @@ export default function DashboardScreen() {
 
       setArtisans(allArtisans);
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      // Location is best-effort — failure must never block the rest of the UI
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {
+        // Location unavailable or denied — silently ignore
       }
     } catch (err) {
       console.error("loadData error:", err);
@@ -885,7 +890,7 @@ export default function DashboardScreen() {
                       resizeMode="cover"
                     />
                   ) : (
-                    <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
+                    <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} disableNavigation />
                   )}
                 </View>
                 {/* + badge always visible: taps independently to add a new story */}
@@ -928,7 +933,7 @@ export default function DashboardScreen() {
                       resizeMode="cover"
                     />
                   ) : (
-                    <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} />
+                    <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} disableNavigation />
                   )}
                 </View>
               </View>
