@@ -12,6 +12,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { configurePushHandler, registerForPushNotifications } from "@/lib/push_notifications";
 import { NetworkProvider } from "@/lib/network";
+import { VideoAudioProvider } from "@/lib/video-audio-context";
 import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
 import { isAuthRoutingSuspended } from "@/lib/auth_flow";
@@ -206,7 +207,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <NetworkProvider>
-            <RootLayoutNav isLoggedIn={isLoggedIn} />
+            <VideoAudioProvider>
+              <RootLayoutNav isLoggedIn={isLoggedIn} />
+            </VideoAudioProvider>
           </NetworkProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

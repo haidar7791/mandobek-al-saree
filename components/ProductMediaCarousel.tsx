@@ -1,3 +1,13 @@
+/**
+ * ProductMediaCarousel.tsx
+ * Horizontal paged carousel for product images and videos.
+ *
+ * Instagram-style audio behaviour:
+ *  - Only the focused card (isVisible=true) plays its video.
+ *  - Mute state is global: toggling the 🔊/🔇 button on any card
+ *    instantly affects all other cards too.
+ *  - Fullscreen video always plays with sound regardless of global mute.
+ */
 import React, { useRef, useState } from "react";
 import {
   FlatList,
@@ -14,7 +24,9 @@ import {
 } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import type { ProductMedia } from "@/lib/db_logic";
+import { useVideoAudio } from "@/lib/video-audio-context";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -23,7 +35,9 @@ export function normalizeProductMedia(
   media: ProductMedia[] | undefined,
   imageUrl?: string | null
 ): ProductMedia[] {
-  const validMedia = (media ?? []).filter((item) => item?.url && (item.type === "image" || item.type === "video"));
+  const validMedia = (media ?? []).filter(
+    (item) => item?.url && (item.type === "image" || item.type === "video")
+  );
   if (validMedia.length > 0) return validMedia;
   return imageUrl ? [{ url: imageUrl, type: "image" }] : [];
 }
@@ -34,6 +48,7 @@ type ProductMediaCarouselProps = {
   style?: StyleProp<ViewStyle>;
   showIndicators?: boolean;
   onMediaPress?: (item: ProductMedia) => void;
+  /** True when this card is the focused one in the viewport — videos play only when true */
   isVisible?: boolean;
 };
 
@@ -45,6 +60,8 @@ export default function ProductMediaCarousel({
   onMediaPress,
   isVisible = true,
 }: ProductMediaCarouselProps) {
+  const { isAudioMuted, toggleMute } = useVideoAudio();
+
   const videoRefs = useRef<Record<number, Video | null>>({});
   const [slideWidth, setSlideWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -56,12 +73,17 @@ export default function ProductMediaCarousel({
       onMediaPress(item);
       return;
     }
-
     if (item.type === "video") {
-      void videoRefs.current[index]?.presentFullscreenPlayer();
+      // Use our fullscreen modal (with sound on) instead of native player
+      setFullscreenMedia(item);
     } else {
       setFullscreenMedia(item);
     }
+  };
+
+  const handleToggleMute = () => {
+    Haptics.selectionAsync();
+    toggleMute();
   };
 
   if (media.length === 0) {
@@ -73,24 +95,33 @@ export default function ProductMediaCarousel({
   }
 
   const renderItem = ({ item, index }: ListRenderItemInfo<ProductMedia>) => {
-    const content =
-      item.type === "video" ? (
-        <Video
-          ref={(video) => {
-            videoRefs.current[index] = video;
-          }}
-          source={{ uri: item.url }}
-          style={{ width: itemWidth, height }}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={isVisible && activeIndex === index}
-          progressUpdateIntervalMillis={250}
-          isLooping
-          isMuted={!isVisible}
-          useNativeControls={false}
-        />
-      ) : (
-        <Image source={{ uri: item.url }} style={{ width: itemWidth, height }} resizeMode="cover" />
-      );
+    const isVideoItem = item.type === "video";
+    const isActiveSlide = activeIndex === index;
+    // Video plays only when this card is focused AND this slide is active
+    const shouldPlayVideo = isVisible && isActiveSlide;
+
+    const content = isVideoItem ? (
+      <Video
+        ref={(video) => {
+          videoRefs.current[index] = video;
+        }}
+        source={{ uri: item.url }}
+        style={{ width: itemWidth, height }}
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay={shouldPlayVideo}
+        progressUpdateIntervalMillis={250}
+        isLooping
+        // Muted when card is out of viewport OR global mute is on
+        isMuted={!isVisible || isAudioMuted}
+        useNativeControls={false}
+      />
+    ) : (
+      <Image
+        source={{ uri: item.url }}
+        style={{ width: itemWidth, height }}
+        resizeMode="cover"
+      />
+    );
 
     return (
       <View style={{ width: itemWidth, height }}>
@@ -99,17 +130,34 @@ export default function ProductMediaCarousel({
           onPress={() => handleMediaPress(item, index)}
           accessibilityRole="button"
           accessibilityLabel={
-            item.type === "video"
-              ? "فتح الفيديو بملء الشاشة"
-              : "فتح الصورة بملء الشاشة"
+            isVideoItem ? "فتح الفيديو بملء الشاشة" : "فتح الصورة بملء الشاشة"
           }
         >
           {content}
         </Pressable>
-        {item.type === "video" && (
+
+        {/* Video indicator badge — top-left */}
+        {isVideoItem && (
           <View pointerEvents="none" style={styles.videoBadge}>
-            <Ionicons name="volume-high" size={13} color="#FFF" />
+            <Ionicons name="play-circle" size={13} color="#FFF" />
           </View>
+        )}
+
+        {/* Global mute toggle — bottom-right, only on the active video slide */}
+        {isVideoItem && isActiveSlide && (
+          <TouchableOpacity
+            style={styles.muteBtn}
+            onPress={handleToggleMute}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={isAudioMuted ? "تفعيل الصوت" : "كتم الصوت"}
+          >
+            <Ionicons
+              name={isAudioMuted ? "volume-mute" : "volume-high"}
+              size={15}
+              color="#FFF"
+            />
+          </TouchableOpacity>
         )}
       </View>
     );
@@ -130,7 +178,7 @@ export default function ProductMediaCarousel({
         onMomentumScrollEnd={(event) => {
           if (slideWidth <= 0) return;
           const nextIndex = Math.round(
-            event.nativeEvent.contentOffset.x / slideWidth,
+            event.nativeEvent.contentOffset.x / slideWidth
           );
           setActiveIndex(Math.max(0, Math.min(nextIndex, media.length - 1)));
         }}
@@ -140,7 +188,9 @@ export default function ProductMediaCarousel({
       {showIndicators && media.length > 1 && (
         <>
           <View pointerEvents="none" style={styles.counter}>
-            <Text style={styles.counterText}>{activeIndex + 1}/{media.length}</Text>
+            <Text style={styles.counterText}>
+              {activeIndex + 1}/{media.length}
+            </Text>
           </View>
           <View pointerEvents="none" style={styles.dots}>
             {media.map((_, index) => (
@@ -153,6 +203,7 @@ export default function ProductMediaCarousel({
         </>
       )}
 
+      {/* ── Fullscreen viewer (images + videos) ── */}
       <Modal
         visible={!!fullscreenMedia}
         transparent
@@ -167,6 +218,7 @@ export default function ProductMediaCarousel({
               style={styles.fullscreenMedia}
               resizeMode={ResizeMode.CONTAIN}
               shouldPlay
+              // Always unmute in fullscreen for immersive experience
               isMuted={false}
               useNativeControls
               progressUpdateIntervalMillis={250}
@@ -217,6 +269,8 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.55)" },
   activeDot: { width: 18, backgroundColor: "#FFF" },
+
+  // Video play badge — top-left indicator
   videoBadge: {
     position: "absolute",
     top: 10,
@@ -224,10 +278,25 @@ const styles = StyleSheet.create({
     width: 27,
     height: 27,
     borderRadius: 14,
-    backgroundColor: "rgba(0,0,0,0.62)",
+    backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
+
+  // Global mute toggle button — bottom-right
+  muteBtn: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 5,
+  },
+
   fullscreenOverlay: {
     position: "absolute",
     top: 0,

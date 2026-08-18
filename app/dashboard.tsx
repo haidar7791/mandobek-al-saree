@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
@@ -482,6 +482,15 @@ export default function DashboardScreen() {
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
   const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
 
+  // ── Video focus tracking (Instagram-style: only the centred card plays) ──
+  const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
+  // Stable refs required by FlatList — must not be recreated on re-render
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 });
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    const focused = viewableItems.find((v: any) => v.isViewable);
+    setFocusedProductId(focused?.item?.id ?? null);
+  }, []);
+
   // search state — kept for filteredArtisans (search now lives in /search screen)
   const [search] = useState("");
   const { profile: liveProfile } = useProfileCheck(userId);
@@ -869,6 +878,9 @@ export default function DashboardScreen() {
                 contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
+                // Instagram-style: only the centred card is "active" → its video plays
+                viewabilityConfig={viewabilityConfig.current}
+                onViewableItemsChanged={onViewableItemsChanged}
                 renderItem={({ item: product }) => (
                   <ProductCard
                     product={product}
@@ -877,7 +889,7 @@ export default function DashboardScreen() {
                     userLocation={userLocation}
                     pendingOrderId={myPendingOrders.get(product.id)}
                     isLoading={buyingProductId === product.id}
-                    isActive={activeCategory === "all"}
+                    isActive={product.id === focusedProductId}
                     onShare={() => { Haptics.selectionAsync(); setShareProduct(product); }}
                     onMediaPress={(item) => setFullscreenMedia(item)}
                     onLoadingChange={setBuyingProductId}
