@@ -53,6 +53,8 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="active-order" />
         <Stack.Screen name="support" />
         <Stack.Screen name="promote" />
+        <Stack.Screen name="story-creator" />
+        <Stack.Screen name="story-viewer" />
       </Stack.Protected>
     </Stack>
   );

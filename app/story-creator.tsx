@@ -29,7 +29,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
-import * as VideoThumbnails from "expo-video-thumbnails";
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
 import { createStory, uploadStoryMedia } from "@/lib/stories_logic";
@@ -113,25 +112,16 @@ export default function StoryCreatorScreen() {
       const profile = await getUserProfile(user.uid);
       const mediaUrl = await uploadStoryMedia(mediaUri, mediaType, user.uid);
 
-      // For video stories: generate a still-frame thumbnail at t=0 and upload it
-      let thumbnailUrl: string | null = null;
-      if (mediaType === "video") {
-        try {
-          const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(mediaUri, { time: 0 });
-          thumbnailUrl = await uploadStoryMedia(thumbUri, "image", user.uid);
-        } catch {
-          // Thumbnail generation is best-effort — fall back gracefully
-          thumbnailUrl = null;
-        }
-      }
-
+      // thumbnailUrl: for images use the mediaUrl directly (already a still);
+      // for videos we cannot generate a native thumbnail here, so fall back to null
+      // (the viewer will show the user's profile photo as the circle cover instead).
       await createStory({
         userId: user.uid,
         userName: profile?.name || "مستخدم فورس",
         userPhotoUri: profile?.photoUri || null,
         mediaUrl,
         mediaType,
-        thumbnailUrl: mediaType === "image" ? mediaUrl : thumbnailUrl,
+        thumbnailUrl: mediaType === "image" ? mediaUrl : null,
         text: overlayText.trim() || null,
         textColor: overlayText.trim() ? textColor : null,
         musicName: selectedMusic.id === "none" ? null : selectedMusic.name,
