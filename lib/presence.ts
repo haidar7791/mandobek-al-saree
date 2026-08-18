@@ -26,11 +26,13 @@ export function setupPresence(userId: string): () => void {
     if (snap.val() === false) return;
 
     // On genuine disconnect (network drop, app kill), RTDB will apply this write.
+    // Errors are swallowed: a presence-rules failure must never crash the app.
     onDisconnect(userStatusRef)
       .set({ state: "offline", lastChanged: serverTimestamp() })
       .then(() => {
-        set(userStatusRef, { state: "online", lastChanged: serverTimestamp() });
-      });
+        set(userStatusRef, { state: "online", lastChanged: serverTimestamp() }).catch(() => {});
+      })
+      .catch(() => {});
   });
 
   return () => {

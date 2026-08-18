@@ -37,6 +37,8 @@ export interface Story {
   userPhotoUri: string | null;
   mediaUrl: string;
   mediaType: "image" | "video";
+  /** For video stories: the uploaded still-frame thumbnail URL. For images: same as mediaUrl. */
+  thumbnailUrl?: string | null;
   text: string | null;
   textColor: string | null;
   musicName: string | null;
@@ -51,6 +53,8 @@ export interface StoryGroup {
   userId: string;
   userName: string;
   userPhotoUri: string | null;
+  /** The cover image shown inside the circle: thumbnailUrl (video) or mediaUrl (image) of the latest story. */
+  coverImageUri: string | null;
   stories: Story[];
   /** True when the viewing user hasn't watched all stories in the group */
   hasUnseen: boolean;
@@ -82,6 +86,7 @@ export async function createStory(data: {
   userPhotoUri: string | null;
   mediaUrl: string;
   mediaType: "image" | "video";
+  thumbnailUrl?: string | null;
   text: string | null;
   textColor: string | null;
   musicName: string | null;
@@ -148,6 +153,7 @@ export function subscribeToActiveStories(
             userId: story.userId,
             userName: story.userName,
             userPhotoUri: story.userPhotoUri,
+            coverImageUri: null,
             stories: [],
             hasUnseen: false,
           });
@@ -155,6 +161,16 @@ export function subscribeToActiveStories(
         const group = map.get(story.userId)!;
         group.stories.push(story);
         if (!story.views.includes(currentUserId)) group.hasUnseen = true;
+      }
+      // Compute coverImageUri = latest story's thumbnail (video) or mediaUrl (image)
+      for (const group of map.values()) {
+        const latest = group.stories[group.stories.length - 1];
+        if (latest) {
+          group.coverImageUri =
+            latest.mediaType === "video"
+              ? (latest.thumbnailUrl ?? latest.userPhotoUri)
+              : latest.mediaUrl;
+        }
       }
       // Sort groups: promoted users (priorityScore > 0) first, then by latest story
       const groups = Array.from(map.values());

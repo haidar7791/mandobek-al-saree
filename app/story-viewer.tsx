@@ -64,7 +64,9 @@ function timeAgo(iso: string): string {
 
 export default function StoryViewerScreen() {
   const insets = useSafeAreaInsets();
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { userId: rawUserId } = useLocalSearchParams<{ userId: string | string[] }>();
+  // Expo Router can return string | string[] — always normalise to a plain string
+  const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
   const currentUserId = auth.currentUser?.uid ?? "";
 
   const [stories, setStories] = useState<Story[]>([]);

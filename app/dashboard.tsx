@@ -537,6 +537,13 @@ export default function DashboardScreen() {
     const unsub2 = subscribeToMyStories(userId, setMyStories);
     return () => { unsub1(); unsub2(); };
   }, [userId]);
+
+  /** Cover image shown inside my story circle — latest story's thumbnail (or mediaUrl for images) */
+  const myCoverImageUri = useMemo(() => {
+    if (myStories.length === 0) return null;
+    const latest = myStories[myStories.length - 1];
+    return latest.thumbnailUrl ?? (latest.mediaType === "image" ? latest.mediaUrl : null);
+  }, [myStories]);
   const { profile: liveProfile } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
@@ -870,12 +877,22 @@ export default function DashboardScreen() {
                 myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
               ]}>
                 <View style={styles.storyInner}>
-                  <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
+                  {/* Show latest story thumbnail if available, otherwise profile photo */}
+                  {myCoverImageUri ? (
+                    <Image
+                      source={{ uri: myCoverImageUri }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} />
+                  )}
                 </View>
                 {/* + badge always visible: taps independently to add a new story */}
                 <Pressable
                   style={styles.storyAddBadge}
-                  onPress={() => {
+                  onPress={(e) => {
+                    e.stopPropagation();
                     Haptics.selectionAsync();
                     router.push("/story-creator" as any);
                   }}
@@ -895,7 +912,7 @@ export default function DashboardScreen() {
               style={styles.storyCircleWrap}
               onPress={() => {
                 Haptics.selectionAsync();
-                router.push(`/story-viewer?userId=${group.userId}` as any);
+                router.push({ pathname: "/story-viewer", params: { userId: group.userId } } as any);
               }}
             >
               <View style={[
@@ -903,7 +920,16 @@ export default function DashboardScreen() {
                 group.hasUnseen ? styles.storyRingUnseen : styles.storyRingSeen,
               ]}>
                 <View style={styles.storyInner}>
-                  <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} />
+                  {/* Show latest story thumbnail if available, otherwise profile photo */}
+                  {group.coverImageUri ? (
+                    <Image
+                      source={{ uri: group.coverImageUri }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} />
+                  )}
                 </View>
               </View>
               <Text style={styles.storyLabel} numberOfLines={1}>
