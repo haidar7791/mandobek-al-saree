@@ -24,6 +24,8 @@ import {
   subscribeToBuyerProductOrders,
   respondToProductOrder,
   bulkDeleteProductOrders,
+  getUserProfile,
+  buildChatId,
   type ProductOrder,
 } from "@/lib/db_logic";
 
@@ -82,13 +84,21 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
   const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
+  const [sellerPhone, setSellerPhone] = useState<string | null>(null);
 
-  const goToProfile = () => {
+  useEffect(() => {
+    if (!order.sellerId) return;
+    getUserProfile(order.sellerId)
+      .then((p) => setSellerPhone(p?.phone?.trim() || ""))
+      .catch(() => setSellerPhone(""));
+  }, [order.sellerId]);
+
+  const openChat = () => {
+    const me = auth.currentUser;
+    if (!me) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({
-      pathname: "/user-profile",
-      params: { userId: order.sellerId, userName: order.sellerName ?? "" },
-    } as any);
+    const chatId = buildChatId(me.uid, order.sellerId);
+    router.push({ pathname: "/chat", params: { chatId, otherUserId: order.sellerId, otherName: order.sellerName ?? "" } } as any);
   };
 
   const handleShare = async () => {
@@ -105,11 +115,29 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
 
-        {/* ── Top section: thumbnail + name + price ── */}
+        {/* ── Top section: thumbnail + name + price + color/size/phone ── */}
         <View style={styles.cardTopRow}>
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
+            {!!order.selectedColor && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>اللون:</Text>
+                <Text style={styles.detailValue}>{order.selectedColor}</Text>
+              </View>
+            )}
+            {!!order.selectedSize && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>القياس:</Text>
+                <Text style={styles.detailValue}>{order.selectedSize}</Text>
+              </View>
+            )}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>رقم الهاتف:</Text>
+              <Text style={styles.detailValue}>
+                {sellerPhone === null ? "..." : sellerPhone || "لا يوجد"}
+              </Text>
+            </View>
           </View>
           <View style={styles.thumbCol}>
             <ProductThumb uri={order.productImageUrl} />
@@ -141,11 +169,11 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
 
         <Text style={styles.dateText}>{date}</Text>
 
-        {/* ── Full-width contact button ── */}
+        {/* ── Chat button ── */}
         <TouchableOpacity
           style={styles.contactBtn}
           activeOpacity={0.82}
-          onPress={goToProfile}
+          onPress={openChat}
         >
           <LinearGradient
             colors={[C.accent, "#B8952A"]}
@@ -153,7 +181,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           >
             <Feather name="message-circle" size={16} color={C.primary} />
-            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
+            <Text style={styles.contactBtnText}>دردشة</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -171,10 +199,18 @@ function SaleCard({ order, onAccept, onReject }: {
   onReject: () => void;
 }) {
   const [acting, setActing] = useState(false);
+  const [buyerPhone, setBuyerPhone] = useState<string | null>(null);
   const cfg = SELLER_STATUS[order.status];
   const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
+
+  useEffect(() => {
+    if (!order.buyerId) return;
+    getUserProfile(order.buyerId)
+      .then((p) => setBuyerPhone(p?.phone?.trim() || ""))
+      .catch(() => setBuyerPhone(""));
+  }, [order.buyerId]);
 
   const act = async (fn: () => void) => {
     setActing(true);
@@ -183,12 +219,25 @@ function SaleCard({ order, onAccept, onReject }: {
     finally { setActing(false); }
   };
 
-  const goToProfile = () => {
+  const openChat = () => {
+    const me = auth.currentUser;
+    if (!me) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({
-      pathname: "/user-profile",
-      params: { userId: order.buyerId, userName: order.buyerName },
-    } as any);
+    const chatId = buildChatId(me.uid, order.buyerId);
+    router.push({ pathname: "/chat", params: { chatId, otherUserId: order.buyerId, otherName: order.buyerName } } as any);
+  };
+
+  const showLocation = () => {
+    if (!order.buyerLocation) {
+      Alert.alert("الموقع", "لم يشارك المشتري موقعه.");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      "موقع المشتري",
+      `خط العرض: ${order.buyerLocation.lat.toFixed(6)}\nخط الطول: ${order.buyerLocation.lng.toFixed(6)}`,
+      [{ text: "حسناً" }]
+    );
   };
 
   const handleShare = async () => {
@@ -205,11 +254,29 @@ function SaleCard({ order, onAccept, onReject }: {
     <Animated.View entering={FadeInDown.springify()}>
       <View style={styles.card}>
 
-        {/* ── Top section: thumbnail + title + price ── */}
+        {/* ── Top section: thumbnail + title + price + color/size/phone ── */}
         <View style={styles.cardTopRow}>
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
+            {!!order.selectedColor && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>اللون:</Text>
+                <Text style={styles.detailValue}>{order.selectedColor}</Text>
+              </View>
+            )}
+            {!!order.selectedSize && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>القياس:</Text>
+                <Text style={styles.detailValue}>{order.selectedSize}</Text>
+              </View>
+            )}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>رقم الهاتف:</Text>
+              <Text style={styles.detailValue}>
+                {buyerPhone === null ? "..." : buyerPhone || "لا يوجد"}
+              </Text>
+            </View>
           </View>
           <View style={styles.thumbCol}>
             <ProductThumb uri={order.productImageUrl} />
@@ -237,24 +304,7 @@ function SaleCard({ order, onAccept, onReject }: {
           </View>
         </View>
 
-        {/* ── Date + contact details ── */}
         <Text style={styles.dateText}>{date}</Text>
-
-        {order.buyerPhone ? (
-          <View style={styles.phoneRow}>
-            <Feather name="phone" size={13} color={C.textSecondary} />
-            <Text style={styles.phoneText}>{order.buyerPhone}</Text>
-          </View>
-        ) : null}
-
-        {order.buyerLocation && (
-          <View style={styles.phoneRow}>
-            <Feather name="map-pin" size={13} color={C.accent} />
-            <Text style={[styles.phoneText, { color: C.accent }]}>
-              {order.buyerLocation.lat.toFixed(4)}, {order.buyerLocation.lng.toFixed(4)}
-            </Text>
-          </View>
-        )}
 
         {/* ── Accept / Reject (pending only) ── */}
         {order.status === "pending" && (
@@ -283,7 +333,7 @@ function SaleCard({ order, onAccept, onReject }: {
             <TouchableOpacity
               style={[styles.acceptBtn, acting && styles.btnDisabled]}
               onPress={() =>
-                Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب وتحديد المنتج كـ مباع؟", [
+                Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
                   { text: "إلغاء", style: "cancel" },
                   { text: "قبول", onPress: () => act(onAccept) },
                 ])
@@ -307,21 +357,32 @@ function SaleCard({ order, onAccept, onReject }: {
           </View>
         )}
 
-        {/* ── Full-width contact button ── */}
-        <TouchableOpacity
-          style={styles.contactBtn}
-          activeOpacity={0.82}
-          onPress={goToProfile}
-        >
-          <LinearGradient
-            colors={[C.accent, "#B8952A"]}
-            style={styles.contactBtnGradient}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        {/* ── Chat + Location buttons side by side ── */}
+        <View style={styles.actionBtnsRow}>
+          <TouchableOpacity
+            style={[styles.contactBtnHalf]}
+            activeOpacity={0.82}
+            onPress={openChat}
           >
-            <Feather name="message-circle" size={16} color={C.primary} />
-            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={[C.accent, "#B8952A"]}
+              style={styles.contactBtnGradient}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <Feather name="message-circle" size={15} color={C.primary} />
+              <Text style={styles.contactBtnText}>دردشة</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.locationBtnHalf]}
+            activeOpacity={0.82}
+            onPress={showLocation}
+          >
+            <Feather name="map-pin" size={15} color={C.accent} />
+            <Text style={styles.locationBtnText}>الموقع</Text>
+          </TouchableOpacity>
+        </View>
 
       </View>
     </Animated.View>
@@ -803,6 +864,17 @@ const styles = StyleSheet.create({
   phoneRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
   phoneText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
 
+  // Detail rows (color / size / phone)
+  detailRow: {
+    flexDirection: "row-reverse", alignItems: "center", gap: 4,
+  },
+  detailLabel: {
+    fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary, textAlign: "right",
+  },
+  detailValue: {
+    fontSize: 12, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right",
+  },
+
   // Full-width contact button
   contactBtn: { borderRadius: 14, overflow: "hidden", marginTop: 2 },
   contactBtnGradient: {
@@ -811,6 +883,21 @@ const styles = StyleSheet.create({
   },
   contactBtnText: {
     fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
+  },
+
+  // Side-by-side action buttons row (sale card)
+  actionBtnsRow: {
+    flexDirection: "row", gap: 10, marginTop: 2,
+  },
+  contactBtnHalf: { flex: 1, borderRadius: 14, overflow: "hidden" },
+  locationBtnHalf: {
+    flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 13, borderRadius: 14,
+    borderWidth: 1.5, borderColor: C.accent,
+    backgroundColor: "rgba(201,168,76,0.07)",
+  },
+  locationBtnText: {
+    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent,
   },
 
   // Actions (accept / reject)
