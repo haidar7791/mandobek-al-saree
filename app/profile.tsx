@@ -75,6 +75,8 @@ export default function ProfileScreen() {
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
+  const [followCount, setFollowCount] = useState(0);
+  const [likesCount, setLikesCount] = useState(0);
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -123,6 +125,8 @@ export default function ProfileScreen() {
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
           setBio(profile.bio || "");
+           setFollowCount(profile.followCount ?? 0);
+           setLikesCount(profile.likesCount ?? 0);
           setPortfolioImages(profile.portfolio || []);
         }
         const bal = await getBalance(user.uid);
@@ -399,7 +403,7 @@ export default function ProfileScreen() {
     <View style={styles.root}>
 
       {/* ══════════════════════════════════════════
-          HEADER — avatar · name · wallet
+          HEADER — avatar · name · specialty · bio · stats
       ══════════════════════════════════════════ */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
@@ -439,28 +443,64 @@ export default function ProfileScreen() {
           {/* Name only — NO email/contact line */}
           <Text style={styles.displayName}>{name || "—"}</Text>
 
-          {/* Wallet pill — tapping opens the wallet screen */}
-          <Pressable style={styles.balancePill} onPress={() => router.push("/wallet" as any)}>
-            <MaterialCommunityIcons name="wallet" size={14} color={C.accent} />
-            <Text style={styles.balancePillText}>
-              {balance.toLocaleString("ar-IQ")} د.ع
-            </Text>
-          </Pressable>
+          {/* Specialty */}
+          <View style={styles.specialtyPill}>
+            <Text style={styles.specialtyPillText}>{specialtyLabel || "زبون"}</Text>
+          </View>
 
-          {/* Promote button — directly below wallet */}
-          <Pressable
-            style={styles.promoteBtn}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/promote" as any);
-            }}
-            accessibilityLabel="روّج حسابك"
-          >
-            <Ionicons name="rocket" size={14} color={C.primary} />
-            <Text style={styles.promoteBtnText}>روّج حسابك</Text>
-          </Pressable>
+          {/* Bio — plain text, without a heading */}
+          {bio ? <Text style={styles.heroBio}>{bio}</Text> : null}
+
+          {/* Stats — followers and likes */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{followCount}</Text>
+              <Text style={styles.statLabel}>متابع</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Feather name="heart" size={16} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.statLabel}>{likesCount} إعجاب</Text>
+            </View>
+          </View>
         </View>
       </LinearGradient>
+
+      {/* Three equal controls: wallet · promote · add image */}
+      <View style={styles.controlRow}>
+        <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => router.push("/wallet" as any)}>
+          <MaterialCommunityIcons name="wallet-outline" size={17} color={C.accent} />
+          <Text style={styles.controlBtnText} numberOfLines={1}>
+            {balance.toLocaleString("ar-IQ")} د.ع
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.controlBtn, styles.promoteControlBtn]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/promote" as any);
+          }}
+          accessibilityLabel="روّج حسابك"
+        >
+          <Ionicons name="rocket-outline" size={17} color="#FFF" />
+          <Text style={styles.controlBtnText} numberOfLines={1}>روّج حسابك</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.controlBtn, styles.addImageControlBtn, uploadingPortfolio && { opacity: 0.55 }]}
+          onPress={handleAddPortfolioImage}
+          disabled={uploadingPortfolio}
+          accessibilityLabel="إضافة صورة"
+        >
+          {uploadingPortfolio ? (
+            <ActivityIndicator size="small" color={C.accent} />
+          ) : (
+            <Feather name="plus" size={18} color={C.accent} />
+          )}
+          <Text style={styles.addImageControlText} numberOfLines={1}>إضافة صورة</Text>
+        </Pressable>
+      </View>
 
       {/* ══════════════════════════════════════════
           SCROLLABLE BODY
@@ -475,70 +515,8 @@ export default function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* ── Personal Data Card (read-only) ── */}
-          <View style={styles.card}>
-            {/* Card header */}
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>البيانات الشخصية</Text>
-            </View>
-
-            {/* Specialty */}
-            {specialtyLabel ? (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoValue}>{specialtyLabel}</Text>
-                <View style={styles.infoIconWrap}>
-                  <MaterialCommunityIcons name="briefcase-outline" size={16} color={C.accent} />
-                </View>
-              </View>
-            ) : null}
-
-            {/* Bio */}
-            {bio ? (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoValue, styles.bioValue]}>{bio}</Text>
-                <View style={styles.infoIconWrap}>
-                  <Feather name="file-text" size={16} color={C.accent} />
-                </View>
-              </View>
-            ) : null}
-
-            {/* Phone with inline verified badge */}
-            <View style={styles.infoRow}>
-              <View style={styles.phoneValueInline}>
-                <Text style={[styles.infoValue, !phone && { color: C.textMuted }]}>
-                  {phone || "لم يُضف رقم هاتف"}
-                </Text>
-                {isPhoneVerified && (
-                  <View style={styles.verifiedBadgeInline}>
-                    <Feather name="check-circle" size={13} color={C.success} />
-                    <Text style={styles.verifiedText}>موثق ✓</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.infoIconWrap}>
-                <Feather name="phone" size={16} color={C.accent} />
-              </View>
-            </View>
-          </View>
-
           {/* ── Portfolio Gallery (all users) ── */}
           <View style={styles.card}>
-            <View style={styles.portfolioHeader}>
-              <Pressable
-                style={[styles.addImageBtn, uploadingPortfolio && { opacity: 0.5 }]}
-                onPress={handleAddPortfolioImage}
-                disabled={uploadingPortfolio}
-              >
-                {uploadingPortfolio ? (
-                  <ActivityIndicator size="small" color={C.accent} />
-                ) : (
-                  <Feather name="plus" size={15} color={C.accent} />
-                )}
-                <Text style={styles.addImageBtnText}>إضافة صورة</Text>
-              </Pressable>
-              <Text style={styles.cardTitle}>معرض أعمالي</Text>
-            </View>
-
             {portfolioImages.length === 0 ? (
               <View style={styles.emptyPortfolio}>
                 <MaterialCommunityIcons
@@ -1138,37 +1116,102 @@ const styles = StyleSheet.create({
     color: "#FFF",
     textAlign: "center",
   },
-  balancePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(201,168,76,0.15)",
-    borderRadius: 20,
-    paddingVertical: 6,
+  specialtyPill: {
+    backgroundColor: "rgba(201,168,76,0.2)",
+    borderRadius: 14,
     paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.25)",
-    marginTop: 4,
+    paddingVertical: 4,
+    marginTop: 2,
   },
-  balancePillText: {
+  specialtyPillText: {
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
     color: C.accent,
   },
-  promoteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: C.accent,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+  heroBio: {
+    maxWidth: "92%",
+    fontSize: 13,
+    fontFamily: "Cairo_400Regular",
+    color: "rgba(255,255,255,0.72)",
+    textAlign: "center",
+    lineHeight: 20,
     marginTop: 2,
   },
-  promoteBtnText: {
-    fontSize: 13,
+  statsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginTop: 8,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  statValue: {
+    fontSize: 15,
     fontFamily: "Cairo_700Bold",
-    color: C.primary,
+    color: "#FFF",
+  },
+  statLabel: {
+    fontSize: 10,
+    fontFamily: "Cairo_400Regular",
+    color: "rgba(255,255,255,0.65)",
+  },
+  statDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+
+  // ── Three controls below the hero ──
+  controlRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  controlBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    minHeight: 48,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  controlBtnText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontFamily: "Cairo_700Bold",
+    color: "#FFF",
+    textAlign: "center",
+  },
+  walletBtn: {
+    backgroundColor: "rgba(201,168,76,0.1)",
+    borderColor: "rgba(201,168,76,0.45)",
+  },
+  promoteControlBtn: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  addImageControlBtn: {
+    backgroundColor: "rgba(201,168,76,0.06)",
+    borderColor: C.accent,
+  },
+  addImageControlText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontFamily: "Cairo_700Bold",
+    color: C.accent,
+    textAlign: "center",
   },
 
   // ── Body ──
@@ -1190,108 +1233,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
-  cardTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardTitle: {
-    fontSize: 14,
-    fontFamily: "Cairo_700Bold",
-    color: C.textSecondary,
-    textAlign: "right",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(201,168,76,0.1)",
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
-  },
-  editBtnText: {
-    fontSize: 12,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.accent,
-  },
-
-  // ── Info rows (read-only) ──
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: C.inputBg,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  infoIconWrap: {
-    width: 28,
-    alignItems: "center",
-    paddingTop: 2,
-  },
-  infoValue: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_400Regular",
-    color: C.text,
-    textAlign: "right",
-  },
-  bioValue: {
-    fontSize: 13,
-    color: C.textSecondary,
-    lineHeight: 22,
-  },
-  phoneValueInline: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  verifiedBadgeInline: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: C.successLight,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  verifiedText: {
-    fontSize: 11,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.success,
-  },
-
   // ── Portfolio ──
-  portfolioHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  addImageBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(201,168,76,0.1)",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: "rgba(201,168,76,0.3)",
-  },
-  addImageBtnText: {
-    fontSize: 12,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.accent,
-  },
   emptyPortfolio: {
     alignItems: "center",
     paddingVertical: 28,
