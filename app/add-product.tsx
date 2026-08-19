@@ -31,6 +31,8 @@ export default function AddProductScreen() {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<LocalProductMedia[]>([]);
+  const [colors, setColors] = useState<string[]>([""]);
+  const [sizes, setSizes] = useState<string[]>([""]);
   const [loading, setLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -59,6 +61,19 @@ export default function AddProductScreen() {
     }
   };
 
+  // ── Dynamic list helpers ───────────────────────────────────────────────────
+  const updateColor = (index: number, value: string) =>
+    setColors((prev) => prev.map((c, i) => (i === index ? value : c)));
+  const addColor = () => setColors((prev) => [...prev, ""]);
+  const removeColor = (index: number) =>
+    setColors((prev) => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev);
+
+  const updateSize = (index: number, value: string) =>
+    setSizes((prev) => prev.map((s, i) => (i === index ? value : s)));
+  const addSize = () => setSizes((prev) => [...prev, ""]);
+  const removeSize = (index: number) =>
+    setSizes((prev) => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev);
+
   const handlePublish = async () => {
     if (!title.trim()) { Alert.alert("خطأ", "يرجى إدخال اسم المنتج"); return; }
     const parsedPrice = parseFloat(price);
@@ -85,20 +100,20 @@ export default function AddProductScreen() {
         sellerId: user.uid,
         sellerName: profile?.name || "مجهول",
         sellerPhone: profile?.phone || "",
+        colors: colors.filter((c) => c.trim()),
+        sizes: sizes.filter((s) => s.trim()),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Reset form so it's clean if the user opens this screen again
       setTitle("");
       setPrice("");
       setDescription("");
       setSelectedMedia([]);
+      setColors([""]);
+      setSizes([""]);
 
-      // Navigate back immediately — don't wait for the user to tap "حسناً"
       router.back();
       Alert.alert("تم النشر ✓", "تم نشر منتجك في السوق بنجاح!");
-      // Note: setLoading(false) is intentionally omitted here.
-      // The screen is unmounting; re-enabling the button would allow a duplicate submit.
     } catch (err: any) {
       console.error("createProduct error:", err);
       const msg =
@@ -110,7 +125,6 @@ export default function AddProductScreen() {
           ? `تفاصيل الخطأ: ${err.message}`
           : "حدث خطأ أثناء نشر المنتج، يرجى المحاولة مجدداً";
       Alert.alert("خطأ في النشر", msg);
-      // Re-enable the button only on failure so the user can try again
       setLoading(false);
     }
   };
@@ -223,6 +237,74 @@ export default function AddProductScreen() {
               </View>
               <Text style={styles.charCount}>{description.length}/400</Text>
             </View>
+
+            {/* Colors */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>
+                الألوان المتاحة <Text style={styles.optional}>(اختياري)</Text>
+              </Text>
+              {colors.map((color, index) => (
+                <View key={index} style={styles.dynamicRow}>
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => removeColor(index)}
+                    hitSlop={8}
+                  >
+                    <Feather name="x" size={15} color={C.textMuted} />
+                  </TouchableOpacity>
+                  <View style={[styles.inputRow, { flex: 1 }]}>
+                    <Feather name="droplet" size={15} color={C.textSecondary} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder={`مثال: أسود، أبيض، أحمر...`}
+                      placeholderTextColor={C.textMuted}
+                      value={color}
+                      onChangeText={(v) => updateColor(index, v)}
+                      textAlign="right"
+                      maxLength={30}
+                    />
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addMoreBtn} onPress={addColor}>
+                <Feather name="plus" size={14} color={C.accent} />
+                <Text style={styles.addMoreText}>+ إضافة لون آخر</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Sizes */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>
+                القياسات المتاحة <Text style={styles.optional}>(اختياري)</Text>
+              </Text>
+              {sizes.map((size, index) => (
+                <View key={index} style={styles.dynamicRow}>
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => removeSize(index)}
+                    hitSlop={8}
+                  >
+                    <Feather name="x" size={15} color={C.textMuted} />
+                  </TouchableOpacity>
+                  <View style={[styles.inputRow, { flex: 1 }]}>
+                    <Feather name="maximize-2" size={15} color={C.textSecondary} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder={`مثال: XL، L، M، S...`}
+                      placeholderTextColor={C.textMuted}
+                      value={size}
+                      onChangeText={(v) => updateSize(index, v)}
+                      textAlign="right"
+                      maxLength={20}
+                    />
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addMoreBtn} onPress={addSize}>
+                <Feather name="plus" size={14} color={C.accent} />
+                <Text style={styles.addMoreText}>+ إضافة قياس آخر</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Publish Button */}
@@ -299,11 +381,8 @@ const styles = StyleSheet.create({
   imagePlaceholderText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.text },
   imagePlaceholderSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
   mediaCount: {
-    marginTop: -8,
-    fontSize: 11,
-    fontFamily: "Cairo_400Regular",
-    color: C.textMuted,
-    textAlign: "right",
+    marginTop: -8, fontSize: 11,
+    fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right",
   },
   card: {
     backgroundColor: C.card, borderRadius: 18, padding: 20, gap: 18,
@@ -326,10 +405,20 @@ const styles = StyleSheet.create({
     color: C.text, paddingVertical: 11, textAlign: "right",
   },
   multilineInput: { minHeight: 88, paddingVertical: 0 },
-  currencyLabel: {
-    fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent,
-  },
+  currencyLabel: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
   charCount: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "left" },
+  // Dynamic color/size rows
+  dynamicRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  removeBtn: {
+    width: 30, height: 30, borderRadius: 8,
+    backgroundColor: C.inputBg,
+    alignItems: "center", justifyContent: "center",
+  },
+  addMoreBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingVertical: 8, paddingHorizontal: 4,
+  },
+  addMoreText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
   publishBtn: { borderRadius: 16, overflow: "hidden" },
   publishGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",

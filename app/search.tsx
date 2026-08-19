@@ -238,11 +238,10 @@ export default function SearchScreen() {
 
             // ── Product card ── now fully pressable → opens detail modal
             const p = item.data as Product;
-            const isSold = p.status === "sold";
             const sellerFeatured = isFeaturedActive({ featuredUntil: p.sellerFeaturedUntil });
             return (
               <TouchableOpacity
-                style={[styles.rowCard, isSold && styles.rowCardDim]}
+                style={styles.rowCard}
                 activeOpacity={0.8}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -274,13 +273,7 @@ export default function SearchScreen() {
                     )}
                   </View>
                 </View>
-                {isSold ? (
-                  <View style={styles.soldBadge}>
-                    <Text style={styles.soldText}>مباع</Text>
-                  </View>
-                ) : (
-                  <Feather name="chevron-left" size={16} color={C.textMuted} />
-                )}
+                <Feather name="chevron-left" size={16} color={C.textMuted} />
               </TouchableOpacity>
             );
           }}
@@ -300,7 +293,6 @@ export default function SearchScreen() {
           <Pressable style={styles.detailSheet} onPress={(e) => e.stopPropagation()}>
             {selectedProduct && (() => {
               const p = selectedProduct;
-              const isSold = p.status === "sold";
               const sellerFeatured = isFeaturedActive({ featuredUntil: p.sellerFeaturedUntil });
               return (
                 <>
@@ -318,13 +310,6 @@ export default function SearchScreen() {
                     ) : (
                       <View style={[styles.detailImage, styles.detailImageFallback]}>
                         <Feather name="image" size={48} color={C.textMuted} />
-                      </View>
-                    )}
-
-                    {/* Sold overlay label */}
-                    {isSold && (
-                      <View style={styles.detailSoldBanner}>
-                        <Text style={styles.detailSoldBannerText}>هذا المنتج تم بيعه</Text>
                       </View>
                     )}
 
@@ -366,28 +351,22 @@ export default function SearchScreen() {
                         </View>
                       </TouchableOpacity>
 
-                      {/* Buy / sold button */}
-                      {isSold ? (
-                        <View style={[styles.detailBuyBtn, styles.detailBuyBtnSold]}>
-                          <Text style={styles.detailBuyBtnText}>تم البيع</Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={[styles.detailBuyBtn, buyingProduct && { opacity: 0.6 }]}
-                          activeOpacity={0.85}
-                          disabled={buyingProduct}
-                          onPress={() => handleBuyProduct(p)}
-                        >
-                          {buyingProduct ? (
-                            <ActivityIndicator size="small" color={C.primary} />
-                          ) : (
-                            <>
-                              <Feather name="shopping-bag" size={16} color={C.primary} />
-                              <Text style={styles.detailBuyBtnText}>إرسال طلب شراء</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      )}
+                      {/* Buy button */}
+                      <TouchableOpacity
+                        style={[styles.detailBuyBtn, buyingProduct && { opacity: 0.6 }]}
+                        activeOpacity={0.85}
+                        disabled={buyingProduct}
+                        onPress={() => handleBuyProduct(p)}
+                      >
+                        {buyingProduct ? (
+                          <ActivityIndicator size="small" color={C.primary} />
+                        ) : (
+                          <>
+                            <Feather name="shopping-bag" size={16} color={C.primary} />
+                            <Text style={styles.detailBuyBtnText}>إرسال طلب شراء</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
 
                       <View style={{ height: 8 }} />
                     </View>

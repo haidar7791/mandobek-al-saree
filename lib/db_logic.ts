@@ -1748,6 +1748,8 @@ export interface Product {
   isPromoted?: boolean;
   status: "available" | "sold";
   soldAt?: string | null;
+  colors?: string[];
+  sizes?: string[];
   createdAt: string;
 }
 
@@ -1772,6 +1774,8 @@ export interface ProductOrder {
   buyerLocation?: GeoLocation | null;
   status: "pending" | "accepted" | "rejected";
   createdAt: string;
+  selectedColor?: string;
+  selectedSize?: string;
   /** UIDs of sellers who hid this order from their view (soft delete) */
   hiddenForSeller?: string[];
   /** UIDs of buyers who hid this order from their view (soft delete) */
@@ -1836,6 +1840,8 @@ export const createProduct = async (data: {
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
+  colors?: string[];
+  sizes?: string[];
 }): Promise<string> => {
   const docRef = doc(collection(db, "products"));
   if (data.localMedia.length === 0) throw new Error("At least one media item is required");
@@ -1860,6 +1866,8 @@ export const createProduct = async (data: {
     sellerName: data.sellerName,
     sellerPhone: data.sellerPhone,
     sellerFeaturedUntil,
+    colors: (data.colors ?? []).filter((c) => c.trim()),
+    sizes: (data.sizes ?? []).filter((s) => s.trim()),
     status: "available",
     soldAt: null,
     createdAt: new Date().toISOString(),
@@ -1948,8 +1956,6 @@ export const promoteUser = async (
   }
 };
 
-const FIVE_MINUTES_MS = 5 * 60 * 1000;
-
 export const subscribeToProducts = (
   callback: (products: Product[]) => void,
   onError?: (err: Error) => void
@@ -1960,31 +1966,8 @@ export const subscribeToProducts = (
   return onSnapshot(
     q,
     (snap) => {
-      const now = Date.now();
-      const expired: string[] = [];
-
-      const products = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as Product))
-        .filter((p) => {
-          if (p.status !== "sold") return true;
-          if (!p.soldAt) {
-            expired.push(p.id);
-            return false;
-          }
-          const soldTime = new Date(p.soldAt).getTime();
-          const isExpired = now - soldTime > FIVE_MINUTES_MS;
-          if (isExpired) expired.push(p.id);
-          return !isExpired;
-        });
-
-      // Fire-and-forget: delete expired sold products from Firestore
-      if (expired.length > 0) {
-        const batch = writeBatch(db);
-        expired.forEach((id) => batch.delete(doc(db, "products", id)));
-        batch.commit().catch((err) =>
-          console.error("subscribeToProducts: failed to delete expired sold products", err)
-        );
-      }
+      // All products remain visible — owners delete manually when stock runs out.
+      const products = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
 
       // Client-side priority sort:
       //   1. priorityScore desc  (promoted sellers score 100, others 0)
@@ -2037,12 +2020,6 @@ export const respondToProductOrder = async (
   response: "accepted" | "rejected"
 ): Promise<void> => {
   await updateDoc(doc(db, "productOrders", orderId), { status: response });
-  if (response === "accepted") {
-    await updateDoc(doc(db, "products", productId), {
-      status: "sold",
-      soldAt: new Date().toISOString(),
-    });
-  }
   try {
     const buyerProfile = await getUserProfile(buyerId);
     if (buyerProfile?.pushToken) {

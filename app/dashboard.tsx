@@ -249,8 +249,10 @@ function ProductCard({
 }) {
   const isFocused = useIsFocused();
   const isVisible = isFocused && isActive;
-  const isSold = product.status === "sold";
   const isMine = product.sellerId === userId;
+  const [buyModalVisible, setBuyModalVisible] = useState(false);
+  const [selectedColor, setSelectedColor] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
 
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -297,52 +299,47 @@ function ProductCard({
     ]);
   };
 
-  const handleBuy = async () => {
+  const openBuyModal = () => {
     const user = auth.currentUser;
-    if (!user) {
-      router.replace("/login" as any);
-      return;
-    }
+    if (!user) { router.replace("/login" as any); return; }
+    setSelectedColor("");
+    setSelectedSize("");
+    setBuyModalVisible(true);
+  };
 
-    const selfProfile = await getUserProfile(user.uid);
-    Alert.alert(
-      "تأكيد الشراء",
-      `هل تريد إرسال طلب شراء لـ "${product.title}"؟\n\nسيتلقى البائع بياناتك ويتواصل معك.`,
-      [
-        { text: "إلغاء", style: "cancel" },
-        {
-          text: "إرسال الطلب",
-          onPress: async () => {
-            onLoadingChange(product.id);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            try {
-              await createProductOrder({
-                productId: product.id,
-                productTitle: product.title,
-                productImageUrl: product.imageUrl,
-                productPrice: product.price,
-                sellerId: product.sellerId,
-                sellerName: product.sellerName,
-                buyerId: user.uid,
-                buyerName: selfProfile?.name || userName,
-                buyerPhone: selfProfile?.phone || "",
-                buyerLocation: userLocation,
-              });
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
-            } catch {
-              Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
-            } finally {
-              onLoadingChange(null);
-            }
-          },
-        },
-      ],
-    );
+  const handleConfirmBuy = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+    onLoadingChange(product.id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const selfProfile = await getUserProfile(user.uid);
+      await createProductOrder({
+        productId: product.id,
+        productTitle: product.title,
+        productImageUrl: product.imageUrl,
+        productPrice: product.price,
+        sellerId: product.sellerId,
+        sellerName: product.sellerName,
+        buyerId: user.uid,
+        buyerName: selfProfile?.name || userName,
+        buyerPhone: selfProfile?.phone || "",
+        buyerLocation: userLocation,
+        selectedColor: selectedColor || undefined,
+        selectedSize: selectedSize || undefined,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setBuyModalVisible(false);
+      Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
+    } catch {
+      Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
+    } finally {
+      onLoadingChange(null);
+    }
   };
 
   return (
-    <View style={[styles.productCard, isSold && styles.productCardSold]}>
+    <View style={styles.productCard}>
       <Pressable
         style={styles.productShareBtn}
         onPress={onShare}
@@ -357,11 +354,6 @@ function ProductCard({
           isVisible={isVisible}
           onMediaPress={onMediaPress}
         />
-        {isSold && (
-          <View pointerEvents="none" style={styles.soldOverlay}>
-            <Text style={styles.soldOverlayText}>مباع</Text>
-          </View>
-        )}
       </View>
       <View style={styles.productBody}>
         <View style={styles.productHeaderRow}>
@@ -395,8 +387,7 @@ function ProductCard({
           <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
         ) : null}
       </View>
-      {!isSold && (
-        isMine ? (
+      {isMine ? (
           <TouchableOpacity
             style={[styles.buyBtn, styles.deleteBtn]}
             activeOpacity={0.85}
@@ -437,7 +428,7 @@ function ProductCard({
             style={[styles.buyBtn, isLoading && styles.btnDisabled]}
             activeOpacity={0.85}
             disabled={isLoading}
-            onPress={handleBuy}
+            onPress={openBuyModal}
           >
             <LinearGradient
               colors={[C.accent, C.accentLight]}
@@ -450,13 +441,98 @@ function ProductCard({
               ) : (
                 <>
                   <Ionicons name="cart-outline" size={14} color={C.primary} />
-                  <Text style={styles.buyBtnText}>شراء</Text>
+                  <Text style={styles.buyBtnText}>تفاصيل الشراء</Text>
                 </>
               )}
             </LinearGradient>
           </TouchableOpacity>
-        )
-      )}
+        )}
+
+      {/* ── Buy Details Modal ── */}
+      <Modal
+        visible={buyModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBuyModalVisible(false)}
+      >
+        <Pressable style={styles.buyModalOverlay} onPress={() => setBuyModalVisible(false)}>
+          <Pressable style={styles.buyModalSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.buyModalHandle} />
+            <Text style={styles.buyModalTitle}>تفاصيل الشراء</Text>
+            <Text style={styles.buyModalProductName} numberOfLines={2}>{product.title}</Text>
+            <Text style={styles.buyModalPriceText}>
+              {product.price.toLocaleString("ar-IQ")}{" "}
+              <Text style={styles.buyModalCurrency}>د.ع</Text>
+            </Text>
+
+            {/* Color selector */}
+            {(product.colors ?? []).filter((c) => c.trim()).length > 0 && (
+              <View style={styles.buyModalSection}>
+                <Text style={styles.buyModalSectionLabel}>اختر اللون</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipRow}>
+                  {(product.colors ?? []).filter((c) => c.trim()).map((color) => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[styles.chip, selectedColor === color && styles.chipActive]}
+                      onPress={() => setSelectedColor(color)}
+                    >
+                      <Text style={[styles.chipText, selectedColor === color && styles.chipTextActive]}>
+                        {color}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Size selector */}
+            {(product.sizes ?? []).filter((s) => s.trim()).length > 0 && (
+              <View style={styles.buyModalSection}>
+                <Text style={styles.buyModalSectionLabel}>اختر القياس</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipRow}>
+                  {(product.sizes ?? []).filter((s) => s.trim()).map((size) => (
+                    <TouchableOpacity
+                      key={size}
+                      style={[styles.chip, selectedSize === size && styles.chipActive]}
+                      onPress={() => setSelectedSize(size)}
+                    >
+                      <Text style={[styles.chipText, selectedSize === size && styles.chipTextActive]}>
+                        {size}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Confirm */}
+            <TouchableOpacity
+              style={[styles.buyModalConfirmBtn, isLoading && styles.btnDisabled]}
+              disabled={isLoading}
+              onPress={handleConfirmBuy}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={[C.accent, C.accentLight]}
+                style={styles.buyBtnGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color={C.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="cart-outline" size={16} color={C.primary} />
+                    <Text style={styles.buyBtnText}>شراء</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1562,6 +1638,46 @@ const styles = StyleSheet.create({
     backgroundColor: "#F59E0B", borderRadius: 12,
   },
   cancelOrderBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+
+  // ── Buy Details Modal ──
+  buyModalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end",
+  },
+  buyModalSheet: {
+    backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32, gap: 12,
+  },
+  buyModalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: C.border, alignSelf: "center", marginBottom: 8,
+  },
+  buyModalTitle: {
+    fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text,
+    textAlign: "center",
+  },
+  buyModalProductName: {
+    fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary,
+    textAlign: "right",
+  },
+  buyModalPriceText: {
+    fontSize: 20, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right",
+  },
+  buyModalCurrency: {
+    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.accent,
+  },
+  buyModalSection: { gap: 8 },
+  buyModalSectionLabel: {
+    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right",
+  },
+  chipRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
+  chip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: C.inputBg,
+  },
+  chipActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.12)" },
+  chipText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  chipTextActive: { color: C.accent },
+  buyModalConfirmBtn: { borderRadius: 12, overflow: "hidden", marginTop: 4 },
 
   // ── Fullscreen viewer ──
   fullscreenOverlay: {
