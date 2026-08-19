@@ -3,3 +3,6 @@
 - [expo-firebase-recaptcha breaks Android build](expo-firebase-recaptcha-gradle.md) — always drags in expo-firebase-core; use a custom WebView reCAPTCHA instead
 - [Firestore query field must match security-rule field](firestore-query-rule-field-mismatch.md) — a query filtering on a field the rule doesn't check gets permission-denied wholesale, even with lenient rules
 - [Firestore native persistence limits](firestore-native-persistence.md) — persistentLocalCache needs indexedDB (web only); on RN pass fetched data via nav params instead
+- [Stories Firestore composite index trap](stories-composite-index.md) — userId+createdAt compound queries fail silently; always query single field and filter client-side
+- [ProfileAvatar steals touch in story strip](profile-avatar-touch-steal.md) — ProfileAvatar has its own Pressable→/profile; use disableNavigation prop inside any outer Pressable
+- [Expo Stack screens must be declared](expo-stack-screen-declaration.md) — any screen file not listed in Stack causes "This screen doesn't exist"; story-creator & story-viewer must be in _layout.tsx

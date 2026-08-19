@@ -192,37 +192,43 @@ export function subscribeToActiveStories(
 
 /**
  * Subscribe to the current user's own active stories.
- * Returns an unsubscribe function.
+ * Uses a single-field query (no composite index needed) and filters client-side.
  */
 export function subscribeToMyStories(
   userId: string,
   onData: (stories: Story[]) => void
 ): () => void {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Single equality filter only — no composite index required
   const q = query(
     collection(db, "stories"),
     where("userId", "==", userId),
-    where("createdAt", ">", since),
     orderBy("createdAt", "asc")
   );
   return onSnapshot(
     q,
     (snap) => {
-      onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) })));
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const active = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
+        .filter((s) => s.createdAt > since);
+      onData(active);
     },
     () => onData([])
   );
 }
 
-/** One-shot fetch of a user's active stories (used inside the viewer) */
+/** One-shot fetch of a user's active stories (used inside the viewer).
+ *  Single-field query — no composite index required. */
 export async function fetchUserStories(userId: string): Promise<Story[]> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Query by userId only, filter last-24h client-side to avoid composite index
   const q = query(
     collection(db, "stories"),
     where("userId", "==", userId),
-    where("createdAt", ">", since),
     orderBy("createdAt", "asc")
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }));
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
+    .filter((s) => s.createdAt > since);
 }
