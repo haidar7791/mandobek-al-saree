@@ -57,6 +57,9 @@ export default function StoryCreatorScreen() {
 
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
+  // Visual-only transforms (applied to preview; baked in at publish if needed)
+  const [flipY, setFlipY] = useState(false);
+  const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
   // Preserve actual MIME type and filename from the picker
   const [mediaMimeType, setMediaMimeType] = useState<string | undefined>(undefined);
   const [mediaFileName, setMediaFileName] = useState<string | undefined>(undefined);
@@ -169,7 +172,37 @@ export default function StoryCreatorScreen() {
           <Feather name="x" size={22} color="#FFF" />
         </Pressable>
         <Text style={styles.topTitle}>إنشاء قصة</Text>
-        <View style={{ width: 38 }} />
+        {/* Image editing tools — visible only when an image is loaded */}
+        <View style={styles.editTools}>
+          {mediaUri && mediaType === "image" && (
+            <>
+              <Pressable
+                style={styles.editBtn}
+                hitSlop={8}
+                onPress={() => { setFlipY((v) => !v); Haptics.selectionAsync(); }}
+              >
+                <Ionicons name="swap-vertical-outline" size={20} color="#FFF" />
+                <Text style={styles.editBtnLabel}>قلب</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editBtn}
+                hitSlop={8}
+                onPress={() => { setRotation((r) => (r + 90) % 360); Haptics.selectionAsync(); }}
+              >
+                <Feather name="rotate-cw" size={20} color="#FFF" />
+                <Text style={styles.editBtnLabel}>دوران</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editBtn}
+                hitSlop={8}
+                onPress={() => Alert.alert("القص", "ميزة القص ستتوفر في تحديث قادم.")}
+              >
+                <Feather name="crop" size={20} color="#FFF" />
+                <Text style={styles.editBtnLabel}>قص</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
       </View>
 
       {/* ── Media preview ── */}
@@ -186,7 +219,19 @@ export default function StoryCreatorScreen() {
               useNativeControls={false}
             />
           ) : (
-            <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <Image
+              source={{ uri: mediaUri }}
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  transform: [
+                    { scaleY: flipY ? -1 : 1 },
+                    { rotate: `${rotation}deg` },
+                  ],
+                },
+              ]}
+              resizeMode="cover"
+            />
           )
         ) : (
           <View style={styles.mediaPlaceholder}>
@@ -348,11 +393,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 10,
+    backgroundColor: "rgba(20,20,20,0.82)",
+    gap: 6,
   },
   closeBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   topTitle: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  editTools: { flexDirection: "row", alignItems: "center", gap: 4 },
+  editBtn: { alignItems: "center", gap: 2, paddingHorizontal: 8, paddingVertical: 4 },
+  editBtnLabel: { color: "rgba(255,255,255,0.8)", fontSize: 10, fontWeight: "600" },
 
   // Media
   mediaArea: {

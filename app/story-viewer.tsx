@@ -43,6 +43,11 @@ import {
   deleteStory,
   type Story,
 } from "@/lib/stories_logic";
+import {
+  buildChatId,
+  sendCardMessage,
+  getUserProfile,
+} from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -75,6 +80,7 @@ export default function StoryViewerScreen() {
   const [paused, setPaused] = useState(false);
   const [liked, setLiked] = useState(false);
   const [reply, setReply] = useState("");
+  const [currentUserName, setCurrentUserName] = useState("");
 
   // Video-specific state
   const [videoError, setVideoError] = useState(false);
@@ -86,6 +92,14 @@ export default function StoryViewerScreen() {
 
   const story = stories[index] ?? null;
   const isOwner = story?.userId === currentUserId;
+
+  // ── Fetch current user name once (needed for reply DM) ──────────────────
+  useEffect(() => {
+    if (!currentUserId) return;
+    getUserProfile(currentUserId)
+      .then((p) => setCurrentUserName(p?.name || auth.currentUser?.displayName || "مستخدم"))
+      .catch(() => setCurrentUserName(auth.currentUser?.displayName || "مستخدم"));
+  }, [currentUserId]);
 
   // ── Load stories ────────────────────────────────────────────────────────
   const loadStories = useCallback(async () => {
@@ -189,6 +203,28 @@ export default function StoryViewerScreen() {
   const goPrev = useCallback(() => {
     setIndex((i) => Math.max(0, i - 1));
   }, []);
+
+  // ── Reply → send as DM card to story owner ──────────────────────────────
+  const handleReply = async () => {
+    const trimmed = reply.trim();
+    if (!trimmed || !story || !currentUserId) return;
+    setReply("");
+    Haptics.selectionAsync();
+    try {
+      const chatId = buildChatId(currentUserId, story.userId);
+      await sendCardMessage(
+        chatId,
+        currentUserId,
+        currentUserName,
+        story.mediaUrl,
+        trimmed,
+        "",
+        `رد على قصة ${story.userName.split(" ")[0]}: ${trimmed}`,
+      );
+    } catch (err) {
+      console.error("[story-viewer] reply send failed:", err);
+    }
+  };
 
   // ── Like ────────────────────────────────────────────────────────────────
   const handleLike = async () => {
@@ -395,25 +431,27 @@ export default function StoryViewerScreen() {
 
       {/* ── Bottom bar ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
-        {!isOwner && (
-          <TextInput
-            style={styles.replyInput}
-            placeholder={`أرسل رداً لـ ${story.userName.split(" ")[0]}...`}
-            placeholderTextColor="rgba(255,255,255,0.45)"
-            value={reply}
-            onChangeText={setReply}
-            textAlign="right"
-            returnKeyType="send"
-            onSubmitEditing={() => { setReply(""); Haptics.selectionAsync(); }}
-          />
-        )}
-        <TouchableOpacity onPress={handleLike} style={styles.likeBtn} activeOpacity={0.7}>
-          <Ionicons
-            name={liked ? "heart" : "heart-outline"}
-            size={32}
-            color={liked ? "#FF4B4B" : "#FFF"}
-          />
-        </TouchableOpacity>
+        <View style={styles.bottomCard}>
+          {!isOwner && (
+            <TextInput
+              style={styles.replyInput}
+              placeholder={`أرسل رداً لـ ${story.userName.split(" ")[0]}...`}
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              value={reply}
+              onChangeText={setReply}
+              textAlign="right"
+              returnKeyType="send"
+              onSubmitEditing={handleReply}
+            />
+          )}
+          <TouchableOpacity onPress={handleLike} style={styles.likeBtn} activeOpacity={0.7}>
+            <Ionicons
+              name={liked ? "heart" : "heart-outline"}
+              size={32}
+              color={liked ? "#FF4B4B" : "#FFF"}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Tap areas (prev / next / pause) ── */}
@@ -569,23 +607,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: 12,
     paddingTop: 10,
-    gap: 10,
     zIndex: 10,
+  },
+  bottomCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 8,
   },
   replyInput: {
     flex: 1,
-    height: 44,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: 22,
-    paddingHorizontal: 16,
+    height: 40,
+    paddingHorizontal: 14,
     color: "#FFF",
     fontSize: 13,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
   },
   likeBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
 
