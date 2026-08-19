@@ -17,7 +17,6 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   updateDoc,
   doc,
@@ -62,17 +61,69 @@ export interface StoryGroup {
 
 // ─── Upload helpers ────────────────────────────────────────────────────────────
 
-/** Upload story media to Firebase Storage, return public download URL */
+/**
+ * Upload story media to Firebase Storage, return public download URL.
+ *
+ * Preserves the real MIME type and filename from the picker when provided.
+ * Falls back to legacy behaviour (mp4/jpg) when only uri+type are supplied,
+ * so existing callers that omit mimeType/fileName remain compatible.
+ */
 export async function uploadStoryMedia(
   uri: string,
   type: "image" | "video",
-  userId: string
+  userId: string,
+  mimeType?: string,
+  fileName?: string
 ): Promise<string> {
-  const ext = type === "video" ? "mp4" : "jpg";
-  const path = `stories/${userId}/${Date.now()}.${ext}`;
+  const allowedExtensions = new Set(
+    type === "video"
+      ? ["mp4", "mov", "m4v", "webm", "3gp"]
+      : ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"]
+  );
+  const namedExtension = fileName?.split(".").pop()?.toLowerCase();
+
+  // Derive extension from a matching filename or MIME type.
+  let ext: string;
+  if (namedExtension && allowedExtensions.has(namedExtension)) {
+    ext = namedExtension;
+  } else if (mimeType) {
+    const subtype = mimeType.split("/")[1] ?? "";
+    // Handle common aliases
+    if (subtype === "quicktime") ext = "mov";
+    else if (subtype === "jpeg") ext = "jpg";
+    else if (subtype) ext = subtype.split("+")[0]; // e.g. "svg+xml" → "svg"
+    else ext = type === "video" ? "mp4" : "jpg";
+  } else {
+    ext = type === "video" ? "mp4" : "jpg";
+  }
+
   const response = await fetch(uri);
+  if (!response.ok && response.status !== 0) {
+    throw new Error(`Failed to read selected story media (${response.status})`);
+  }
   const blob = await response.blob();
-  const contentType = type === "video" ? "video/mp4" : "image/jpeg";
+  const mimeByExtension: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    heic: "image/heic",
+    heif: "image/heif",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    webm: "video/webm",
+    "3gp": "video/3gpp",
+  };
+  const contentType =
+    mimeType?.startsWith(`${type}/`)
+      ? mimeType
+      : blob.type?.startsWith(`${type}/`)
+        ? blob.type
+        : mimeByExtension[ext] ||
+          (type === "video" ? "video/mp4" : "image/jpeg");
+  const path = `stories/${userId}/${Date.now()}.${ext}`;
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, blob, { contentType });
   return getDownloadURL(storageRef);
@@ -108,6 +159,7 @@ export async function deleteStory(storyId: string): Promise<void> {
 }
 
 export async function markStoryViewed(storyId: string, userId: string): Promise<void> {
+  if (!userId) return; // guard: never write an empty userId into views
   await updateDoc(doc(db, "stories", storyId), { views: arrayUnion(userId) });
 }
 
@@ -132,10 +184,10 @@ export function subscribeToActiveStories(
   onData: (groups: StoryGroup[]) => void
 ): () => void {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Single-field filter + client-side date check avoids composite index requirement
   const q = query(
     collection(db, "stories"),
-    where("createdAt", ">", since),
-    orderBy("createdAt", "asc")
+    where("createdAt", ">", since)
   );
   return onSnapshot(
     q,
@@ -162,6 +214,10 @@ export function subscribeToActiveStories(
         group.stories.push(story);
         if (!story.views.includes(currentUserId)) group.hasUnseen = true;
       }
+      // Sort stories within each group by createdAt ascending (client-side)
+      for (const group of map.values()) {
+        group.stories.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }
       // Compute coverImageUri = latest story's thumbnail (video) or mediaUrl (image)
       for (const group of map.values()) {
         const latest = group.stories[group.stories.length - 1];
@@ -186,13 +242,16 @@ export function subscribeToActiveStories(
       });
       onData(groups);
     },
-    () => onData([])
+    (err) => {
+      console.error("[stories] subscribeToActiveStories error:", err);
+      onData([]);
+    }
   );
 }
 
 /**
  * Subscribe to the current user's own active stories.
- * Uses a single-field query (no composite index needed) and filters client-side.
+ * Uses a single-field equality query (no composite index needed) and filters/sorts client-side.
  */
 export function subscribeToMyStories(
   userId: string,
@@ -201,8 +260,7 @@ export function subscribeToMyStories(
   // Single equality filter only — no composite index required
   const q = query(
     collection(db, "stories"),
-    where("userId", "==", userId),
-    orderBy("createdAt", "asc")
+    where("userId", "==", userId)
   );
   return onSnapshot(
     q,
@@ -210,10 +268,14 @@ export function subscribeToMyStories(
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const active = snap.docs
         .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
-        .filter((s) => s.createdAt > since);
+        .filter((s) => s.createdAt > since)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       onData(active);
     },
-    () => onData([])
+    (err) => {
+      console.error("[stories] subscribeToMyStories error:", err);
+      onData([]);
+    }
   );
 }
 
@@ -222,10 +284,10 @@ export function subscribeToMyStories(
  *  Retries up to 2 times with a 1.5 s back-off to survive transient
  *  Firestore WebChannel transport errors. */
 export async function fetchUserStories(userId: string): Promise<Story[]> {
+  // Single equality filter — no composite index required; sort client-side
   const q = query(
     collection(db, "stories"),
-    where("userId", "==", userId),
-    orderBy("createdAt", "asc")
+    where("userId", "==", userId)
   );
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -239,8 +301,10 @@ export async function fetchUserStories(userId: string): Promise<Story[]> {
       const snap = await getDocs(q);
       return snap.docs
         .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
-        .filter((s) => s.createdAt > since);
+        .filter((s) => s.createdAt > since)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     } catch (err) {
+      console.error(`[stories] fetchUserStories attempt ${attempt + 1} failed:`, err);
       lastError = err;
     }
   }

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, Image, Linking, Platform,
-  ActivityIndicator, Alert, Share,
+  ActivityIndicator, Alert, ScrollView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { ShareModal } from "@/components/ShareModal";
@@ -23,8 +23,11 @@ import {
   getArtisanByUserId,
   buildChatId,
   calcDistanceKm,
+  normalizeProfilePosts,
   type GeoLocation,
+  type ProfilePost,
 } from "../lib/db_logic";
+import ProfilePostFeed from "@/components/ProfilePostFeed";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -43,6 +46,7 @@ export default function UserProfileScreen() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [shareVisible, setShareVisible] = useState(false);
+  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
   const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
 
@@ -81,6 +85,7 @@ export default function UserProfileScreen() {
             photoUri: p.photoUri ?? undefined,
             location: p.location ?? null,
           });
+          setProfilePosts(normalizeProfilePosts(p));
         }
         setResolvedRole(p?.role === "admin" ? "admin" : "client");
       } catch {
@@ -230,7 +235,11 @@ export default function UserProfileScreen() {
       />
 
       {!loading && (
-        <>
+        <ScrollView
+          style={styles.bodyScroll}
+          contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
+          showsVerticalScrollIndicator={false}
+        >
           {/* ── Action buttons ── */}
           <View style={[styles.actionRow, { paddingTop: 16 }]}>
             {profile?.phone ? (
@@ -266,7 +275,14 @@ export default function UserProfileScreen() {
               <Text style={styles.bioText}>{profile.bio}</Text>
             </View>
           ) : null}
-        </>
+
+          {/* ── Persistent profile posts ── */}
+          {profilePosts.length > 0 && (
+            <View style={styles.postsSection}>
+              <ProfilePostFeed posts={profilePosts} />
+            </View>
+          )}
+        </ScrollView>
       )}
     </View>
   );
@@ -274,6 +290,7 @@ export default function UserProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
+  bodyScroll: { flex: 1 },
   hero: { paddingHorizontal: 20, paddingBottom: 28 },
   nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   backBtn: {
@@ -348,6 +365,7 @@ const styles = StyleSheet.create({
   mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
 
   section: { marginHorizontal: 20, marginBottom: 16 },
+  postsSection: { marginHorizontal: 20, marginBottom: 16 },
   sectionTitle: {
     fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text,
     textAlign: "right", marginBottom: 6,

@@ -33,9 +33,12 @@ import {
   getIsLiked,
   likeArtisan,
   unlikeArtisan,
+  normalizeProfilePosts,
   type ArtisanProfile,
   type GeoLocation,
+  type ProfilePost,
 } from "../lib/db_logic";
+import ProfilePostFeed from "@/components/ProfilePostFeed";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -55,7 +58,7 @@ export default function ArtisanProfileScreen() {
   const initialArtisan = useMemo(() => parsePassedArtisan(artisanParam), [artisanParam]);
 
   const [artisan, setArtisan] = useState<ArtisanProfile | null>(initialArtisan);
-  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
+  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [userName, setUserName] = useState("مستخدم");
   const [loading, setLoading] = useState(!initialArtisan);
@@ -99,7 +102,7 @@ export default function ArtisanProfileScreen() {
       }
       if (artisanData?.userId) {
         const artisanProfile = await getUserProfile(artisanData.userId);
-        setPortfolioImages(artisanProfile?.portfolio || []);
+        setProfilePosts(normalizeProfilePosts(artisanProfile));
       }
       const currentUser = auth.currentUser;
       if (currentUser && artisanId && currentUser.uid !== artisanId) {
@@ -366,19 +369,10 @@ export default function ArtisanProfileScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Portfolio */}
-        {portfolioImages.length > 0 && (
+        {/* Persistent profile posts — separate from marketplace products */}
+        {profilePosts.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>معرض الأعمال</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.portfolioRow}
-            >
-              {portfolioImages.map((uri, idx) => (
-                <Image key={idx} source={{ uri }} style={styles.portfolioImg} resizeMode="cover" />
-              ))}
-            </ScrollView>
+            <ProfilePostFeed posts={profilePosts} />
           </View>
         )}
       </ScrollView>

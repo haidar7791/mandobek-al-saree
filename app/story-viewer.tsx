@@ -34,7 +34,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Video, ResizeMode } from "expo-av";
+import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { auth } from "@/lib/firebase";
 import {
   fetchUserStories,
@@ -48,7 +48,6 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 const { width: W } = Dimensions.get("window");
 const IMAGE_DURATION = 5000;  // ms
-const VIDEO_DURATION = 15000; // ms (fallback)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,13 +76,16 @@ export default function StoryViewerScreen() {
   const [liked, setLiked] = useState(false);
   const [reply, setReply] = useState("");
 
+  // Video-specific state
+  const [videoError, setVideoError] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+
   const progressAnim = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const pausedProgressRef = useRef(0); // stores progress when paused
 
   const story = stories[index] ?? null;
   const isOwner = story?.userId === currentUserId;
-  const duration = story?.mediaType === "video" ? VIDEO_DURATION : IMAGE_DURATION;
 
   // ── Load stories ────────────────────────────────────────────────────────
   const loadStories = useCallback(async () => {
@@ -101,7 +103,8 @@ export default function StoryViewerScreen() {
       }
       setStories(data);
       setLoading(false);
-    } catch {
+    } catch (err) {
+      console.error("[story-viewer] loadStories failed:", err);
       // All retries exhausted — show error UI instead of routing away
       setLoading(false);
       setFetchError(true);
@@ -110,13 +113,16 @@ export default function StoryViewerScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    loadStories().catch(() => { if (!cancelled) setFetchError(true); });
+    loadStories().catch((err) => {
+      console.error("[story-viewer] loadStories uncaught:", err);
+      if (!cancelled) setFetchError(true);
+    });
     return () => { cancelled = true; };
   }, [loadStories]);
 
   // ── Progress animation ──────────────────────────────────────────────────
   const startProgress = useCallback(
-    (fromValue = 0, dur = duration) => {
+    (fromValue = 0, dur = IMAGE_DURATION) => {
       progressAnim.setValue(fromValue);
       const remaining = dur * (1 - fromValue / W);
       animationRef.current?.stop();
@@ -131,15 +137,28 @@ export default function StoryViewerScreen() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [duration, index]
+    [index]
   );
 
   useEffect(() => {
     if (loading || !story) return;
-    // mark viewed
-    markStoryViewed(story.id, currentUserId).catch(() => {});
+    // Reset video tracking for the new story
+    pausedProgressRef.current = 0;
+    setVideoError(false);
+    // Guard: only mark viewed when we have a real user id
+    if (currentUserId) {
+      markStoryViewed(story.id, currentUserId).catch((err) => {
+        console.warn("[story-viewer] markStoryViewed failed:", err);
+      });
+    }
     setLiked(story.likes.includes(currentUserId));
-    startProgress(0, duration);
+    progressAnim.setValue(0);
+    setVideoReady(story.mediaType === "image");
+    // Image stories use an elapsed-time animation. Video progress is driven by
+    // the player's real position and advances only when playback actually moves.
+    if (story.mediaType === "image") {
+      startProgress(0, IMAGE_DURATION);
+    }
     return () => { animationRef.current?.stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, story?.id, loading]);
@@ -147,12 +166,13 @@ export default function StoryViewerScreen() {
   // ── Pause / resume ──────────────────────────────────────────────────────
   useEffect(() => {
     if (loading || !story) return;
+    if (story.mediaType === "video") return;
     if (paused) {
       animationRef.current?.stop();
       // capture current progress value
       progressAnim.stopAnimation((val) => { pausedProgressRef.current = val; });
     } else {
-      startProgress(pausedProgressRef.current, duration);
+      startProgress(pausedProgressRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
@@ -172,7 +192,7 @@ export default function StoryViewerScreen() {
 
   // ── Like ────────────────────────────────────────────────────────────────
   const handleLike = async () => {
-    if (!story) return;
+    if (!story || !currentUserId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const wasLiked = liked;
     setLiked(!wasLiked);
@@ -197,6 +217,37 @@ export default function StoryViewerScreen() {
       },
     ]);
   };
+
+  // ── Video playback callbacks ─────────────────────────────────────────────
+
+  /**
+   * Called by expo-av when the video status updates.
+   * Video progress follows the player's real position, so buffering never
+   * consumes the story timer and short/long videos end at the right moment.
+   */
+  const onPlaybackStatusUpdate = useCallback(
+    (status: AVPlaybackStatus) => {
+      if (!status.isLoaded) return;
+      setVideoReady(true);
+      if (status.didJustFinish) {
+        animationRef.current?.stop();
+        goNext();
+        return;
+      }
+      const durMs = status.durationMillis ?? 0;
+      if (durMs > 0) {
+        progressAnim.setValue(Math.min(W, (status.positionMillis / durMs) * W));
+      }
+    },
+    [goNext, progressAnim]
+  );
+
+  const onVideoError = useCallback((error: string) => {
+    console.error("[story-viewer] video playback error:", error);
+    setVideoError(true);
+    setVideoReady(false);
+    animationRef.current?.stop();
+  }, []);
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -237,6 +288,25 @@ export default function StoryViewerScreen() {
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
         />
+      ) : videoError ? (
+        /* Video failed to load — show an overlay with retry/back options */
+        <View style={[StyleSheet.absoluteFill, styles.videoErrorOverlay]}>
+          <Feather name="video-off" size={44} color="rgba(255,255,255,0.55)" />
+          <Text style={styles.videoErrorText}>تعذّر تشغيل الفيديو</Text>
+          <Pressable
+            style={styles.retryBtn}
+            onPress={() => {
+              setVideoError(false);
+              setVideoReady(false);
+              progressAnim.setValue(0);
+            }}
+          >
+            <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={{ marginTop: 12 }}>
+            <Text style={[styles.videoErrorText, { fontSize: 13 }]}>رجوع</Text>
+          </Pressable>
+        </View>
       ) : (
         <Video
           source={{ uri: story.mediaUrl }}
@@ -246,7 +316,15 @@ export default function StoryViewerScreen() {
           isLooping={false}
           isMuted={false}
           useNativeControls={false}
+          onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+          onError={onVideoError}
         />
+      )}
+
+      {story.mediaType === "video" && !videoReady && !videoError && (
+        <View pointerEvents="none" style={styles.videoLoadingOverlay}>
+          <ActivityIndicator size="large" color="#FFF" />
+        </View>
       )}
 
       {/* Gradient overlay (top + bottom) */}
@@ -341,6 +419,7 @@ export default function StoryViewerScreen() {
       {/* ── Tap areas (prev / next / pause) ── */}
       <Pressable
         style={styles.tapLeft}
+        pointerEvents={videoError ? "none" : "auto"}
         onPress={goPrev}
         onLongPress={() => setPaused(true)}
         onPressOut={() => setPaused(false)}
@@ -348,6 +427,7 @@ export default function StoryViewerScreen() {
       />
       <Pressable
         style={styles.tapRight}
+        pointerEvents={videoError ? "none" : "auto"}
         onPress={goNext}
         onLongPress={() => setPaused(true)}
         onPressOut={() => setPaused(false)}
@@ -364,6 +444,27 @@ const styles = StyleSheet.create({
   errorText: { color: "rgba(255,255,255,0.65)", fontSize: 15, fontFamily: "Cairo_400Regular", textAlign: "center" },
   retryBtn: { backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 10, borderRadius: 20 },
   retryBtnText: { color: "#FFF", fontFamily: "Cairo_700Bold", fontSize: 14 },
+
+  // Video error overlay
+  videoErrorOverlay: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111",
+    gap: 14,
+    zIndex: 30,
+  },
+  videoErrorText: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 15,
+    textAlign: "center",
+  },
+  videoLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.18)",
+    zIndex: 4,
+  },
 
   // Overlay gradients
   gradTop: {

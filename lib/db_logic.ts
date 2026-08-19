@@ -1321,6 +1321,7 @@ export interface UserProfile {
   category?: ServiceCategory;
   bio?: string;
   portfolio?: string[];
+  profilePosts?: ProfilePost[];
   pushToken?: string | null;
   createdAt?: any;
   email?: string;
@@ -1331,6 +1332,17 @@ export interface UserProfile {
   balance?: number;
   followCount?: number;
   likesCount?: number;
+}
+
+export interface ProfilePost {
+  id: string;
+  url: string;
+  mediaType: "image" | "video";
+  createdAt: string;
+  storagePath?: string;
+  mimeType?: string | null;
+  /** Added only while normalizing old portfolio URLs; never persisted. */
+  legacy?: boolean;
 }
 
 export const setUserPushToken = async (
@@ -1364,6 +1376,31 @@ export const setUserProfile = async (
 ): Promise<void> => {
   await setDoc(doc(db, "users", userId), profile, { merge: true });
 };
+
+export function normalizeProfilePosts(
+  profile: Pick<UserProfile, "profilePosts" | "portfolio"> | null | undefined
+): ProfilePost[] {
+  const saved = (profile?.profilePosts ?? []).filter(
+    (post): post is ProfilePost =>
+      !!post?.id &&
+      !!post?.url &&
+      (post.mediaType === "image" || post.mediaType === "video")
+  );
+  const savedUrls = new Set(saved.map((post) => post.url));
+  const legacy = (profile?.portfolio ?? [])
+    .filter((url) => !!url && !savedUrls.has(url))
+    .map((url, index) => ({
+      id: `legacy-${index}-${url}`,
+      url,
+      mediaType: "image" as const,
+      createdAt: "",
+      legacy: true,
+    }));
+
+  return [...saved]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .concat(legacy);
+}
 
 // ─── Portfolio Images ─────────────────────────────────────────────────────────
 
@@ -1450,6 +1487,137 @@ export const removePortfolioImage = async (
     await deleteObject(storageRef);
   } catch {
     // ignore if file already removed
+  }
+};
+
+// ─── Persistent Profile Posts ─────────────────────────────────────────────────
+
+function extensionForMedia(
+  mediaType: "image" | "video",
+  mimeType?: string | null,
+  fileName?: string | null,
+  uri?: string
+): string {
+  const namedExtension = (fileName || uri?.split("?")[0] || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  const allowed = new Set(
+    mediaType === "video"
+      ? ["mp4", "mov", "m4v", "webm", "3gp"]
+      : ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"]
+  );
+  if (namedExtension && allowed.has(namedExtension)) return namedExtension;
+
+  const byMime: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/webm": "webm",
+    "video/3gpp": "3gp",
+  };
+  return (mimeType && byMime[mimeType.toLowerCase()]) || (mediaType === "video" ? "mp4" : "jpg");
+}
+
+export const uploadProfilePostMedia = async (
+  userId: string,
+  localUri: string,
+  mediaType: "image" | "video",
+  metadata?: { mimeType?: string | null; fileName?: string | null }
+): Promise<{ url: string; storagePath: string; mimeType: string }> => {
+  try {
+    const blob = await uriToBlob(localUri);
+    const extension = extensionForMedia(
+      mediaType,
+      metadata?.mimeType,
+      metadata?.fileName,
+      localUri
+    );
+    const mimeByExtension: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      gif: "image/gif",
+      heic: "image/heic",
+      heif: "image/heif",
+      mp4: "video/mp4",
+      mov: "video/quicktime",
+      m4v: "video/x-m4v",
+      webm: "video/webm",
+      "3gp": "video/3gpp",
+    };
+    const detectedMime =
+      metadata?.mimeType?.startsWith(`${mediaType}/`)
+        ? metadata.mimeType
+        : blob.type?.startsWith(`${mediaType}/`)
+          ? blob.type
+          : mimeByExtension[extension] ||
+            (mediaType === "video" ? "video/mp4" : "image/jpeg");
+    const storagePath = `profile-posts/${userId}/${Date.now()}.${extension}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, blob, { contentType: detectedMime });
+    return {
+      url: await getDownloadURL(storageRef),
+      storagePath,
+      mimeType: detectedMime,
+    };
+  } catch (err: any) {
+    console.error("uploadProfilePostMedia failed:", err?.code, err?.message);
+    throw new Error(err?.message || "upload failed");
+  }
+};
+
+export const addProfilePost = async (
+  userId: string,
+  post: ProfilePost
+): Promise<void> => {
+  const persistedPost = {
+    id: post.id,
+    url: post.url,
+    mediaType: post.mediaType,
+    createdAt: post.createdAt,
+    storagePath: post.storagePath ?? null,
+    mimeType: post.mimeType ?? null,
+  };
+  await setDoc(
+    doc(db, "users", userId),
+    { profilePosts: arrayUnion(persistedPost) },
+    { merge: true }
+  );
+};
+
+export const removeProfilePost = async (
+  userId: string,
+  post: ProfilePost
+): Promise<void> => {
+  if (post.legacy) {
+    await removePortfolioImage(userId, post.url);
+    return;
+  }
+
+  const persistedPost = {
+    id: post.id,
+    url: post.url,
+    mediaType: post.mediaType,
+    createdAt: post.createdAt,
+    storagePath: post.storagePath ?? null,
+    mimeType: post.mimeType ?? null,
+  };
+  await updateDoc(doc(db, "users", userId), {
+    profilePosts: arrayRemove(persistedPost),
+  });
+
+  try {
+    await deleteObject(ref(storage, post.storagePath || post.url));
+  } catch {
+    // The database entry is already removed; a missing Storage object is harmless.
   }
 };
 

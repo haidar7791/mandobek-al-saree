@@ -12,7 +12,6 @@ import {
   Image,
   Modal,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,20 +34,20 @@ import {
   getBalance,
   getUserProfile,
   setUserProfile,
-  addPortfolioImage,
-  removePortfolioImage,
-  uploadPortfolioImage,
+  addProfilePost,
+  removeProfilePost,
+  normalizeProfilePosts,
+  uploadProfilePostMedia,
   uploadProfilePhoto,
   updateArtisanPhotoIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
+  type ProfilePost,
 } from "@/lib/db_logic";
+import ProfilePostFeed from "@/components/ProfilePostFeed";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-const SCREEN_W = Dimensions.get("window").width;
-// Portfolio images are full-width with a 4:3 aspect ratio
-const PORTFOLIO_IMG_H = Math.round((SCREEN_W - 18 * 2) * 0.75);
 
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 
@@ -77,8 +76,9 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState("");
   const [followCount, setFollowCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
-  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
-  const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
+  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
+  const [uploadingPost, setUploadingPost] = useState(false);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // ── Edit modal state ───────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ export default function ProfileScreen() {
           setBio(profile.bio || "");
            setFollowCount(profile.followCount ?? 0);
            setLikesCount(profile.likesCount ?? 0);
-          setPortfolioImages(profile.portfolio || []);
+          setProfilePosts(normalizeProfilePosts(profile));
         }
         const bal = await getBalance(user.uid);
         setBalance(bal);
@@ -199,8 +199,8 @@ export default function ProfileScreen() {
     ]);
   };
 
-  // ── Portfolio ──────────────────────────────────────────────────────────────
-  const handleAddPortfolioImage = async () => {
+  // ── Persistent profile posts ───────────────────────────────────────────────
+  const handleAddProfilePost = async () => {
     if (Platform.OS === "ios") {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
@@ -209,22 +209,42 @@ export default function ProfileScreen() {
       }
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsEditing: false,
       quality: 0.85,
+      videoMaxDuration: 60,
     });
     if (result.canceled || !result.assets[0]) return;
 
-    setUploadingPortfolio(true);
+    const asset = result.assets[0];
+    const mediaType: "image" | "video" =
+      asset.type === "video" ? "video" : "image";
+    if (asset.fileSize && asset.fileSize >= 50 * 1024 * 1024) {
+      Alert.alert("الملف كبير", "يرجى اختيار صورة أو فيديو بحجم أقل من 50 ميغابايت");
+      return;
+    }
+
+    setUploadingPost(true);
     try {
-      const url = await uploadPortfolioImage(uid, result.assets[0].uri);
-      await addPortfolioImage(uid, url);
-      setPortfolioImages((prev) => [...prev, url]);
+      const uploaded = await uploadProfilePostMedia(uid, asset.uri, mediaType, {
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
+      });
+      const post: ProfilePost = {
+        id: `${Date.now()}-${uid}`,
+        url: uploaded.url,
+        mediaType,
+        createdAt: new Date().toISOString(),
+        storagePath: uploaded.storagePath,
+        mimeType: uploaded.mimeType,
+      };
+      await addProfilePost(uid, post);
+      setProfilePosts((prev) => [post, ...prev]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       const code = err?.code || "";
       const msg = err?.message || "";
-      let userMsg = "تعذّر رفع الصورة، حاول مرة أخرى";
+      let userMsg = "تعذّر رفع المنشور، حاول مرة أخرى";
       if (
         code.includes("unauthorized") ||
         msg.includes("unauthorized") ||
@@ -233,25 +253,28 @@ export default function ProfileScreen() {
         userMsg = "صلاحيات الرفع مرفوضة من Firebase Storage.";
       else if (msg.includes("network") || code.includes("network"))
         userMsg = "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
-      Alert.alert("خطأ في رفع الصورة", `${userMsg}\n\n[${code || "unknown"}]`);
+      Alert.alert("خطأ في رفع المنشور", `${userMsg}\n\n[${code || "unknown"}]`);
     } finally {
-      setUploadingPortfolio(false);
+      setUploadingPost(false);
     }
   };
 
-  const handleDeletePortfolioImage = (imageUrl: string) => {
-    Alert.alert("حذف الصورة", "هل تريد حذف هذه الصورة من معرضك؟", [
+  const handleDeleteProfilePost = (post: ProfilePost) => {
+    Alert.alert("حذف المنشور", "هل تريد حذف هذا المنشور من ملفك؟", [
       { text: "إلغاء", style: "cancel" },
       {
         text: "حذف",
         style: "destructive",
         onPress: async () => {
+          setDeletingPostId(post.id);
           try {
-            await removePortfolioImage(uid, imageUrl);
-            setPortfolioImages((prev) => prev.filter((u) => u !== imageUrl));
+            await removeProfilePost(uid, post);
+            setProfilePosts((prev) => prev.filter((item) => item.id !== post.id));
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           } catch {
-            Alert.alert("خطأ", "تعذّر حذف الصورة");
+            Alert.alert("خطأ", "تعذّر حذف المنشور");
+          } finally {
+            setDeletingPostId(null);
           }
         },
       },
@@ -470,7 +493,7 @@ export default function ProfileScreen() {
       <View style={styles.controlRow}>
         <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => router.push("/wallet" as any)}>
           <MaterialCommunityIcons name="wallet-outline" size={17} color={C.accent} />
-          <Text style={styles.controlBtnText} numberOfLines={1}>
+          <Text style={[styles.controlBtnText, styles.walletAmountText]} numberOfLines={1}>
             {balance.toLocaleString("ar-IQ")} د.ع
           </Text>
         </Pressable>
@@ -488,17 +511,17 @@ export default function ProfileScreen() {
         </Pressable>
 
         <Pressable
-          style={[styles.controlBtn, styles.addImageControlBtn, uploadingPortfolio && { opacity: 0.55 }]}
-          onPress={handleAddPortfolioImage}
-          disabled={uploadingPortfolio}
-          accessibilityLabel="إضافة صورة"
+          style={[styles.controlBtn, styles.addImageControlBtn, uploadingPost && { opacity: 0.55 }]}
+          onPress={handleAddProfilePost}
+          disabled={uploadingPost}
+          accessibilityLabel="إضافة منشور"
         >
-          {uploadingPortfolio ? (
+          {uploadingPost ? (
             <ActivityIndicator size="small" color={C.accent} />
           ) : (
             <Feather name="plus" size={18} color={C.accent} />
           )}
-          <Text style={styles.addImageControlText} numberOfLines={1}>إضافة صورة</Text>
+          <Text style={styles.addImageControlText} numberOfLines={1}>إضافة منشور</Text>
         </Pressable>
       </View>
 
@@ -515,40 +538,15 @@ export default function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* ── Portfolio Gallery (all users) ── */}
+          {/* ── Profile posts (kept separate from marketplace products) ── */}
           <View style={styles.card}>
-            {portfolioImages.length === 0 ? (
-              <View style={styles.emptyPortfolio}>
-                <MaterialCommunityIcons
-                  name="image-multiple-outline"
-                  size={44}
-                  color={C.textMuted}
-                />
-                <Text style={styles.emptyPortfolioText}>لم تضف أي صور بعد</Text>
-                <Text style={styles.emptyPortfolioSub}>
-                  اضغط "إضافة صورة" لرفع أعمالك السابقة
-                </Text>
-              </View>
-            ) : (
-              /* Vertical list — one image per row */
-              <View style={styles.portfolioList}>
-                {portfolioImages.map((uri, idx) => (
-                  <View key={idx} style={styles.portfolioItem}>
-                    <Image
-                      source={{ uri }}
-                      style={styles.portfolioImg}
-                      resizeMode="cover"
-                    />
-                    <Pressable
-                      style={styles.deleteImgBtn}
-                      onPress={() => handleDeletePortfolioImage(uri)}
-                    >
-                      <Text style={styles.deleteImgIcon}>🗑️</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            )}
+            <ProfilePostFeed
+              posts={profilePosts}
+              canDelete
+              deletingPostId={deletingPostId}
+              onDelete={handleDeleteProfilePost}
+              showEmptyState
+            />
           </View>
 
           {/* Admin button */}
@@ -1194,6 +1192,9 @@ const styles = StyleSheet.create({
     color: "#FFF",
     textAlign: "center",
   },
+  walletAmountText: {
+    color: C.accent,
+  },
   walletBtn: {
     backgroundColor: "rgba(201,168,76,0.1)",
     borderColor: "rgba(201,168,76,0.45)",
@@ -1233,53 +1234,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
-  // ── Portfolio ──
-  emptyPortfolio: {
-    alignItems: "center",
-    paddingVertical: 28,
-    gap: 6,
-  },
-  emptyPortfolioText: {
-    fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.textSecondary,
-  },
-  emptyPortfolioSub: {
-    fontSize: 12,
-    fontFamily: "Cairo_400Regular",
-    color: C.textMuted,
-    textAlign: "center",
-  },
-  portfolioList: {
-    gap: 12,
-  },
-  portfolioItem: {
-    width: "100%",
-    height: PORTFOLIO_IMG_H,
-    borderRadius: 14,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: C.inputBg,
-  },
-  portfolioImg: {
-    width: "100%",
-    height: "100%",
-  },
-  deleteImgBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteImgIcon: {
-    fontSize: 18,
-  },
-
   // ── Settings rows ──
   settingsRow: {
     flexDirection: "row",

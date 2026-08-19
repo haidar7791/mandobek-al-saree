@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import { Video, ResizeMode } from "expo-av";
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
 import { createStory, uploadStoryMedia } from "@/lib/stories_logic";
@@ -56,6 +57,9 @@ export default function StoryCreatorScreen() {
 
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
+  // Preserve actual MIME type and filename from the picker
+  const [mediaMimeType, setMediaMimeType] = useState<string | undefined>(undefined);
+  const [mediaFileName, setMediaFileName] = useState<string | undefined>(undefined);
   const [overlayText, setOverlayText] = useState("");
   const [textColor, setTextColor] = useState("#FFFFFF");
   const [textVisible, setTextVisible] = useState(false);
@@ -94,6 +98,9 @@ export default function StoryCreatorScreen() {
       const asset = result.assets[0];
       setMediaUri(asset.uri);
       setMediaType(asset.type === "video" ? "video" : "image");
+      // Capture actual MIME type and filename so upload preserves them
+      setMediaMimeType(asset.mimeType ?? undefined);
+      setMediaFileName(asset.fileName ?? undefined);
       Haptics.selectionAsync();
     }
   };
@@ -105,12 +112,21 @@ export default function StoryCreatorScreen() {
       return;
     }
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      Alert.alert("غير مسجّل", "يرجى تسجيل الدخول أولاً");
+      return;
+    }
 
     setLoading(true);
     try {
       const profile = await getUserProfile(user.uid);
-      const mediaUrl = await uploadStoryMedia(mediaUri, mediaType, user.uid);
+      const mediaUrl = await uploadStoryMedia(
+        mediaUri,
+        mediaType,
+        user.uid,
+        mediaMimeType,
+        mediaFileName
+      );
 
       // thumbnailUrl: for images use the mediaUrl directly (already a still);
       // for videos we cannot generate a native thumbnail here, so fall back to null
@@ -128,8 +144,9 @@ export default function StoryCreatorScreen() {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء نشر القصة. حاول مجدداً.");
+    } catch (err) {
+      console.error("[story-creator] publish failed:", err);
+      Alert.alert("خطأ في النشر", "تعذّر نشر القصة. تحقق من اتصالك وحاول مجدداً.");
     } finally {
       setLoading(false);
     }
@@ -153,7 +170,19 @@ export default function StoryCreatorScreen() {
       {/* ── Media preview ── */}
       <Pressable style={styles.mediaArea} onPress={mediaUri ? undefined : pickMedia}>
         {mediaUri ? (
-          <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          mediaType === "video" ? (
+            <Video
+              source={{ uri: mediaUri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay
+              isLooping
+              isMuted
+              useNativeControls={false}
+            />
+          ) : (
+            <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          )
         ) : (
           <View style={styles.mediaPlaceholder}>
             <Feather name="image" size={52} color="rgba(255,255,255,0.35)" />
