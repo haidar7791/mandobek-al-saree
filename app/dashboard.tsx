@@ -481,7 +481,7 @@ export default function DashboardScreen() {
 
   // ── Marketplace ──
   const [products, setProducts] = useState<Product[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [productsRefreshing, setProductsRefreshing] = useState(false);
   const [productsRefreshKey, setProductsRefreshKey] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);

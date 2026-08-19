@@ -17,6 +17,7 @@ const C = Colors.light;
 
 type Props = {
   posts: ProfilePost[];
+  loading?: boolean;
   canDelete?: boolean;
   deletingPostId?: string | null;
   onDelete?: (post: ProfilePost) => void;
@@ -25,6 +26,7 @@ type Props = {
 
 export default function ProfilePostFeed({
   posts,
+  loading = false,
   canDelete = false,
   deletingPostId,
   onDelete,
@@ -37,13 +39,21 @@ export default function ProfilePostFeed({
     setFailedIds((current) => new Set(current).add(postId));
   };
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={C.accent} />
+      </View>
+    );
+  }
+
   if (posts.length === 0) {
     if (!showEmptyState) return null;
     return (
       <View style={styles.empty}>
         <Ionicons name="images-outline" size={42} color={C.textMuted} />
         <Text style={styles.emptyTitle}>لا توجد منشورات بعد</Text>
-        <Text style={styles.emptyHint}>اضغط “إضافة منشور” لاختيار صورة أو فيديو</Text>
+        <Text style={styles.emptyHint}>اضغط "إضافة منشور" لاختيار صورة أو فيديو</Text>
       </View>
     );
   }
@@ -155,6 +165,11 @@ export default function ProfilePostFeed({
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   root: { gap: 10 },
   title: {
     color: C.text,

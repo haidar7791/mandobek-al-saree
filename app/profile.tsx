@@ -78,6 +78,7 @@ export default function ProfileScreen() {
   const [followCount, setFollowCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [uploadingPost, setUploadingPost] = useState(false);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -117,6 +118,7 @@ export default function ProfileScreen() {
         const user = auth.currentUser;
         if (!user) { router.replace("/"); return; }
         setUid(user.uid);
+        setPostsLoading(true);
         const [profile, engagement] = await Promise.all([
           getUserProfile(user.uid),
           getProfileEngagementCounts(user.uid),
@@ -133,6 +135,7 @@ export default function ProfileScreen() {
            setLikesCount(engagement.likesCount);
           setProfilePosts(normalizeProfilePosts(profile));
         }
+        setPostsLoading(false);
         const bal = await getBalance(user.uid);
         setBalance(bal);
       };
@@ -546,6 +549,7 @@ export default function ProfileScreen() {
           <View style={styles.card}>
             <ProfilePostFeed
               posts={profilePosts}
+              loading={postsLoading}
               canDelete
               deletingPostId={deletingPostId}
               onDelete={handleDeleteProfilePost}
