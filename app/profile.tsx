@@ -403,13 +403,16 @@ export default function ProfileScreen() {
       ══════════════════════════════════════════ */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Feather name="chevron-right" size={22} color="rgba(255,255,255,0.8)" />
+          {/* Logout — top-left */}
+          <Pressable onPress={handleLogout} style={styles.logoutHeaderBtn}>
+            <Feather name="log-out" size={19} color="#EF4444" />
+            <Text style={styles.logoutHeaderText}>خروج</Text>
           </Pressable>
           <Text style={styles.headerTitle}>الملف الشخصي</Text>
-          <View style={styles.headerIcon}>
-            <Ionicons name="person-circle" size={24} color={C.accent} />
-          </View>
+          {/* Settings — top-right → opens edit modal */}
+          <Pressable onPress={openEditModal} style={styles.headerIcon}>
+            <Feather name="settings" size={20} color={C.accent} />
+          </Pressable>
         </View>
 
         <View style={styles.avatarSection}>
@@ -476,10 +479,6 @@ export default function ProfileScreen() {
           <View style={styles.card}>
             {/* Card header */}
             <View style={styles.cardTitleRow}>
-              <Pressable style={styles.editBtn} onPress={openEditModal}>
-                <Feather name="edit-2" size={13} color={C.accent} />
-                <Text style={styles.editBtnText}>تعديل الملف الشخصي</Text>
-              </Pressable>
               <Text style={styles.cardTitle}>البيانات الشخصية</Text>
             </View>
 
@@ -591,20 +590,6 @@ export default function ProfileScreen() {
               />
             </Pressable>
           )}
-
-          {/* Logout */}
-          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <View style={styles.logoutIcon}>
-              <Feather name="log-out" size={20} color={C.danger} />
-            </View>
-            <Text style={styles.logoutText}>تسجيل الخروج</Text>
-            <Feather
-              name="chevron-left"
-              size={16}
-              color={C.danger}
-              style={{ opacity: 0.5 }}
-            />
-          </Pressable>
 
           <Text style={styles.versionNote}>
             فورس - ForUs • خدمات المنزل والسيارة
@@ -1076,13 +1061,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
+  // Logout button — top-left of header
+  logoutHeaderBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(239,68,68,0.12)",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  logoutHeaderText: {
+    fontSize: 13,
+    fontFamily: "Cairo_700Bold",
+    color: "#EF4444",
   },
   headerTitle: {
     flex: 1,
