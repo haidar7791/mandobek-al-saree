@@ -7,11 +7,10 @@
  */
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, Pressable, Image, Linking, Platform,
-  ActivityIndicator, Alert, ScrollView,
+  View, Text, StyleSheet, Pressable, Image, Platform,
+  ActivityIndicator, ScrollView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
@@ -24,6 +23,12 @@ import {
   buildChatId,
   calcDistanceKm,
   normalizeProfilePosts,
+  getIsFollowing,
+  followArtisan,
+  unfollowArtisan,
+  getIsLiked,
+  likeArtisan,
+  unlikeArtisan,
   type GeoLocation,
   type ProfilePost,
 } from "../lib/db_logic";
@@ -41,12 +46,17 @@ export default function UserProfileScreen() {
   }>();
 
   const [profile, setProfile] = useState<{
-    name: string; phone?: string; bio?: string; photoUri?: string;
+    name: string; bio?: string; photoUri?: string;
     location?: GeoLocation | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [shareVisible, setShareVisible] = useState(false);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followCount, setFollowCount] = useState(0);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
   // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
   const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
 
@@ -80,12 +90,24 @@ export default function UserProfileScreen() {
         if (p) {
           setProfile({
             name: p.name,
-            phone: p.phone ?? undefined,
             bio: p.bio ?? undefined,
             photoUri: p.photoUri ?? undefined,
             location: p.location ?? null,
           });
           setProfilePosts(normalizeProfilePosts(p));
+          setFollowCount(p.followCount ?? 0);
+          setLikesCount(p.likesCount ?? 0);
+
+          const viewer = auth.currentUser;
+          if (viewer && viewer.uid !== userId) {
+            const [following, liked] = await Promise.all([
+              getIsFollowing(viewer.uid, userId),
+              getIsLiked(viewer.uid, userId),
+            ]);
+            if (cancelled) return;
+            setIsFollowing(following);
+            setIsLiked(liked);
+          }
         }
         setResolvedRole(p?.role === "admin" ? "admin" : "client");
       } catch {
@@ -97,7 +119,7 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
-  // Request GPS for the viewer (to show distance + directions)
+  // Request GPS for the viewer so the stats bar can show distance.
   useEffect(() => {
     (async () => {
       try {
@@ -132,19 +154,11 @@ export default function UserProfileScreen() {
     viewerLocation && profile?.location
       ? calcDistanceKm(viewerLocation, profile.location)
       : null;
-
-  const handleCall = () => {
-    if (!profile?.phone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Linking.openURL(`tel:${profile.phone}`);
-  };
-
-  const handleWhatsApp = () => {
-    if (!profile?.phone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const phone = profile.phone.replace(/^0/, "964").replace(/\s+/g, "");
-    Linking.openURL(`https://wa.me/${phone}`);
-  };
+  const isOwnProfile = auth.currentUser?.uid === userId;
+  // A chat can occasionally point to a legacy/system participant with no
+  // corresponding user document. Keep chat available, but never write
+  // follow/like data to a profile that does not exist.
+  const canFollowProfile = Boolean(profile) && !isOwnProfile;
 
   const handleChat = () => {
     const me = auth.currentUser;
@@ -154,17 +168,48 @@ export default function UserProfileScreen() {
     router.push({ pathname: "/chat", params: { chatId, otherName: displayName } });
   };
 
-  const handleOpenMap = () => {
-    if (!profile?.location) {
-      Alert.alert("تنبيه", "لا يوجد موقع محدد لهذا المستخدم");
-      return;
+  const handleToggleFollow = async () => {
+    const viewer = auth.currentUser;
+    if (!viewer || !userId || viewer.uid === userId) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unfollowArtisan(viewer.uid, userId);
+        setIsFollowing(false);
+        setFollowCount((count) => Math.max(0, count - 1));
+      } else {
+        await followArtisan(viewer.uid, userId);
+        setIsFollowing(true);
+        setFollowCount((count) => count + 1);
+      }
+      Haptics.selectionAsync();
+    } catch (err) {
+      console.error("user profile follow toggle failed:", err);
+    } finally {
+      setFollowLoading(false);
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { lat, lng } = profile.location;
-    const url = viewerLocation
-      ? `https://www.google.com/maps/dir/?api=1&origin=${viewerLocation.lat},${viewerLocation.lng}&destination=${lat},${lng}&travelmode=driving`
-      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    Linking.openURL(url);
+  };
+
+  const handleToggleLike = async () => {
+    const viewer = auth.currentUser;
+    if (!viewer || !userId || viewer.uid === userId) return;
+    setLikeLoading(true);
+    try {
+      if (isLiked) {
+        await unlikeArtisan(viewer.uid, userId);
+        setIsLiked(false);
+        setLikesCount((count) => Math.max(0, count - 1));
+      } else {
+        await likeArtisan(viewer.uid, userId);
+        setIsLiked(true);
+        setLikesCount((count) => count + 1);
+      }
+      Haptics.selectionAsync();
+    } catch (err) {
+      console.error("user profile like toggle failed:", err);
+    } finally {
+      setLikeLoading(false);
+    }
   };
 
   // While resolving an artisan redirect, show nothing to avoid flash
@@ -176,18 +221,12 @@ export default function UserProfileScreen() {
     );
   }
 
-  const roleLabel = resolvedRole === "admin" ? "مدير" : "زبون";
-
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 8 }]}>
         <View style={styles.nav}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="chevron-right" size={22} color="#FFF" />
-          </Pressable>
-          <Pressable style={styles.shareNavBtn} onPress={() => setShareVisible(true)}>
-            <Feather name="share-2" size={15} color={C.accent} />
-            <Text style={styles.shareNavBtnText}>مشاركة</Text>
           </Pressable>
         </View>
         <View style={styles.heroContent}>
@@ -203,36 +242,45 @@ export default function UserProfileScreen() {
           ) : (
             <>
               <Text style={styles.name}>{displayName}</Text>
-              <View style={styles.roleTagRow}>
-                <Text style={styles.roleTag}>{roleLabel}</Text>
-                {distance !== null && (
-                  <View style={styles.distancePill}>
-                    <Feather name="navigation" size={11} color={C.accent} />
-                    <Text style={styles.distanceText}>
-                      {distance < 1
-                        ? `${Math.round(distance * 1000)} م`
-                        : `${distance.toFixed(1)} كم`}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              {profile?.bio ? (
+                <Text style={styles.heroBio} numberOfLines={3}>{profile.bio}</Text>
+              ) : null}
             </>
+          )}
+          {!loading && (
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statVal}>{followCount}</Text>
+                <Text style={styles.statLabel}>متابع</Text>
+              </View>
+              <View style={styles.statDiv} />
+              <Pressable
+                style={styles.statItem}
+                onPress={canFollowProfile ? handleToggleLike : undefined}
+                disabled={likeLoading || !canFollowProfile}
+              >
+                <FontAwesome
+                  name={isLiked ? "heart" : "heart-o"}
+                  size={16}
+                  color={isLiked ? "#EF4444" : "rgba(255,255,255,0.75)"}
+                />
+                <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
+              </Pressable>
+              <View style={styles.statDiv} />
+              <View style={styles.statItem}>
+                <Text style={styles.statVal}>
+                  {distance === null
+                    ? "—"
+                    : distance < 1
+                      ? `${Math.round(distance * 1000)} م`
+                      : `${distance.toFixed(1)} كم`}
+                </Text>
+                <Text style={styles.statLabel}>البُعد</Text>
+              </View>
+            </View>
           )}
         </View>
       </LinearGradient>
-
-      {/* ── Share modal ── */}
-      <ShareModal
-        visible={shareVisible}
-        onClose={() => setShareVisible(false)}
-        title={displayName}
-        cardImage={photoUri}
-        cardTitle={displayName}
-        cardRoute={`/user-profile?userId=${userId}`}
-        deepLinkPath={`user/${userId}`}
-        shareText={`👤 ${displayName} — ${roleLabel}\nملف شخصي على تطبيق فورس`}
-        shareMessage={`👤 تعرّف على ${displayName} على تطبيق فورس`}
-      />
 
       {!loading && (
         <ScrollView
@@ -241,40 +289,36 @@ export default function UserProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* ── Action buttons ── */}
-          <View style={[styles.actionRow, { paddingTop: 16 }]}>
-            {profile?.phone ? (
-              <Pressable style={[styles.actionBtn, styles.callBtn]} onPress={handleCall}>
-                <Feather name="phone" size={20} color="#FFF" />
-                <Text style={styles.actionBtnText}>اتصال</Text>
-              </Pressable>
-            ) : null}
-            {profile?.phone ? (
-              <Pressable style={[styles.actionBtn, styles.waBtn]} onPress={handleWhatsApp}>
-                <FontAwesome name="whatsapp" size={20} color="#FFF" />
-                <Text style={styles.actionBtnText}>واتساب</Text>
-              </Pressable>
-            ) : null}
-            {auth.currentUser?.uid !== userId && (
+          {!isOwnProfile && (
+            <View style={[styles.actionRow, { paddingTop: 14 }]}>
+              {canFollowProfile && (
+                <Pressable
+                  style={[styles.actionBtn, isFollowing ? styles.followingBtn : styles.followBtn]}
+                  onPress={handleToggleFollow}
+                  disabled={followLoading}
+                >
+                  {followLoading ? (
+                    <ActivityIndicator size="small" color={isFollowing ? C.accent : "#FFF"} />
+                  ) : (
+                    <>
+                      <Feather
+                        name={isFollowing ? "user-check" : "user-plus"}
+                        size={16}
+                        color={isFollowing ? C.accent : "#FFF"}
+                      />
+                      <Text style={[styles.actionBtnText, isFollowing && { color: C.accent }]}>
+                        {isFollowing ? "مُتابَع" : "متابعة"}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
               <Pressable style={[styles.actionBtn, styles.chatBtn]} onPress={handleChat}>
-                <Feather name="message-circle" size={20} color="#FFF" />
-                <Text style={styles.actionBtnText}>مراسلة</Text>
+                <Feather name="message-circle" size={16} color="#FFF" />
+                <Text style={styles.actionBtnText}>دردشة</Text>
               </Pressable>
-            )}
-          </View>
-
-          {/* ── Map button (shown whenever location exists or as fallback) ── */}
-          <Pressable style={styles.mapBtn} onPress={handleOpenMap}>
-            <Feather name="map-pin" size={18} color={C.accent} />
-            <Text style={styles.mapBtnText}>عرض على الخريطة</Text>
-          </Pressable>
-
-          {/* ── Bio ── */}
-          {profile?.bio ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>نبذة</Text>
-              <Text style={styles.bioText}>{profile.bio}</Text>
             </View>
-          ) : null}
+          )}
 
           {/* ── Persistent profile posts ── */}
           {profilePosts.length > 0 && (
@@ -291,87 +335,56 @@ export default function UserProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
   bodyScroll: { flex: 1 },
-  hero: { paddingHorizontal: 20, paddingBottom: 28 },
-  nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  hero: { paddingHorizontal: 16, paddingBottom: 20 },
+  nav: { alignSelf: "flex-start", marginBottom: 12 },
   backBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  shareNavBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 10,
-    paddingVertical: 7, paddingHorizontal: 12,
-  },
-  shareNavBtnText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  heroContent: { alignItems: "center", gap: 8 },
+  heroContent: { alignItems: "center" },
   photo: {
-    width: 90, height: 90, borderRadius: 22,
-    borderWidth: 2.5, borderColor: "rgba(255,255,255,0.25)",
+    width: 96, height: 96, borderRadius: 48,
+    borderWidth: 3, borderColor: C.accent,
   },
   initials: {
-    width: 90, height: 90, borderRadius: 22,
+    width: 96, height: 96, borderRadius: 48,
     backgroundColor: "rgba(201,168,76,0.2)",
-    alignItems: "center", justifyContent: "center",
+    borderWidth: 3, borderColor: C.accent,
+    alignItems: "center", justifyContent: "center", marginBottom: 12,
   },
   initialsText: { fontSize: 32, fontFamily: "Cairo_700Bold", color: C.accent },
-  name: { fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "center" },
-
-  roleTagRow: {
-    flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center",
+  name: {
+    fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF",
+    textAlign: "center", marginTop: 12, marginBottom: 6,
   },
-  roleTag: {
-    backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 4,
-    fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent,
+  heroBio: {
+    fontSize: 13, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.7)",
+    textAlign: "center", lineHeight: 20, marginBottom: 16, paddingHorizontal: 8,
   },
-  distancePill: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4,
+  statsRow: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 16, paddingVertical: 10, paddingHorizontal: 6,
+    width: "100%",
   },
-  distanceText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
-
+  statItem: { flex: 1, alignItems: "center", gap: 3 },
+  statVal: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
   actionRow: {
-    flexDirection: "row-reverse", gap: 10, paddingHorizontal: 20, paddingBottom: 12,
+    flexDirection: "row", gap: 8, paddingHorizontal: 16,
   },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, borderRadius: 14, paddingVertical: 12,
+    gap: 5, paddingVertical: 13, borderRadius: 12,
   },
-  actionBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  callBtn: { backgroundColor: "#22C55E" },
-  waBtn: { backgroundColor: "#25D366" },
-  chatBtn: { backgroundColor: C.primary },
-
-  mapBtn: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
+  actionBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF", includeFontPadding: false },
+  chatBtn: { backgroundColor: "#2563EB" },
+  followBtn: { backgroundColor: "#0F172A" },
+  followingBtn: {
+    backgroundColor: "rgba(201,168,76,0.1)",
+    borderWidth: 1.5, borderColor: C.accent,
   },
-  mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
-
-  section: { marginHorizontal: 20, marginBottom: 16 },
-  postsSection: { marginHorizontal: 20, marginBottom: 16 },
-  sectionTitle: {
-    fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text,
-    textAlign: "right", marginBottom: 6,
-  },
-  bioText: {
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
-    textAlign: "right", lineHeight: 22,
-  },
+  postsSection: { marginHorizontal: 16, marginTop: 16, marginBottom: 16 },
 });
