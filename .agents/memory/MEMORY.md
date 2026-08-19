@@ -6,3 +6,4 @@
 - [Stories Firestore composite index trap](stories-composite-index.md) — userId+createdAt compound queries fail silently; always query single field and filter client-side
 - [ProfileAvatar steals touch in story strip](profile-avatar-touch-steal.md) — ProfileAvatar has its own Pressable→/profile; use disableNavigation prop inside any outer Pressable
 - [Expo Stack screens must be declared](expo-stack-screen-declaration.md) — any screen file not listed in Stack causes "This screen doesn't exist"; story-creator & story-viewer must be in _layout.tsx
+- [Firebase Storage rules publication](firebase-storage-rules-publication.md) — local Storage rules do not publish automatically; new upload paths 403 until rules are applied in Firebase

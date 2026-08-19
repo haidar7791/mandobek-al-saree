@@ -82,26 +82,31 @@ export default function StoryCreatorScreen() {
 
   // ── Image / Video picker ──────────────────────────────────────────────────
   const pickMedia = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("إذن مطلوب", "يرجى السماح بالوصول إلى معرض الصور");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 0.85,
-      allowsEditing: true,
-      aspect: [9, 16],
-      videoMaxDuration: 30,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      const asset = result.assets[0];
-      setMediaUri(asset.uri);
-      setMediaType(asset.type === "video" ? "video" : "image");
-      // Capture actual MIME type and filename so upload preserves them
-      setMediaMimeType(asset.mimeType ?? undefined);
-      setMediaFileName(asset.fileName ?? undefined);
-      Haptics.selectionAsync();
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("إذن مطلوب", "يرجى السماح بالوصول إلى معرض الصور");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 0.85,
+        allowsEditing: true,
+        aspect: [9, 16],
+        videoMaxDuration: 30,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setMediaUri(asset.uri);
+        setMediaType(asset.type === "video" ? "video" : "image");
+        // Capture actual MIME type and filename so upload preserves them
+        setMediaMimeType(asset.mimeType ?? undefined);
+        setMediaFileName(asset.fileName ?? undefined);
+        Haptics.selectionAsync();
+      }
+    } catch (err) {
+      console.error("[story-creator] media picker failed:", err);
+      Alert.alert("تعذّر اختيار الوسيط", "أعد المحاولة أو اختر ملفاً آخر.");
     }
   };
 
