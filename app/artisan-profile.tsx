@@ -303,14 +303,10 @@ export default function ArtisanProfileScreen() {
 
       {/* ─────────────── ACTION ROWS ─────────────── */}
 
-      {/* Row 1: Chat + Follow */}
+      {/* Row 1: Follow + Chat + Map (3 equal buttons) */}
       {!isOwnProfile && (
         <View style={styles.actionRow}>
-          <Pressable style={[styles.actionBtn, styles.chatBtn]} onPress={handleChat}>
-            <Feather name="message-circle" size={18} color="#FFF" />
-            <Text style={styles.actionBtnText}>دردشة</Text>
-          </Pressable>
-
+          {/* Follow */}
           {!isClientProfile && (
             <Pressable
               style={[styles.actionBtn, isFollowing ? styles.followingBtn : styles.followBtn]}
@@ -323,7 +319,7 @@ export default function ArtisanProfileScreen() {
                 <>
                   <Feather
                     name={isFollowing ? "user-check" : "user-plus"}
-                    size={18}
+                    size={16}
                     color={isFollowing ? C.accent : "#FFF"}
                   />
                   <Text style={[styles.actionBtnText, isFollowing && { color: C.accent }]}>
@@ -333,27 +329,34 @@ export default function ArtisanProfileScreen() {
               )}
             </Pressable>
           )}
+
+          {/* Chat */}
+          <Pressable style={[styles.actionBtn, styles.chatBtn]} onPress={handleChat}>
+            <Feather name="message-circle" size={16} color="#FFF" />
+            <Text style={styles.actionBtnText}>دردشة</Text>
+          </Pressable>
+
+          {/* Map */}
+          <Pressable style={[styles.actionBtn, styles.mapBtn]} onPress={handleOpenMap}>
+            <Feather name="map-pin" size={16} color={C.accent} />
+            <Text style={styles.mapBtnText}>الخريطة</Text>
+          </Pressable>
         </View>
       )}
 
-      {/* Row 2: Book service + Map (side by side) */}
-      {!isClientProfile && (
-        <View style={styles.actionRow}>
-          <Pressable style={[styles.actionBtn, styles.bookBtn]} onPress={() => setBookingModal(true)}>
+      {/* Row 2: Book service — full width */}
+      {!isClientProfile && !isOwnProfile && (
+        <View style={styles.bookRow}>
+          <Pressable style={styles.bookBtn} onPress={() => setBookingModal(true)}>
             <LinearGradient
               colors={[C.accent, C.accentLight]}
               style={styles.bookBtnGrad}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={styles.bookBtnText}>طلب الخدمة</Text>
-              <Feather name="arrow-left" size={15} color={C.primary} />
+              <Text style={styles.bookBtnText}>طلب الخدمة الآن</Text>
+              <Feather name="arrow-left" size={16} color={C.primary} />
             </LinearGradient>
-          </Pressable>
-
-          <Pressable style={[styles.actionBtn, styles.mapBtn]} onPress={handleOpenMap}>
-            <Feather name="map-pin" size={18} color={C.accent} />
-            <Text style={styles.mapBtnText}>الخريطة</Text>
           </Pressable>
         </View>
       )}
@@ -502,41 +505,46 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
   statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
 
-  // Action rows (outside scroll)
+  // ── Row 1: three equal buttons ─────────────────────────────────────────────
   actionRow: {
-    flexDirection: "row", gap: 10,
-    paddingHorizontal: 16, paddingTop: 12,
+    flexDirection: "row", gap: 8,
+    paddingHorizontal: 16, paddingTop: 14,
   },
   actionBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 12, borderRadius: 14, overflow: "hidden",
+    flex: 1,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 5, paddingVertical: 13, borderRadius: 12,
   },
-  actionBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  actionBtnText: {
+    fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF",
+    includeFontPadding: false,
+  },
 
-  // Chat
-  chatBtn: { backgroundColor: "#3B82F6" },
+  // Chat — blue
+  chatBtn: { backgroundColor: "#2563EB" },
 
   // Follow / Following
-  followBtn: { backgroundColor: C.primary },
+  followBtn: { backgroundColor: "#0F172A" },
   followingBtn: {
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(201,168,76,0.1)",
     borderWidth: 1.5, borderColor: C.accent,
   },
 
-  // Book service — smaller, gradient
-  bookBtn: { overflow: "hidden" },
-  bookBtnGrad: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 12, gap: 8,
-  },
-  bookBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary },
-
-  // Map
+  // Map — outlined gold
   mapBtn: {
     borderWidth: 1.5, borderColor: C.accent,
     backgroundColor: "rgba(201,168,76,0.06)",
   },
-  mapBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent },
+  mapBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent, includeFontPadding: false },
+
+  // ── Row 2: full-width book button ───────────────────────────────────────────
+  bookRow: { paddingHorizontal: 16, paddingTop: 8 },
+  bookBtn: { borderRadius: 12, overflow: "hidden" },
+  bookBtnGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 15, gap: 10,
+  },
+  bookBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
 
   // Scroll body
   scrollContent: { padding: 16, gap: 16 },
