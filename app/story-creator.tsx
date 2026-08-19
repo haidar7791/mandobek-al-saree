@@ -32,7 +32,11 @@ import * as Haptics from "expo-haptics";
 import { Video, ResizeMode } from "expo-av";
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
-import { createStory, uploadStoryMedia } from "@/lib/stories_logic";
+import {
+  createStory,
+  generateStoryVideoThumbnail,
+  uploadStoryMedia,
+} from "@/lib/stories_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -136,10 +140,7 @@ export default function StoryCreatorScreen() {
         mediaFileName
       );
 
-      // thumbnailUrl: for images use the mediaUrl directly (already a still);
-      // for videos we cannot generate a native thumbnail here, so fall back to null
-      // (the viewer will show the user's profile photo as the circle cover instead).
-      await createStory({
+      const storyId = await createStory({
         userId: user.uid,
         userName: profile?.name || "مستخدم فورس",
         userPhotoUri: profile?.photoUri || null,
@@ -150,6 +151,9 @@ export default function StoryCreatorScreen() {
         textColor: overlayText.trim() ? textColor : null,
         musicName: selectedMusic.id === "none" ? null : selectedMusic.name,
       });
+      if (mediaType === "video") {
+        await generateStoryVideoThumbnail(storyId);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (err) {

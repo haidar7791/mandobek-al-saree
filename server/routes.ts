@@ -45,7 +45,7 @@ async function createProductVideoThumbnail(
       await execFileAsync("ffmpeg", [
         "-y",
         "-ss",
-        "0",
+        "2",
         "-i",
         videoPath,
         "-frames:v",
@@ -90,6 +90,89 @@ async function createProductVideoThumbnail(
     return await job;
   } finally {
     productThumbnailJobs.delete(productId);
+  }
+}
+
+const storyThumbnailJobs = new Map<string, Promise<string>>();
+
+async function createStoryVideoThumbnail(
+  storyId: string,
+  userId: string,
+  videoUrl: string,
+): Promise<string> {
+  const existingJob = storyThumbnailJobs.get(storyId);
+  if (existingJob) return existingJob;
+
+  const job = (async () => {
+    const admin = await getAdminApp();
+    const { getFirestore } = await import("firebase-admin/firestore");
+    const { getStorage } = await import("firebase-admin/storage");
+    const db = getFirestore(admin);
+    const storyRef = db.collection("stories").doc(storyId);
+    const latestStory = await storyRef.get();
+    const latestThumbnail = latestStory.data()?.thumbnailUrl;
+    if (typeof latestThumbnail === "string" && latestThumbnail) return latestThumbnail;
+
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Unable to download story video (${response.status})`);
+    }
+
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "forus-story-thumb-"));
+    const videoPath = path.join(tempDir, "source-video");
+    const thumbnailPath = path.join(tempDir, "thumbnail.jpg");
+
+    try {
+      await writeFile(videoPath, Buffer.from(await response.arrayBuffer()));
+      await execFileAsync("ffmpeg", [
+        "-y",
+        "-ss",
+        "2",
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        thumbnailPath,
+      ]);
+
+      const thumbnailObjectPath = `stories/${userId}/thumbnail-${storyId}.jpg`;
+      const downloadToken = randomUUID();
+      const bucketName = new URL(videoUrl).pathname.match(
+        /\/v0\/b\/([^/]+)\/o\//,
+      )?.[1];
+      if (!bucketName) {
+        throw new Error("Unable to determine Firebase Storage bucket from story URL");
+      }
+
+      const bucket = getStorage(admin).bucket(bucketName);
+      await bucket.file(thumbnailObjectPath).save(await readFile(thumbnailPath), {
+        resumable: false,
+        metadata: {
+          contentType: "image/jpeg",
+          cacheControl: "public,max-age=31536000,immutable",
+          metadata: { firebaseStorageDownloadTokens: downloadToken },
+        },
+      });
+
+      const thumbnailUrl = publicStorageUrl(
+        bucket.name,
+        thumbnailObjectPath,
+        downloadToken,
+      );
+      await storyRef.update({ thumbnailUrl });
+      return thumbnailUrl;
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  })();
+
+  storyThumbnailJobs.set(storyId, job);
+  try {
+    return await job;
+  } finally {
+    storyThumbnailJobs.delete(storyId);
   }
 }
 
@@ -203,6 +286,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[ProductThumbnail] generation failed:", error);
       res.status(500).json({ error: "Unable to create product thumbnail" });
+    }
+  });
+
+  app.post("/api/stories/:storyId/video-thumbnail", async (req, res) => {
+    const authorization = req.header("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : null;
+    const storyId = req.params.storyId;
+
+    if (!idToken) {
+      res.status(401).json({ error: "Authentication is required" });
+      return;
+    }
+    if (!storyId || !/^[A-Za-z0-9_-]+$/.test(storyId)) {
+      res.status(400).json({ error: "Invalid story id" });
+      return;
+    }
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const decoded = await getAuth(admin).verifyIdToken(idToken);
+      const storySnap = await getFirestore(admin)
+        .collection("stories")
+        .doc(storyId)
+        .get();
+
+      if (!storySnap.exists) {
+        res.status(404).json({ error: "Story not found" });
+        return;
+      }
+
+      const story = storySnap.data() as {
+        userId?: string;
+        mediaType?: string;
+        mediaUrl?: string;
+        thumbnailUrl?: string;
+      };
+      if (story.userId !== decoded.uid) {
+        res.status(403).json({ error: "Only the story owner can create its thumbnail" });
+        return;
+      }
+      if (story.thumbnailUrl) {
+        res.json({ thumbnailUrl: story.thumbnailUrl });
+        return;
+      }
+      if (story.mediaType !== "video" || !story.mediaUrl) {
+        res.status(422).json({ error: "Story has no video media" });
+        return;
+      }
+
+      const thumbnailUrl = await createStoryVideoThumbnail(
+        storyId,
+        story.userId,
+        story.mediaUrl,
+      );
+      res.json({ thumbnailUrl });
+    } catch (error) {
+      console.error("[StoryThumbnail] generation failed:", error);
+      res.status(500).json({ error: "Unable to create story thumbnail" });
     }
   });
 

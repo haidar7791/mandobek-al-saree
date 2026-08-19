@@ -11,7 +11,7 @@
  *   views: string[]  — userIds who viewed
  *   likes: string[]  — userIds who liked
  */
-import { db, storage } from "./firebase";
+import { auth, db, storage } from "./firebase";
 import {
   collection,
   addDoc,
@@ -152,6 +152,37 @@ export async function createStory(data: {
     likes: [],
   });
   return docRef.id;
+}
+
+const STORY_API_ORIGIN = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
+
+/**
+ * Generate the thumbnail for a newly published video story.
+ * The server seeks to second 2 before extracting the JPEG, avoiding the
+ * commonly black first frame. Existing stories are intentionally untouched.
+ */
+export async function generateStoryVideoThumbnail(
+  storyId: string,
+): Promise<string | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+
+  const idToken = await user.getIdToken();
+  const response = await fetch(
+    `${STORY_API_ORIGIN}/api/stories/${encodeURIComponent(storyId)}/video-thumbnail`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}` },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Story thumbnail generation failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { thumbnailUrl?: string };
+  return data.thumbnailUrl ?? null;
 }
 
 export async function deleteStory(storyId: string): Promise<void> {

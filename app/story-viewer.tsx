@@ -217,7 +217,7 @@ export default function StoryViewerScreen() {
         chatId,
         currentUserId,
         currentUserName,
-        story.mediaUrl,
+        story.thumbnailUrl ?? story.mediaUrl,
         trimmed,
       );
     } catch (err) {
