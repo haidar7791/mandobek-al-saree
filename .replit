@@ -95,3 +95,7 @@ ULTRAMSG_INSTANCE_ID = "instance187756"
 ULTRAMSG_TOKEN = "us2d3muaswe5s4kp"
 EXPO_PUBLIC_SERVER_URL = "https://forus-backend-laoeqcoza-ew.a.run.app"
 WHATSAPP_PHONE_NUMBER_ID = "1263108050214149"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
