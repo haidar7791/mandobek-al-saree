@@ -14,6 +14,8 @@ import {
   onSnapshot,
   increment,
   deleteDoc,
+  getCountFromServer,
+  runTransaction,
   arrayUnion,
   arrayRemove,
   writeBatch,
@@ -714,23 +716,63 @@ export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
   }
 };
 
-// ─── Follow / Unfollow ────────────────────────────────────────────────────────
+// ─── Follow / Like reactions ──────────────────────────────────────────────────
+//
+// The subcollection documents are the source of truth. We never display the
+// legacy followCount/likesCount fields because they can drift after older,
+// interrupted writes. Transactions make each actor's reaction idempotent even
+// when taps or devices race each other.
+
+export type ProfileEngagementCounts = {
+  followCount: number;
+  likesCount: number;
+};
+
+export const getProfileEngagementCounts = async (
+  userId: string
+): Promise<ProfileEngagementCounts> => {
+  const [followers, likes] = await Promise.all([
+    getCountFromServer(collection(db, "users", userId, "followers")),
+    getCountFromServer(collection(db, "users", userId, "likes")),
+  ]);
+  return {
+    followCount: followers.data().count,
+    likesCount: likes.data().count,
+  };
+};
 
 export const getIsFollowing = async (followerId: string, artisanId: string): Promise<boolean> => {
   const snap = await getDoc(doc(db, "users", artisanId, "followers", followerId));
   return snap.exists();
 };
 
-export const followArtisan = async (followerId: string, artisanId: string): Promise<void> => {
-  await setDoc(doc(db, "users", artisanId, "followers", followerId), {
-    followedAt: new Date().toISOString(),
+export const followArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
+  const profileRef = doc(db, "users", artisanId);
+  const followRef = doc(db, "users", artisanId, "followers", followerId);
+  return runTransaction(db, async (transaction) => {
+    const [profileSnap, followSnap] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(followRef),
+    ]);
+    if (!profileSnap.exists()) {
+      throw new Error("Cannot follow a profile that does not exist");
+    }
+    if (followSnap.exists()) return false;
+
+    transaction.set(followRef, { followedAt: serverTimestamp() });
+    return true;
   });
-  await updateDoc(doc(db, "users", artisanId), { followCount: increment(1) });
 };
 
-export const unfollowArtisan = async (followerId: string, artisanId: string): Promise<void> => {
-  await deleteDoc(doc(db, "users", artisanId, "followers", followerId));
-  await updateDoc(doc(db, "users", artisanId), { followCount: increment(-1) });
+export const unfollowArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
+  const followRef = doc(db, "users", artisanId, "followers", followerId);
+  return runTransaction(db, async (transaction) => {
+    const followSnap = await transaction.get(followRef);
+    if (!followSnap.exists()) return false;
+
+    transaction.delete(followRef);
+    return true;
+  });
 };
 
 // ─── Like / Unlike ────────────────────────────────────────────────────────────
@@ -740,16 +782,33 @@ export const getIsLiked = async (likerId: string, artisanId: string): Promise<bo
   return snap.exists();
 };
 
-export const likeArtisan = async (likerId: string, artisanId: string): Promise<void> => {
-  await setDoc(doc(db, "users", artisanId, "likes", likerId), {
-    likedAt: new Date().toISOString(),
+export const likeArtisan = async (likerId: string, artisanId: string): Promise<boolean> => {
+  const profileRef = doc(db, "users", artisanId);
+  const likeRef = doc(db, "users", artisanId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const [profileSnap, likeSnap] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(likeRef),
+    ]);
+    if (!profileSnap.exists()) {
+      throw new Error("Cannot like a profile that does not exist");
+    }
+    if (likeSnap.exists()) return false;
+
+    transaction.set(likeRef, { likedAt: serverTimestamp() });
+    return true;
   });
-  await updateDoc(doc(db, "users", artisanId), { likesCount: increment(1) });
 };
 
-export const unlikeArtisan = async (likerId: string, artisanId: string): Promise<void> => {
-  await deleteDoc(doc(db, "users", artisanId, "likes", likerId));
-  await updateDoc(doc(db, "users", artisanId), { likesCount: increment(-1) });
+export const unlikeArtisan = async (likerId: string, artisanId: string): Promise<boolean> => {
+  const likeRef = doc(db, "users", artisanId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const likeSnap = await transaction.get(likeRef);
+    if (!likeSnap.exists()) return false;
+
+    transaction.delete(likeRef);
+    return true;
+  });
 };
 
 export const subscribeToServiceRequest = (

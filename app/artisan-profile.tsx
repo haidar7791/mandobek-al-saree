@@ -24,6 +24,7 @@ import {
   getArtisanById,
   createServiceRequest,
   getUserProfile,
+  getProfileEngagementCounts,
   calcDistanceKm,
   buildChatId,
   getSpecialtyLabel,
@@ -97,12 +98,13 @@ export default function ArtisanProfileScreen() {
       const artisanData = await getArtisanById(artisanId);
       if (artisanData) {
         setArtisan(artisanData);
-        setFollowCount(artisanData.followCount ?? 0);
-        setLikesCount(artisanData.likesCount ?? 0);
-      }
-      if (artisanData?.userId) {
-        const artisanProfile = await getUserProfile(artisanData.userId);
+        const [artisanProfile, engagement] = await Promise.all([
+          getUserProfile(artisanData.userId),
+          getProfileEngagementCounts(artisanData.userId),
+        ]);
         setProfilePosts(normalizeProfilePosts(artisanProfile));
+        setFollowCount(engagement.followCount);
+        setLikesCount(engagement.likesCount);
       }
       const currentUser = auth.currentUser;
       if (currentUser && artisanId && currentUser.uid !== artisanId) {
@@ -185,13 +187,15 @@ export default function ArtisanProfileScreen() {
     try {
       if (isFollowing) {
         await unfollowArtisan(user.uid, artisanId);
-        setIsFollowing(false);
-        setFollowCount((c) => Math.max(0, c - 1));
       } else {
         await followArtisan(user.uid, artisanId);
-        setIsFollowing(true);
-        setFollowCount((c) => c + 1);
       }
+      const [following, engagement] = await Promise.all([
+        getIsFollowing(user.uid, artisanId),
+        getProfileEngagementCounts(artisanId),
+      ]);
+      setIsFollowing(following);
+      setFollowCount(engagement.followCount);
       Haptics.selectionAsync();
     } catch {
       Alert.alert("خطأ", "تعذّرت عملية المتابعة، حاول مجدداً");
@@ -207,13 +211,15 @@ export default function ArtisanProfileScreen() {
     try {
       if (isLiked) {
         await unlikeArtisan(user.uid, artisanId);
-        setIsLiked(false);
-        setLikesCount((c) => Math.max(0, c - 1));
       } else {
         await likeArtisan(user.uid, artisanId);
-        setIsLiked(true);
-        setLikesCount((c) => c + 1);
       }
+      const [liked, engagement] = await Promise.all([
+        getIsLiked(user.uid, artisanId),
+        getProfileEngagementCounts(artisanId),
+      ]);
+      setIsLiked(liked);
+      setLikesCount(engagement.likesCount);
       Haptics.selectionAsync();
     } catch {
       Alert.alert("خطأ", "تعذّرت عملية الإعجاب، حاول مجدداً");
@@ -294,7 +300,8 @@ export default function ArtisanProfileScreen() {
               size={16}
               color={isLiked ? "#EF4444" : "rgba(255,255,255,0.75)"}
             />
-            <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
+            <Text style={styles.statVal}>{likesCount}</Text>
+            <Text style={styles.statLabel}>إعجاب</Text>
           </Pressable>
           <View style={styles.statDiv} />
           <View style={styles.statItem}>

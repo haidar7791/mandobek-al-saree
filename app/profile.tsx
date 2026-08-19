@@ -33,6 +33,7 @@ import { performSignOut } from "@/lib/push_notifications";
 import {
   getBalance,
   getUserProfile,
+  getProfileEngagementCounts,
   setUserProfile,
   addProfilePost,
   removeProfilePost,
@@ -116,7 +117,10 @@ export default function ProfileScreen() {
         const user = auth.currentUser;
         if (!user) { router.replace("/"); return; }
         setUid(user.uid);
-        const profile = await getUserProfile(user.uid);
+        const [profile, engagement] = await Promise.all([
+          getUserProfile(user.uid),
+          getProfileEngagementCounts(user.uid),
+        ]);
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
@@ -125,8 +129,8 @@ export default function ProfileScreen() {
           setRole(profile.role || "client");
           setSpecialty(profile.specialty || "");
           setBio(profile.bio || "");
-           setFollowCount(profile.followCount ?? 0);
-           setLikesCount(profile.likesCount ?? 0);
+           setFollowCount(engagement.followCount);
+           setLikesCount(engagement.likesCount);
           setProfilePosts(normalizeProfilePosts(profile));
         }
         const bal = await getBalance(user.uid);

@@ -19,6 +19,7 @@ import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   getUserProfile,
+  getProfileEngagementCounts,
   getArtisanByUserId,
   buildChatId,
   calcDistanceKm,
@@ -95,8 +96,10 @@ export default function UserProfileScreen() {
             location: p.location ?? null,
           });
           setProfilePosts(normalizeProfilePosts(p));
-          setFollowCount(p.followCount ?? 0);
-          setLikesCount(p.likesCount ?? 0);
+          const engagement = await getProfileEngagementCounts(userId);
+          if (cancelled) return;
+          setFollowCount(engagement.followCount);
+          setLikesCount(engagement.likesCount);
 
           const viewer = auth.currentUser;
           if (viewer && viewer.uid !== userId) {
@@ -175,13 +178,15 @@ export default function UserProfileScreen() {
     try {
       if (isFollowing) {
         await unfollowArtisan(viewer.uid, userId);
-        setIsFollowing(false);
-        setFollowCount((count) => Math.max(0, count - 1));
       } else {
         await followArtisan(viewer.uid, userId);
-        setIsFollowing(true);
-        setFollowCount((count) => count + 1);
       }
+      const [following, engagement] = await Promise.all([
+        getIsFollowing(viewer.uid, userId),
+        getProfileEngagementCounts(userId),
+      ]);
+      setIsFollowing(following);
+      setFollowCount(engagement.followCount);
       Haptics.selectionAsync();
     } catch (err) {
       console.error("user profile follow toggle failed:", err);
@@ -197,13 +202,15 @@ export default function UserProfileScreen() {
     try {
       if (isLiked) {
         await unlikeArtisan(viewer.uid, userId);
-        setIsLiked(false);
-        setLikesCount((count) => Math.max(0, count - 1));
       } else {
         await likeArtisan(viewer.uid, userId);
-        setIsLiked(true);
-        setLikesCount((count) => count + 1);
       }
+      const [liked, engagement] = await Promise.all([
+        getIsLiked(viewer.uid, userId),
+        getProfileEngagementCounts(userId),
+      ]);
+      setIsLiked(liked);
+      setLikesCount(engagement.likesCount);
       Haptics.selectionAsync();
     } catch (err) {
       console.error("user profile like toggle failed:", err);
@@ -264,7 +271,8 @@ export default function UserProfileScreen() {
                   size={16}
                   color={isLiked ? "#EF4444" : "rgba(255,255,255,0.75)"}
                 />
-                <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
+                <Text style={styles.statVal}>{likesCount}</Text>
+                <Text style={styles.statLabel}>إعجاب</Text>
               </Pressable>
               <View style={styles.statDiv} />
               <View style={styles.statItem}>

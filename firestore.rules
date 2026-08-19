@@ -20,6 +20,34 @@ service cloud.firestore {
     // أي مستخدم مسجّل يقرأ ويكتب (مطلوب للترويج وتحديث البيانات الشخصية)
     match /users/{userId} {
       allow read, write: if isSignedIn();
+
+      // Reaction documents are the source of truth for the visible counts.
+      // Each user may create or remove only their own reaction; clients cannot
+      // alter another user's membership or overwrite an existing reaction.
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == followerId
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && request.resource.data.keys().hasOnly(["followedAt"]);
+        allow delete: if isSignedIn() && request.auth.uid == followerId;
+        allow update: if false;
+      }
+
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && request.resource.data.keys().hasOnly(["likedAt"]);
+        allow delete: if isSignedIn() && request.auth.uid == likerId;
+        allow update: if false;
+      }
+
+      // Kept for the existing review flow.
+      match /reviews/{reviewId} {
+        allow read, write: if isSignedIn();
+      }
     }
 
     // ── الحرفيون والبائعون ───────────────────────────────────────────────────
@@ -91,9 +119,5 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    // ── Catch-all: أي مجموعة أخرى غير مذكورة ─────────────────────────────────
-    match /{document=**} {
-      allow read, write: if isSignedIn();
-    }
   }
 }
