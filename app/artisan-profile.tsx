@@ -6,27 +6,22 @@ import {
   Pressable,
   ScrollView,
   Image,
-  TextInput,
   Modal,
   Alert,
   Linking,
   Platform,
   ActivityIndicator,
-  Share,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, { FadeInDown } from "react-native-reanimated";
-import { Feather, Ionicons, FontAwesome } from "@expo/vector-icons";
+import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   getArtisanById,
-  subscribeToReviews,
-  addReview,
   createServiceRequest,
   getUserProfile,
   calcDistanceKm,
@@ -39,72 +34,15 @@ import {
   likeArtisan,
   unlikeArtisan,
   type ArtisanProfile,
-  type Review,
   type GeoLocation,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
 
-function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <View style={{ flexDirection: "row", gap: 8, justifyContent: "center" }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Pressable key={i} onPress={() => { Haptics.selectionAsync(); onChange(i); }}>
-          <Ionicons name={i <= value ? "star" : "star-outline"} size={28} color={i <= value ? "#F59E0B" : C.textMuted} />
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function StarDisplay({ rating, size = 14 }: { rating: number; size?: number }) {
-  return (
-    <View style={{ flexDirection: "row", gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons
-          key={i}
-          name={i <= Math.round(rating) ? "star" : "star-outline"}
-          size={size}
-          color={i <= Math.round(rating) ? "#F59E0B" : C.textMuted}
-        />
-      ))}
-    </View>
-  );
-}
-
-function ReviewCard({ review, index }: { review: Review; index: number }) {
-  const date = new Date(review.createdAt);
-  const formatted = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-  return (
-    <Animated.View entering={FadeInDown.delay(index * 50).springify()} style={styles.reviewCard}>
-      <View style={styles.reviewHeader}>
-        <Text style={styles.reviewDate}>{formatted}</Text>
-        <View style={{ flex: 1, alignItems: "flex-end" }}>
-          <Text style={styles.reviewAuthor}>{review.clientName}</Text>
-          <StarDisplay rating={review.rating} />
-        </View>
-        <View style={styles.reviewAvatar}>
-          <Text style={styles.reviewAvatarText}>{review.clientName[0]}</Text>
-        </View>
-      </View>
-      {review.comment ? (
-        <Text style={styles.reviewComment}>{review.comment}</Text>
-      ) : null}
-    </Animated.View>
-  );
-}
-
-// Parse the artisan object passed as a nav param (JSON string) once, outside
-// render, so the profile screen can paint the hero (name/photo/rating) on the
-// very first frame instead of waiting on a Firestore round-trip.
 function parsePassedArtisan(raw?: string): ArtisanProfile | null {
   if (!raw) return null;
-  try {
-    return JSON.parse(raw) as ArtisanProfile;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(raw) as ArtisanProfile; } catch { return null; }
 }
 
 export default function ArtisanProfileScreen() {
@@ -117,22 +55,10 @@ export default function ArtisanProfileScreen() {
   const initialArtisan = useMemo(() => parsePassedArtisan(artisanParam), [artisanParam]);
 
   const [artisan, setArtisan] = useState<ArtisanProfile | null>(initialArtisan);
-  const [reviews, setReviews] = useState<Review[]>([]);
   const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [userName, setUserName] = useState("مستخدم");
-  // Only block on the full-screen loader when we have nothing to paint yet
-  // (e.g. deep link with just an id). When the card passed its data along,
-  // we already have an artisan to render on frame one.
   const [loading, setLoading] = useState(!initialArtisan);
-  // Background refresh (fresh rating/availability + portfolio) after the
-  // instant paint — never blocks the UI, just quietly reconciles it.
-  const [refreshing, setRefreshing] = useState(!!initialArtisan);
-  // Tracks whether the reviews subscription has resolved at least once, so
-  // the reviews section can show its own lightweight loader instead of
-  // reusing the artisan/portfolio "refreshing" flag.
-  const [reviewsLoaded, setReviewsLoaded] = useState(false);
-
   const [shareVisible, setShareVisible] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followCount, setFollowCount] = useState(0);
@@ -140,14 +66,8 @@ export default function ArtisanProfileScreen() {
   const [likesCount, setLikesCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
   const [likeLoading, setLikeLoading] = useState(false);
-
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
-
-  const [reviewModal, setReviewModal] = useState(false);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewLoading, setReviewLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -162,17 +82,15 @@ export default function ArtisanProfileScreen() {
         if (profile?.location) setUserLocation(profile.location);
       }
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      }
+      // Best-effort GPS
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch { /* GPS unavailable */ }
 
-      // Firestore's persistent local cache (see lib/firebase.ts) serves this
-      // from disk first when available, so even this "fresh" read resolves
-      // near-instantly — it just reconciles whatever we already painted from
-      // the nav params (rating/availability may have changed since the list
-      // was fetched).
       const artisanData = await getArtisanById(artisanId);
       if (artisanData) {
         setArtisan(artisanData);
@@ -183,7 +101,6 @@ export default function ArtisanProfileScreen() {
         const artisanProfile = await getUserProfile(artisanData.userId);
         setPortfolioImages(artisanProfile?.portfolio || []);
       }
-      // Load follow/like state for current user
       const currentUser = auth.currentUser;
       if (currentUser && artisanId && currentUser.uid !== artisanId) {
         const [following, liked] = await Promise.all([
@@ -197,43 +114,10 @@ export default function ArtisanProfileScreen() {
       console.error("loadData error:", err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [artisanId]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
-
-  // Real-time reviews subscription — independent from loadData
-  useEffect(() => {
-    if (!artisanId) return;
-    setReviewsLoaded(false);
-    const unsub = subscribeToReviews(artisanId, (list) => {
-      setReviews(list);
-      setReviewsLoaded(true);
-    });
-    return unsub;
-  }, [artisanId]);
-
-  // Computed rating/count from live reviews state
-  const computedRating = useMemo(() => {
-    if (reviews.length === 0) return 0;
-    return Math.round(reviews.reduce((a, r) => a + r.rating, 0) / reviews.length * 10) / 10;
-  }, [reviews]);
-  const computedCount = reviews.length;
-
-  const handleCall = () => {
-    if (!artisan?.phone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Linking.openURL(`tel:${artisan.phone}`);
-  };
-
-  const handleWhatsApp = () => {
-    if (!artisan?.phone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const phone = artisan.phone.replace(/^0/, "964").replace(/\s+/g, "");
-    const msg = encodeURIComponent(`مرحباً، أريد الاستفسار عن خدمة ${getSpecialtyLabel(artisan.specialty)} عبر تطبيق فورس`);
-    Linking.openURL(`https://wa.me/${phone}?text=${msg}`);
-  };
 
   const handleChat = () => {
     const user = auth.currentUser;
@@ -271,7 +155,7 @@ export default function ArtisanProfileScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setBookingModal(false);
       Alert.alert("تم الإرسال ✓", "تم إرسال طلب خدمتك لصاحب الاختصاص، سيتواصل معك قريباً");
-    } catch (err) {
+    } catch {
       Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً");
     } finally {
       setBookingLoading(false);
@@ -285,13 +169,10 @@ export default function ArtisanProfileScreen() {
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { lat, lng } = artisan.location;
-    if (userLocation) {
-      const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}&travelmode=driving`;
-      Linking.openURL(url);
-    } else {
-      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-      Linking.openURL(url);
-    }
+    const url = userLocation
+      ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}&travelmode=driving`
+      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(url);
   };
 
   const handleToggleFollow = async () => {
@@ -338,36 +219,6 @@ export default function ArtisanProfileScreen() {
     }
   };
 
-  const handleAddReview = async () => {
-    const user = auth.currentUser;
-    if (!user || !artisan) return;
-    if (user.uid === artisan.userId) {
-      Alert.alert("غير مسموح", "لا يمكنك تقييم نفسك");
-      setReviewModal(false);
-      return;
-    }
-    setReviewLoading(true);
-    try {
-      await addReview({
-        artisanId: artisan.id,
-        clientId: user.uid,
-        clientName: userName,
-        rating: reviewRating,
-        comment: reviewComment.trim(),
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setReviewModal(false);
-      setReviewComment("");
-      setReviewRating(5);
-      await loadData();
-      Alert.alert("شكراً", "تم إضافة تقييمك بنجاح");
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء إضافة التقييم");
-    } finally {
-      setReviewLoading(false);
-    }
-  };
-
   const distance =
     userLocation && artisan?.location
       ? calcDistanceKm(userLocation, artisan.location)
@@ -376,7 +227,7 @@ export default function ArtisanProfileScreen() {
   if (loading || !artisan) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
-        <Text style={{ fontFamily: "Cairo_400Regular", color: C.textSecondary }}>جارٍ التحميل...</Text>
+        <ActivityIndicator color={C.accent} />
       </View>
     );
   }
@@ -385,143 +236,134 @@ export default function ArtisanProfileScreen() {
   const isOwnProfile = auth.currentUser?.uid === artisan.userId;
   const isClientProfile = artisan.specialty === "client";
 
+  const distanceLabel = distance !== null
+    ? (distance < 1 ? `${Math.round(distance * 1000)} م` : `${distance.toFixed(1)} كم`)
+    : "—";
+
   return (
-    <View style={styles.root}>
-      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.heroGrad, { paddingTop: topPad + 6 }]}>
-        <View style={styles.heroNav}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()}>
-            <Feather name="chevron-right" size={22} color="#FFF" />
-          </Pressable>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {/* Share — visible for everyone */}
-            <Pressable style={styles.reviewNavBtn} onPress={() => setShareVisible(true)}>
-              <Feather name="share-2" size={14} color={C.accent} />
-              <Text style={styles.reviewNavText}>مشاركة</Text>
-            </Pressable>
-            {!isOwnProfile && !isClientProfile && (
-              <>
-                <Pressable
-                  style={[styles.reviewNavBtn, isFollowing && styles.reviewNavBtnActive]}
-                  onPress={handleToggleFollow}
-                  disabled={followLoading}
-                >
-                  <Feather name={isFollowing ? "user-check" : "user-plus"} size={14} color={isFollowing ? C.primary : C.accent} />
-                  <Text style={[styles.reviewNavText, isFollowing && { color: C.primary }]}>
-                    {isFollowing ? "مُتابَع" : "+ متابعة"}
-                  </Text>
-                </Pressable>
-                <Pressable style={styles.reviewNavBtn} onPress={() => setReviewModal(true)}>
-                  <Ionicons name="star" size={15} color={C.accent} />
-                  <Text style={styles.reviewNavText}>تقييم ⭐️</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
+    <View style={[styles.root, { paddingBottom: bottomPad }]}>
+      {/* ─────────────── HERO (gradient) ─────────────── */}
+      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 6 }]}>
+        {/* Back button — minimal, top-left */}
+        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <Feather name="chevron-right" size={22} color="#FFF" />
+        </Pressable>
+
+        {/* Photo — centered */}
+        <View style={styles.photoWrap}>
+          {artisan.photoUri ? (
+            <Image source={{ uri: artisan.photoUri }} style={styles.photo} />
+          ) : (
+            <View style={styles.photoFallback}>
+              <Text style={styles.photoInitials}>{initials}</Text>
+            </View>
+          )}
+          <View style={[styles.availDot, artisan.isAvailable ? styles.dotOnline : styles.dotOffline]} />
         </View>
 
-        <View style={styles.heroContent}>
-          <View style={styles.heroRow}>
-            <View style={styles.heroPhotoWrap}>
-              {artisan.photoUri ? (
-                <Image source={{ uri: artisan.photoUri }} style={styles.heroPhoto} />
-              ) : (
-                <View style={styles.heroInitials}>
-                  <Text style={styles.heroInitialsText}>{initials}</Text>
-                </View>
-              )}
-              <View style={[styles.heroAvailDot, artisan.isAvailable ? styles.dotOnline : styles.dotOffline]} />
-            </View>
+        {/* Name */}
+        <Text style={styles.heroName}>{artisan.name}</Text>
 
-            <View style={styles.heroTextBlock}>
-              <Text style={styles.heroName}>{artisan.name}</Text>
-              <View style={styles.specialtyPill}>
-                <Text style={styles.specialtyPillText}>{getSpecialtyLabel(artisan.specialty)}</Text>
-              </View>
-              <View style={styles.heroStats}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statVal}>
-                    {computedRating > 0 ? computedRating.toFixed(1) : "-"}
-                  </Text>
-                  <Text style={styles.statLabel}>التقييم</Text>
-                </View>
-                <View style={styles.statDiv} />
-                <View style={styles.statItem}>
-                  <Text style={styles.statVal}>{computedCount}</Text>
-                  <Text style={styles.statLabel}>تقييم</Text>
-                </View>
-                <View style={styles.statDiv} />
-                <View style={styles.statItem}>
-                  <Text style={styles.statVal}>
-                    {distance !== null
-                      ? distance < 1
-                        ? `${Math.round(distance * 1000)}م`
-                        : `${distance.toFixed(1)}كم`
-                      : "-"}
-                  </Text>
-                  <Text style={styles.statLabel}>البعد</Text>
-                </View>
-                <View style={styles.statDiv} />
-                {/* Like button stat */}
-                <Pressable
-                  style={styles.statItem}
-                  onPress={!isOwnProfile ? handleToggleLike : undefined}
-                  disabled={likeLoading || isOwnProfile}
-                >
-                  <FontAwesome
-                    name={isLiked ? "heart" : "heart-o"}
-                    size={15}
-                    color={isLiked ? "#EF4444" : "rgba(255,255,255,0.7)"}
-                  />
-                  <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
-                </Pressable>
-              </View>
-            </View>
+        {/* Specialty */}
+        <View style={styles.specialtyPill}>
+          <Text style={styles.specialtyPillText}>{getSpecialtyLabel(artisan.specialty)}</Text>
+        </View>
+
+        {/* Bio — no title */}
+        {artisan.bio ? (
+          <Text style={styles.heroBio} numberOfLines={3}>{artisan.bio}</Text>
+        ) : null}
+
+        {/* Stats row: followers | likes | distance */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{followCount}</Text>
+            <Text style={styles.statLabel}>متابع</Text>
+          </View>
+          <View style={styles.statDiv} />
+          <Pressable
+            style={styles.statItem}
+            onPress={!isOwnProfile ? handleToggleLike : undefined}
+            disabled={likeLoading || isOwnProfile}
+          >
+            <FontAwesome
+              name={isLiked ? "heart" : "heart-o"}
+              size={16}
+              color={isLiked ? "#EF4444" : "rgba(255,255,255,0.75)"}
+            />
+            <Text style={styles.statLabel}>{likesCount > 0 ? likesCount : "إعجاب"}</Text>
+          </Pressable>
+          <View style={styles.statDiv} />
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{distanceLabel}</Text>
+            <Text style={styles.statLabel}>البُعد</Text>
           </View>
         </View>
       </LinearGradient>
 
-      <View style={styles.actionRow}>
-        <Pressable style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={handleCall}>
-          <Feather name="phone" size={20} color="#FFF" />
-          <Text style={styles.actionBtnText}>اتصال</Text>
-        </Pressable>
+      {/* ─────────────── ACTION ROWS ─────────────── */}
 
-        <Pressable style={[styles.actionBtn, styles.actionBtnWhatsApp]} onPress={handleWhatsApp}>
-          <FontAwesome name="whatsapp" size={20} color="#FFF" />
-          <Text style={styles.actionBtnText}>واتساب</Text>
-        </Pressable>
+      {/* Row 1: Chat + Follow */}
+      {!isOwnProfile && (
+        <View style={styles.actionRow}>
+          <Pressable style={[styles.actionBtn, styles.chatBtn]} onPress={handleChat}>
+            <Feather name="message-circle" size={18} color="#FFF" />
+            <Text style={styles.actionBtnText}>دردشة</Text>
+          </Pressable>
 
-        <Pressable style={[styles.actionBtn, styles.actionBtnChat]} onPress={handleChat}>
-          <Feather name="message-circle" size={20} color="#FFF" />
-          <Text style={styles.actionBtnText}>دردشة</Text>
-        </Pressable>
-      </View>
-
-      {!isClientProfile && (
-        <Pressable style={styles.bookBtn} onPress={() => setBookingModal(true)}>
-          <LinearGradient colors={[C.accent, C.accentLight]} style={styles.bookBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Text style={styles.bookBtnText}>طلب الخدمة الآن</Text>
-            <Feather name="arrow-left" size={18} color={C.primary} />
-          </LinearGradient>
-        </Pressable>
+          {!isClientProfile && (
+            <Pressable
+              style={[styles.actionBtn, isFollowing ? styles.followingBtn : styles.followBtn]}
+              onPress={handleToggleFollow}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? C.accent : "#FFF"} />
+              ) : (
+                <>
+                  <Feather
+                    name={isFollowing ? "user-check" : "user-plus"}
+                    size={18}
+                    color={isFollowing ? C.accent : "#FFF"}
+                  />
+                  <Text style={[styles.actionBtnText, isFollowing && { color: C.accent }]}>
+                    {isFollowing ? "مُتابَع" : "متابعة"}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          )}
+        </View>
       )}
 
-      <Pressable style={styles.mapBtn} onPress={handleOpenMap}>
-        <Feather name="map-pin" size={18} color={C.accent} />
-        <Text style={styles.mapBtnText}>عرض على الخريطة</Text>
-      </Pressable>
+      {/* Row 2: Book service + Map (side by side) */}
+      {!isClientProfile && (
+        <View style={styles.actionRow}>
+          <Pressable style={[styles.actionBtn, styles.bookBtn]} onPress={() => setBookingModal(true)}>
+            <LinearGradient
+              colors={[C.accent, C.accentLight]}
+              style={styles.bookBtnGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.bookBtnText}>طلب الخدمة</Text>
+              <Feather name="arrow-left" size={15} color={C.primary} />
+            </LinearGradient>
+          </Pressable>
 
+          <Pressable style={[styles.actionBtn, styles.mapBtn]} onPress={handleOpenMap}>
+            <Feather name="map-pin" size={18} color={C.accent} />
+            <Text style={styles.mapBtnText}>الخريطة</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* ─────────────── SCROLLABLE BODY ─────────────── */}
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
       >
-        {artisan.bio ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>عن صاحب الاختصاص</Text>
-            <Text style={styles.bioText}>{artisan.bio}</Text>
-          </View>
-        ) : null}
-
+        {/* Portfolio */}
         {portfolioImages.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>معرض الأعمال</Text>
@@ -531,52 +373,47 @@ export default function ArtisanProfileScreen() {
               contentContainerStyle={styles.portfolioRow}
             >
               {portfolioImages.map((uri, idx) => (
-                <Image
-                  key={idx}
-                  source={{ uri }}
-                  style={styles.portfolioImg}
-                  resizeMode="cover"
-                />
+                <Image key={idx} source={{ uri }} style={styles.portfolioImg} resizeMode="cover" />
               ))}
             </ScrollView>
           </View>
         )}
       </ScrollView>
 
+      {/* ─────────────── BOOKING MODAL ─────────────── */}
       <Modal visible={bookingModal} transparent animationType="fade" onRequestClose={() => setBookingModal(false)}>
         <View style={modalStyles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !bookingLoading && setBookingModal(false)} />
-          <View style={modalStyles.confirmCard}>
-            <View style={modalStyles.confirmIconCircle}>
+          <View style={modalStyles.card}>
+            <View style={modalStyles.iconCircle}>
               <Feather name="calendar" size={28} color={C.accent} />
             </View>
-            <Text style={modalStyles.confirmTitle}>تأكيد طلب الخدمة</Text>
-            <Text style={modalStyles.confirmMsg}>
+            <Text style={modalStyles.cardTitle}>تأكيد طلب الخدمة</Text>
+            <Text style={modalStyles.cardMsg}>
               هل تريد تأكيد طلب الخدمة من{"\n"}
-              <Text style={{ fontFamily: "Cairo_700Bold", color: C.accent }}>{artisan.name}</Text>
-              ؟
+              <Text style={{ fontFamily: "Cairo_700Bold", color: C.accent }}>{artisan.name}</Text>؟
             </Text>
             {userLocation && (
-              <View style={styles.locationNote}>
+              <View style={modalStyles.locationNote}>
                 <Feather name="map-pin" size={13} color={C.accent} />
-                <Text style={styles.locationNoteText}>سيُرسل موقعك الجغرافي تلقائياً</Text>
+                <Text style={modalStyles.locationNoteText}>سيُرسل موقعك الجغرافي تلقائياً</Text>
               </View>
             )}
-            <View style={modalStyles.confirmActions}>
+            <View style={modalStyles.actions}>
               <Pressable
                 style={[modalStyles.cancelBtn, bookingLoading && { opacity: 0.5 }]}
                 onPress={() => setBookingModal(false)}
                 disabled={bookingLoading}
               >
-                <Text style={modalStyles.cancelBtnText}>إلغاء</Text>
+                <Text style={modalStyles.cancelText}>إلغاء</Text>
               </Pressable>
               <Pressable
                 style={[modalStyles.confirmBtn, bookingLoading && { opacity: 0.6 }]}
                 onPress={handleBooking}
                 disabled={bookingLoading}
               >
-                <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.confirmBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                  <Text style={modalStyles.confirmBtnText}>{bookingLoading ? "جارٍ الإرسال..." : "تأكيد"}</Text>
+                <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.confirmGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                  <Text style={modalStyles.confirmText}>{bookingLoading ? "جارٍ الإرسال..." : "تأكيد"}</Text>
                   {!bookingLoading && <Feather name="check" size={16} color={C.primary} />}
                 </LinearGradient>
               </Pressable>
@@ -585,7 +422,7 @@ export default function ArtisanProfileScreen() {
         </View>
       </Modal>
 
-      {/* ── Share modal ── */}
+      {/* ─────────────── SHARE MODAL ─────────────── */}
       <ShareModal
         visible={shareVisible}
         onClose={() => setShareVisible(false)}
@@ -597,337 +434,170 @@ export default function ArtisanProfileScreen() {
         shareText={`👤 ${artisan.name} — ${artisan.specialty ? getSpecialtyLabel(artisan.specialty) : "متخصص"}\nملف شخصي على تطبيق فورس`}
         shareMessage={`👤 تعرّف على ${artisan.name}${artisan.specialty ? " (" + getSpecialtyLabel(artisan.specialty) + ")" : ""} على تطبيق فورس`}
       />
-
-      {/* Full-screen reviews modal — add a new review + browse all past reviews */}
-      <Modal visible={reviewModal} transparent animationType="slide" onRequestClose={() => setReviewModal(false)}>
-        <View style={modalStyles.reviewOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => !reviewLoading && setReviewModal(false)} />
-          <View style={modalStyles.reviewSheet}>
-            {/* Handle + header */}
-            <View style={modalStyles.handle} />
-            <View style={modalStyles.header}>
-              <Pressable onPress={() => !reviewLoading && setReviewModal(false)} style={modalStyles.closeBtn}>
-                <Feather name="x" size={18} color={C.textSecondary} />
-              </Pressable>
-              <Text style={modalStyles.title}>التقييمات والآراء — {artisan.name}</Text>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={modalStyles.reviewBody}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {/* ── Add review section ─────────────────────────────── */}
-              {!isOwnProfile && !isClientProfile && (
-                <View style={modalStyles.addReviewSection}>
-                  <Text style={modalStyles.subTitle}>أضف تقييمك</Text>
-                  <StarPicker value={reviewRating} onChange={setReviewRating} />
-                  <Text style={styles.ratingLabel}>
-                    {["", "ضعيف", "مقبول", "جيد", "جيد جداً", "ممتاز"][reviewRating]}
-                  </Text>
-                  <View style={styles.fieldWrap}>
-                    <Text style={styles.fieldLabel}>تعليقك (اختياري)</Text>
-                    <TextInput
-                      style={styles.textArea}
-                      placeholder="شاركنا تجربتك مع صاحب الاختصاص هذا..."
-                      placeholderTextColor={C.textMuted}
-                      value={reviewComment}
-                      onChangeText={setReviewComment}
-                      multiline
-                      numberOfLines={3}
-                      textAlign="right"
-                      textAlignVertical="top"
-                    />
-                  </View>
-                  <Pressable
-                    style={[modalStyles.sendBtn, reviewLoading && { opacity: 0.6 }]}
-                    onPress={handleAddReview}
-                    disabled={reviewLoading}
-                  >
-                    <LinearGradient colors={[C.accent, C.accentLight]} style={modalStyles.sendGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                      <Text style={modalStyles.sendText}>{reviewLoading ? "جارٍ الإرسال..." : "إرسال التقييم"}</Text>
-                      <Ionicons name="star" size={16} color={C.primary} />
-                    </LinearGradient>
-                  </Pressable>
-                </View>
-              )}
-
-              {/* ── Rating overview bar ─────────────────────────────── */}
-              {computedCount > 0 && (
-                <View style={modalStyles.ratingOverview}>
-                  <StarDisplay rating={computedRating} size={20} />
-                  <Text style={modalStyles.ratingBig}>{computedRating.toFixed(1)}</Text>
-                  <Text style={modalStyles.ratingOf}>/ 5</Text>
-                  <Text style={modalStyles.ratingCount}>({computedCount} تقييم)</Text>
-                </View>
-              )}
-
-              {/* ── Past reviews list ────────────────────────────────── */}
-              <View style={modalStyles.reviewsSection}>
-                <Text style={modalStyles.subTitle}>التقييمات السابقة</Text>
-                {reviews.length === 0 && !reviewsLoaded ? (
-                  <View style={styles.reviewsLoading}>
-                    <ActivityIndicator color={C.accent} />
-                    <Text style={styles.noReviewsSub}>جارٍ تحميل التقييمات...</Text>
-                  </View>
-                ) : reviews.length === 0 ? (
-                  <View style={styles.noReviews}>
-                    <Ionicons name="star-outline" size={36} color={C.textMuted} />
-                    <Text style={styles.noReviewsText}>لا توجد تقييمات بعد</Text>
-                    <Text style={styles.noReviewsSub}>كن أول من يقيّم صاحب الاختصاص هذا</Text>
-                  </View>
-                ) : (
-                  reviews.map((r, i) => <ReviewCard key={r.id} review={r} index={i} />)
-                )}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
-  heroGrad: { paddingBottom: 12, paddingHorizontal: 16 },
-  heroNav: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 8,
+
+  // ── Hero gradient section ─────────────────────────────────────────────────
+  hero: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    alignItems: "center",
   },
   backBtn: {
+    alignSelf: "flex-start",
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
+    marginBottom: 12,
   },
-  reviewNavBtnActive: {
-    backgroundColor: C.accent,
+
+  // Photo
+  photoWrap: { position: "relative", marginBottom: 12 },
+  photo: {
+    width: 96, height: 96, borderRadius: 48,
+    borderWidth: 3, borderColor: C.accent,
   },
-  reviewNavBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(201,168,76,0.15)",
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-  },
-  reviewNavText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  // Hero — compact horizontal layout (photo left, text right)
-  heroContent: { paddingBottom: 4 },
-  heroRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  heroPhotoWrap: { position: "relative", flexShrink: 0 },
-  heroPhoto: { width: 68, height: 68, borderRadius: 34, borderWidth: 2.5, borderColor: C.accent },
-  heroInitials: {
-    width: 68, height: 68, borderRadius: 34,
+  photoFallback: {
+    width: 96, height: 96, borderRadius: 48,
     backgroundColor: "rgba(201,168,76,0.2)",
-    borderWidth: 2.5, borderColor: C.accent,
+    borderWidth: 3, borderColor: C.accent,
     alignItems: "center", justifyContent: "center",
   },
-  heroInitialsText: { fontSize: 24, fontFamily: "Cairo_700Bold", color: C.accent },
-  heroAvailDot: {
-    position: "absolute", bottom: 2, right: 2,
-    width: 13, height: 13, borderRadius: 7,
-    borderWidth: 2, borderColor: "#162452",
+  photoInitials: { fontSize: 32, fontFamily: "Cairo_700Bold", color: C.accent },
+  availDot: {
+    position: "absolute", bottom: 3, right: 3,
+    width: 14, height: 14, borderRadius: 7,
+    borderWidth: 2.5, borderColor: "#162452",
   },
   dotOnline: { backgroundColor: "#22C55E" },
   dotOffline: { backgroundColor: "#9CA3AF" },
-  heroTextBlock: { flex: 1, gap: 4, alignItems: "flex-end" },
-  heroName: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
+
+  // Name + specialty + bio
+  heroName: { fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "center", marginBottom: 6 },
   specialtyPill: {
-    backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 12,
-    paddingHorizontal: 10, paddingVertical: 3, alignSelf: "flex-end",
+    backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 4, marginBottom: 10,
   },
-  specialtyPillText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  heroStats: { flexDirection: "row", alignItems: "center", gap: 0, marginTop: 2, alignSelf: "flex-end" },
-  statItem: { alignItems: "center", paddingHorizontal: 12, gap: 1 },
+  specialtyPillText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  heroBio: {
+    fontSize: 13, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.7)",
+    textAlign: "center", lineHeight: 20, marginBottom: 16, paddingHorizontal: 8,
+  },
+
+  // Stats row
+  statsRow: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 16, paddingVertical: 10, paddingHorizontal: 6,
+    width: "100%",
+  },
+  statItem: { flex: 1, alignItems: "center", gap: 3 },
   statVal: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
   statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
-  statDiv: { width: 1, height: 26, backgroundColor: "rgba(255,255,255,0.2)" },
-  actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
+
+  // Action rows (outside scroll)
+  actionRow: {
+    flexDirection: "row", gap: 10,
+    paddingHorizontal: 16, paddingTop: 12,
+  },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 12, borderRadius: 14,
+    gap: 6, paddingVertical: 12, borderRadius: 14, overflow: "hidden",
   },
-  actionBtnPrimary: { backgroundColor: C.primary },
-  actionBtnWhatsApp: { backgroundColor: "#25D366" },
-  actionBtnChat: { backgroundColor: "#3B82F6" },
-  actionBtnText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: "#FFF" },
-  bookBtn: { marginHorizontal: 16, marginBottom: 10, borderRadius: 14, overflow: "hidden" },
+  actionBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
+
+  // Chat
+  chatBtn: { backgroundColor: "#3B82F6" },
+
+  // Follow / Following
+  followBtn: { backgroundColor: C.primary },
+  followingBtn: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5, borderColor: C.accent,
+  },
+
+  // Book service — smaller, gradient
+  bookBtn: { overflow: "hidden" },
   bookBtnGrad: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 14, gap: 10,
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 12, gap: 8,
   },
-  bookBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  bookBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary },
+
+  // Map
+  mapBtn: {
+    borderWidth: 1.5, borderColor: C.accent,
+    backgroundColor: "rgba(201,168,76,0.06)",
+  },
+  mapBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent },
+
+  // Scroll body
   scrollContent: { padding: 16, gap: 16 },
-  section: { gap: 12 },
-  sectionTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  addReviewBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  addReviewText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  selfRatingBadge: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(156,163,175,0.12)", borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  selfRatingText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  bioText: {
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
-    textAlign: "right", lineHeight: 22,
-    backgroundColor: C.card, borderRadius: 12, padding: 14,
-  },
-  ratingOverview: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    justifyContent: "flex-end",
-    backgroundColor: C.card, borderRadius: 12, padding: 14,
-  },
-  ratingBig: { fontSize: 28, fontFamily: "Cairo_700Bold", color: C.text },
-  ratingOf: { fontSize: 16, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  ratingCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  noReviews: { alignItems: "center", gap: 8, paddingVertical: 24 },
-  reviewsLoading: { alignItems: "center", gap: 8, paddingVertical: 24 },
-  noReviewsText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.text },
-  noReviewsSub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-  reviewCard: {
-    backgroundColor: C.card, borderRadius: 14, padding: 14, gap: 8,
-    shadowColor: C.shadow, shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
-  },
-  reviewHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  reviewAvatar: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: C.primary, alignItems: "center", justifyContent: "center",
-  },
-  reviewAvatarText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent },
-  reviewAuthor: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  reviewDate: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  reviewComment: {
-    fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary,
-    textAlign: "right", lineHeight: 20,
-  },
-  fieldWrap: { gap: 6 },
-  fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
-  textArea: {
-    backgroundColor: C.inputBg, borderRadius: 12, padding: 14,
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text,
-    minHeight: 100, textAlign: "right",
-  },
-  inputField: {
-    backgroundColor: C.inputBg, borderRadius: 12, padding: 14,
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text,
-  },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  portfolioRow: { gap: 10, paddingVertical: 4 },
+  portfolioImg: { width: 140, height: 140, borderRadius: 14, backgroundColor: C.inputBg },
+
+  // Booking modal location note
   locationNote: {
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "rgba(201,168,76,0.08)", borderRadius: 10, padding: 10,
+    width: "100%",
   },
-  locationNoteText: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
-  ratingLabel: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "center" },
-  mapBtn: {
-    marginHorizontal: 16, marginBottom: 10, borderRadius: 14,
-    borderWidth: 1.5, borderColor: C.accent,
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 12, gap: 8,
-    backgroundColor: "rgba(201,168,76,0.06)",
-  },
-  mapBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
-  portfolioRow: { gap: 10, paddingVertical: 4 },
-  portfolioImg: {
-    width: 140, height: 140, borderRadius: 14,
-    backgroundColor: C.inputBg,
+  locationNoteText: {
+    flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
+    color: C.textSecondary, textAlign: "right",
   },
 });
 
 const modalStyles = StyleSheet.create({
-  // ── Booking confirmation modal (centered card) ──────────────────────────
   overlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
   },
-  handle: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: C.border,
-    alignSelf: "center", marginTop: 10, marginBottom: 4,
-  },
-  header: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 20,
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border, gap: 10,
-  },
-  closeBtn: {
-    width: 32, height: 32, borderRadius: 10, backgroundColor: C.inputBg,
-    alignItems: "center", justifyContent: "center",
-  },
-  title: { flex: 1, fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  sendBtn: { borderRadius: 14, overflow: "hidden", marginTop: 4 },
-  sendGrad: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 14, gap: 10,
-  },
-  sendText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
-  confirmCard: {
+  card: {
     width: "100%", backgroundColor: C.card, borderRadius: 22,
     padding: 24, gap: 14, alignItems: "center",
     shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18, shadowRadius: 20, elevation: 10,
   },
-  confirmIconCircle: {
+  iconCircle: {
     width: 64, height: 64, borderRadius: 32,
     backgroundColor: "rgba(201,168,76,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  confirmTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
-  confirmMsg: {
+  cardTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
+  cardMsg: {
     fontSize: 15, fontFamily: "Cairo_400Regular", color: C.textSecondary,
     textAlign: "center", lineHeight: 26,
   },
-  confirmActions: { flexDirection: "row", gap: 10, width: "100%", marginTop: 4 },
+  locationNote: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "rgba(201,168,76,0.08)", borderRadius: 10, padding: 10,
+    width: "100%",
+  },
+  locationNoteText: {
+    flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
+    color: C.textSecondary, textAlign: "right",
+  },
+  actions: { flexDirection: "row", gap: 10, width: "100%", marginTop: 4 },
   cancelBtn: {
     flex: 1, borderRadius: 14, paddingVertical: 13,
     borderWidth: 1.5, borderColor: C.border,
     alignItems: "center", justifyContent: "center",
   },
-  cancelBtnText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  cancelText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   confirmBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
-  confirmBtnGrad: {
+  confirmGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 13, gap: 8,
   },
-  confirmBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
-
-  // ── Full reviews sheet (bottom-anchored, ~93% height) ────────────────────
-  reviewOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "flex-end",
-  },
-  reviewSheet: {
-    backgroundColor: C.background,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    maxHeight: "93%",
-  },
-  reviewBody: { padding: 16, gap: 16, paddingBottom: 32 },
-
-  // "أضف تقييمك" card inside the reviews sheet
-  addReviewSection: {
-    backgroundColor: C.card, borderRadius: 16, padding: 16, gap: 12,
-    shadowColor: C.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07, shadowRadius: 8, elevation: 2,
-  },
-
-  // Sub-heading inside the reviews sheet
-  subTitle: {
-    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right",
-  },
-
-  // Rating overview bar inside the sheet
-  ratingOverview: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    justifyContent: "flex-end",
-    backgroundColor: C.card, borderRadius: 12, padding: 14,
-    shadowColor: C.shadow, shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 6, elevation: 1,
-  },
-  ratingBig: { fontSize: 26, fontFamily: "Cairo_700Bold", color: C.text },
-  ratingOf: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  ratingCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
-
-  // Past reviews list section
-  reviewsSection: { gap: 10 },
+  confirmText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
 });
