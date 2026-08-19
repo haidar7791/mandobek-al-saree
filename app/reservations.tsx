@@ -31,6 +31,7 @@ import {
   subscribeToBuyerProductOrders,
   respondToProductOrder,
   bulkDeleteProductOrders,
+  buildChatId,
   ACTIVE_STATUSES,
   STATUS_LABELS,
   getSpecialtyLabel,
@@ -333,6 +334,45 @@ export default function ReservationsScreen() {
     );
     return unsub;
   }, []);
+
+  // Phone numbers of buyers/sellers appearing in product-order cards.
+  // Key: userId → phone ("" = fetched but none on profile).
+  const [phoneMap, setPhoneMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ids = new Set<string>();
+    productOrders.forEach((o) => o.buyerId && ids.add(o.buyerId));
+    buyerOrders.forEach((o) => o.sellerId && ids.add(o.sellerId));
+    const missing = Array.from(ids).filter((id) => phoneMap[id] === undefined);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        missing.map(async (id) => {
+          try {
+            const p = await getUserProfile(id);
+            return [id, p?.phone?.trim() || ""] as const;
+          } catch {
+            return [id, ""] as const;
+          }
+        })
+      );
+      if (!cancelled) {
+        setPhoneMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [productOrders, buyerOrders, phoneMap]);
+
+  /** Open the direct chat with the other party of a product order. */
+  const openOrderChat = (otherUserId: string, otherName?: string) => {
+    const me = auth.currentUser;
+    if (!me || !otherUserId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: "/chat",
+      params: { chatId: buildChatId(me.uid, otherUserId), otherName: otherName ?? "" },
+    } as any);
+  };
 
   // Requests this user has soft-deleted from their own history stay hidden
   // everywhere in this screen (they're already completed/cancelled/rejected).
@@ -765,6 +805,25 @@ export default function ReservationsScreen() {
                           {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
+                      {!!order.selectedColor && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"اللون: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.selectedColor}</Text>
+                        </Text>
+                      )}
+                      {!!order.selectedSize && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"القياس: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.selectedSize}</Text>
+                        </Text>
+                      )}
+                      <Text style={styles.poInfoLine}>
+                        <Text style={styles.poFieldLabel}>{"رقم الهاتف: "}</Text>
+                        <Text style={styles.poFieldValue}>
+                          {order.buyerPhone?.trim()
+                            || (phoneMap[order.buyerId] === undefined ? "..." : phoneMap[order.buyerId] || "لا يوجد")}
+                        </Text>
+                      </Text>
                     </View>
                     {order.productImageUrl ? (
                       <Image
@@ -833,18 +892,33 @@ export default function ReservationsScreen() {
                     </View>
                   )}
 
-                  {/* Contact buyer button */}
-                  <TouchableOpacity
-                    style={styles.poContactBtn}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
-                    }}
-                  >
-                    <Feather name="message-circle" size={16} color="#FFF" />
-                    <Text style={styles.poContactBtnText}>تواصل مع المشتري</Text>
-                  </TouchableOpacity>
+                  {/* Chat + Location buttons (seller view) */}
+                  <View style={styles.poActionRow}>
+                    <TouchableOpacity
+                      style={[styles.poContactBtn, styles.poActionHalf]}
+                      activeOpacity={0.85}
+                      onPress={() => openOrderChat(order.buyerId, order.buyerName)}
+                    >
+                      <Feather name="message-circle" size={16} color="#FFF" />
+                      <Text style={styles.poContactBtnText}>دردشة</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.poLocationBtn, styles.poActionHalf]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (!order.buyerLocation) {
+                          Alert.alert("الموقع", "لم يشارك المشتري موقعه.");
+                          return;
+                        }
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        const { lat, lng } = order.buyerLocation;
+                        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`);
+                      }}
+                    >
+                      <Feather name="map-pin" size={16} color={C.accent} />
+                      <Text style={styles.poLocationBtnText}>الموقع</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </Animated.View>
             );
@@ -921,6 +995,24 @@ export default function ReservationsScreen() {
                           {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
+                      {!!order.selectedColor && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"اللون: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.selectedColor}</Text>
+                        </Text>
+                      )}
+                      {!!order.selectedSize && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"القياس: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.selectedSize}</Text>
+                        </Text>
+                      )}
+                      <Text style={styles.poInfoLine}>
+                        <Text style={styles.poFieldLabel}>{"رقم الهاتف: "}</Text>
+                        <Text style={styles.poFieldValue}>
+                          {phoneMap[order.sellerId] === undefined ? "..." : phoneMap[order.sellerId] || "لا يوجد"}
+                        </Text>
+                      </Text>
                     </View>
                     {order.productImageUrl ? (
                       <Image
@@ -959,17 +1051,14 @@ export default function ReservationsScreen() {
                     </View>
                   </View>
 
-                  {/* Contact seller button */}
+                  {/* Chat button (buyer view) */}
                   <TouchableOpacity
                     style={styles.poContactBtn}
                     activeOpacity={0.85}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
-                    }}
+                    onPress={() => openOrderChat(order.sellerId, order.sellerName)}
                   >
                     <Feather name="message-circle" size={16} color="#FFF" />
-                    <Text style={styles.poContactBtnText}>تواصل مع البائع</Text>
+                    <Text style={styles.poContactBtnText}>دردشة</Text>
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -1265,6 +1354,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Cairo_700Bold",
     color: "#FFF",
+  },
+  poActionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  poActionHalf: {
+    flex: 1,
+    marginTop: 0,
+  },
+  poLocationBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: C.accent,
+    backgroundColor: "rgba(201,168,76,0.07)",
+  },
+  poLocationBtnText: {
+    fontSize: 14,
+    fontFamily: "Cairo_700Bold",
+    color: C.accent,
   },
 
   // ── Card checkbox row ──
