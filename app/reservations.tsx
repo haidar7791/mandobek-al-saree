@@ -19,6 +19,7 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { auth } from "../lib/firebase";
+import ProductOrderThumbnail from "@/components/ProductOrderThumbnail";
 import {
   subscribeToServiceRequests,
   subscribeToClientServiceRequests,
@@ -825,17 +826,12 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
+                    <ProductOrderThumbnail
+                      imageUrl={order.productImageUrl}
+                      media={order.productMedia}
+                      productId={order.productId}
+                      style={styles.poThumbnail}
+                    />
                   </View>
 
                   {/* Buyer name */}
@@ -1014,17 +1010,12 @@ export default function ReservationsScreen() {
                         </Text>
                       </Text>
                     </View>
-                    {order.productImageUrl ? (
-                      <Image
-                        source={{ uri: order.productImageUrl }}
-                        style={styles.poThumbnail}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.poThumbnail, styles.poThumbnailPlaceholder]}>
-                        <Feather name="image" size={22} color={C.textMuted} />
-                      </View>
-                    )}
+                    <ProductOrderThumbnail
+                      imageUrl={order.productImageUrl}
+                      media={order.productMedia}
+                      productId={order.productId}
+                      style={styles.poThumbnail}
+                    />
                   </View>
 
                   {/* Seller name */}

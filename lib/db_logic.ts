@@ -1737,6 +1737,8 @@ export interface Product {
   price: number;
   description?: string;
   imageUrl: string;
+  /** Still image generated from the first frame of a video-only product. */
+  thumbnailUrl?: string;
   media?: ProductMedia[];
   sellerId: string;
   sellerName: string;
@@ -1765,6 +1767,8 @@ export interface ProductOrder {
   productId: string;
   productTitle: string;
   productImageUrl: string;
+  /** Product media copied into the order so video-only products can show a first-frame thumbnail. */
+  productMedia?: ProductMedia[];
   productPrice?: number;
   sellerId: string;
   sellerName?: string;

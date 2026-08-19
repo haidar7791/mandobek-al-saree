@@ -314,10 +314,19 @@ function ProductCard({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const selfProfile = await getUserProfile(user.uid);
+      // Prefer the first image URL from media; fall back to imageUrl only if it's
+      // actually an image (video-only products store a video URL in imageUrl).
+      const bestImageUrl =
+        product.media?.find((m) => m.type === "image")?.url ||
+        (product.imageUrl && !/\.(mp4|mov|m4v|webm|avi|mkv)(?:$|[?#])/i.test(product.imageUrl)
+          ? product.imageUrl
+          : null) ||
+        "";
       await createProductOrder({
         productId: product.id,
         productTitle: product.title,
-        productImageUrl: product.imageUrl,
+        productImageUrl: bestImageUrl,
+        productMedia: product.media,
         productPrice: product.price,
         sellerId: product.sellerId,
         sellerName: product.sellerName,

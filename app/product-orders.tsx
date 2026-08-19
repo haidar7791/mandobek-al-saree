@@ -19,6 +19,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
+import ProductOrderThumbnail from "@/components/ProductOrderThumbnail";
 import {
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
@@ -50,17 +51,6 @@ const BUYER_STATUS = {
 /* ─────────────────────────────────────────────
    ProductThumb — shared image/fallback helper
 ───────────────────────────────────────────── */
-function ProductThumb({ uri }: { uri?: string }) {
-  if (uri) {
-    return <Image source={{ uri }} style={styles.productThumb} resizeMode="cover" />;
-  }
-  return (
-    <View style={[styles.productThumb, styles.thumbFallback]}>
-      <Feather name="image" size={18} color={C.textMuted} />
-    </View>
-  );
-}
-
 /* ─────────────────────────────────────────────
    PriceDisplay — shared formatted price helper
 ───────────────────────────────────────────── */
@@ -140,7 +130,13 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
             </View>
           </View>
           <View style={styles.thumbCol}>
-            <ProductThumb uri={order.productImageUrl} />
+            <ProductOrderThumbnail
+              imageUrl={order.productImageUrl}
+              media={order.productMedia}
+              productId={order.productId}
+              style={styles.productThumb}
+              fallbackIconSize={18}
+            />
             <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
               <Feather name="share-2" size={13} color={C.accent} />
             </TouchableOpacity>
@@ -279,7 +275,13 @@ function SaleCard({ order, onAccept, onReject }: {
             </View>
           </View>
           <View style={styles.thumbCol}>
-            <ProductThumb uri={order.productImageUrl} />
+            <ProductOrderThumbnail
+              imageUrl={order.productImageUrl}
+              media={order.productMedia}
+              productId={order.productId}
+              style={styles.productThumb}
+              fallbackIconSize={18}
+            />
             <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
               <Feather name="share-2" size={13} color={C.accent} />
             </TouchableOpacity>

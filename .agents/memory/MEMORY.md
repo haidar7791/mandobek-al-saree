@@ -7,3 +7,4 @@
 - [ProfileAvatar steals touch in story strip](profile-avatar-touch-steal.md) — ProfileAvatar has its own Pressable→/profile; use disableNavigation prop inside any outer Pressable
 - [Expo Stack screens must be declared](expo-stack-screen-declaration.md) — any screen file not listed in Stack causes "This screen doesn't exist"; story-creator & story-viewer must be in _layout.tsx
 - [Firebase Storage rules publication](firebase-storage-rules-publication.md) — local Storage rules do not publish automatically; new upload paths 403 until rules are applied in Firebase
+- [Firebase Admin Storage bucket](firebase-admin-storage-bucket.md) — Admin service-account setup may omit the default bucket; derive it from Storage download URLs for server media jobs

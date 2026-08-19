@@ -1,5 +1,97 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
+import { promisify } from "node:util";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
+const execFileAsync = promisify(execFile);
+const productThumbnailJobs = new Map<string, Promise<string>>();
+
+function publicStorageUrl(bucketName: string, objectPath: string, token: string): string {
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(objectPath)}?alt=media&token=${token}`;
+}
+
+async function createProductVideoThumbnail(
+  productId: string,
+  videoUrl: string,
+): Promise<string> {
+  const existingJob = productThumbnailJobs.get(productId);
+  if (existingJob) return existingJob;
+
+  const job = (async () => {
+    const admin = await getAdminApp();
+    const { getFirestore } = await import("firebase-admin/firestore");
+    const { getStorage } = await import("firebase-admin/storage");
+    const db = getFirestore(admin);
+    const productRef = db.collection("products").doc(productId);
+    const latestProduct = await productRef.get();
+    const latestThumbnail = latestProduct.data()?.thumbnailUrl;
+    if (typeof latestThumbnail === "string" && latestThumbnail) return latestThumbnail;
+
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Unable to download product video (${response.status})`);
+    }
+
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "forus-product-thumb-"));
+    const videoPath = path.join(tempDir, "source-video");
+    const thumbnailPath = path.join(tempDir, "thumbnail.jpg");
+
+    try {
+      await writeFile(videoPath, Buffer.from(await response.arrayBuffer()));
+      await execFileAsync("ffmpeg", [
+        "-y",
+        "-ss",
+        "0",
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        thumbnailPath,
+      ]);
+
+      const thumbnailObjectPath = `products/${productId}/thumbnail.jpg`;
+      const downloadToken = randomUUID();
+      const bucketName = new URL(videoUrl).pathname.match(
+        /\/v0\/b\/([^/]+)\/o\//,
+      )?.[1];
+      if (!bucketName) {
+        throw new Error("Unable to determine Firebase Storage bucket from video URL");
+      }
+      const bucket = getStorage(admin).bucket(bucketName);
+      await bucket.file(thumbnailObjectPath).save(await readFile(thumbnailPath), {
+        resumable: false,
+        metadata: {
+          contentType: "image/jpeg",
+          cacheControl: "public,max-age=31536000,immutable",
+          metadata: { firebaseStorageDownloadTokens: downloadToken },
+        },
+      });
+
+      const thumbnailUrl = publicStorageUrl(
+        bucket.name,
+        thumbnailObjectPath,
+        downloadToken,
+      );
+      await productRef.update({ thumbnailUrl });
+      return thumbnailUrl;
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  })();
+
+  productThumbnailJobs.set(productId, job);
+  try {
+    return await job;
+  } finally {
+    productThumbnailJobs.delete(productId);
+  }
+}
 
 // ─── Firebase Admin (lazy-initialized) ───────────────────────────────────────
 // Requires FIREBASE_SERVICE_ACCOUNT env-var to be set to the JSON contents of
@@ -50,6 +142,68 @@ function e164ToIraqiLocal(e164: string): string {
 export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
+  });
+
+  /**
+   * Creates and persists a JPEG thumbnail from a product video's first frame.
+   * The authenticated client only asks for a thumbnail on video-only product
+   * cards; the result is cached on the product document for every future card.
+   */
+  app.post("/api/products/:productId/video-thumbnail", async (req, res) => {
+    const authorization = req.header("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : null;
+    const productId = req.params.productId;
+
+    if (!idToken) {
+      res.status(401).json({ error: "Authentication is required" });
+      return;
+    }
+    if (!productId || !/^[A-Za-z0-9_-]+$/.test(productId)) {
+      res.status(400).json({ error: "Invalid product id" });
+      return;
+    }
+
+    try {
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+      const { getFirestore } = await import("firebase-admin/firestore");
+      await getAuth(admin).verifyIdToken(idToken);
+
+      const productSnap = await getFirestore(admin)
+        .collection("products")
+        .doc(productId)
+        .get();
+      if (!productSnap.exists) {
+        res.status(404).json({ error: "Product not found" });
+        return;
+      }
+
+      const product = productSnap.data() as {
+        thumbnailUrl?: string;
+        imageUrl?: string;
+        media?: Array<{ type?: string; url?: string }>;
+      };
+      if (product.thumbnailUrl) {
+        res.json({ thumbnailUrl: product.thumbnailUrl });
+        return;
+      }
+
+      const videoUrl = product.media?.find(
+        (item) => item.type === "video" && item.url,
+      )?.url;
+      if (!videoUrl) {
+        res.status(422).json({ error: "Product has no video media" });
+        return;
+      }
+
+      const thumbnailUrl = await createProductVideoThumbnail(productId, videoUrl);
+      res.json({ thumbnailUrl });
+    } catch (error) {
+      console.error("[ProductThumbnail] generation failed:", error);
+      res.status(500).json({ error: "Unable to create product thumbnail" });
+    }
   });
 
   /**

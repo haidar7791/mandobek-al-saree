@@ -111,10 +111,17 @@ export default function SearchScreen() {
             setBuyingProduct(true);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             try {
+              const bestImageUrl =
+                p.media?.find((m) => m.type === "image")?.url ||
+                (p.imageUrl && !/\.(mp4|mov|m4v|webm|avi|mkv)(?:$|[?#])/i.test(p.imageUrl)
+                  ? p.imageUrl
+                  : null) ||
+                "";
               await createProductOrder({
                 productId: p.id,
                 productTitle: p.title,
-                productImageUrl: p.imageUrl,
+                productImageUrl: bestImageUrl,
+                productMedia: p.media,
                 productPrice: p.price,
                 sellerId: p.sellerId,
                 sellerName: p.sellerName,
