@@ -115,6 +115,7 @@ export default function SearchScreen() {
                 productId: p.id,
                 productTitle: p.title,
                 productImageUrl: p.imageUrl,
+                productMedia: normalizeProductMedia(p.media, p.imageUrl),
                 productPrice: p.price,
                 sellerId: p.sellerId,
                 sellerName: p.sellerName,

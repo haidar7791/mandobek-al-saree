@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Share,
+  Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,14 +19,20 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Video, ResizeMode } from "expo-av";
 import { auth } from "@/lib/firebase";
 import {
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
   respondToProductOrder,
   bulkDeleteProductOrders,
+  buildChatId,
+  getProductById,
+  getUserProfile,
+  type ProductMedia,
   type ProductOrder,
 } from "@/lib/db_logic";
+import * as VideoThumbnails from "expo-video-thumbnails";
 
 /** Orders in these statuses may be deleted */
 const DELETABLE_STATUSES = new Set(["accepted", "rejected", "completed"]);
@@ -48,13 +55,74 @@ const BUYER_STATUS = {
 /* ─────────────────────────────────────────────
    ProductThumb — shared image/fallback helper
 ───────────────────────────────────────────── */
-function ProductThumb({ uri }: { uri?: string }) {
-  if (uri) {
-    return <Image source={{ uri }} style={styles.productThumb} resizeMode="cover" />;
+function ProductThumb({
+  media,
+  fallbackUri,
+}: {
+  media?: ProductMedia[];
+  fallbackUri?: string;
+}) {
+  const primaryMedia = media?.[0];
+  const [thumbnailUri, setThumbnailUri] = useState<string | null>(
+    primaryMedia?.type === "image" ? primaryMedia.url : primaryMedia?.type === "video" ? null : fallbackUri ?? null
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const nextMedia = media?.[0];
+    setThumbnailUri(
+      nextMedia?.type === "image"
+        ? nextMedia.url
+        : nextMedia?.type === "video"
+          ? null
+          : fallbackUri ?? null
+    );
+
+    if (nextMedia?.type !== "video") return () => { cancelled = true; };
+
+    VideoThumbnails.getThumbnailAsync(nextMedia.url, { time: 0, quality: 0.75 })
+      .then(({ uri }) => {
+        if (!cancelled) setThumbnailUri(uri);
+      })
+      .catch(() => {
+        if (!cancelled) setThumbnailUri(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [media, fallbackUri]);
+
+  // expo-video-thumbnails intentionally has no web implementation. Expo AV's
+  // web video element renders the first decoded frame while paused at zero.
+  if (primaryMedia?.type === "video" && Platform.OS === "web") {
+    return (
+      <View style={[styles.productThumb, styles.thumbFallback]}>
+        <Video
+          source={{ uri: primaryMedia.url }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={false}
+          positionMillis={0}
+          isMuted
+          useNativeControls={false}
+        />
+        <View style={styles.videoThumbBadge}>
+          <Feather name="play" size={10} color="#FFF" />
+        </View>
+      </View>
+    );
+  }
+
+  if (thumbnailUri) {
+    return <Image source={{ uri: thumbnailUri }} style={styles.productThumb} resizeMode="cover" />;
   }
   return (
     <View style={[styles.productThumb, styles.thumbFallback]}>
       <Feather name="image" size={18} color={C.textMuted} />
+      {primaryMedia?.type === "video" && (
+        <View style={styles.videoThumbBadge}>
+          <Feather name="play" size={10} color="#FFF" />
+        </View>
+      )}
     </View>
   );
 }
@@ -74,20 +142,59 @@ function PriceDisplay({ order }: { order: ProductOrder }) {
   );
 }
 
+function ProductVariantDetails({ order }: { order: ProductOrder }) {
+  return (
+    <View style={styles.variantDetails}>
+      <Text style={styles.variantText}>اللون: {order.selectedColor?.trim() || "لا يوجد"}</Text>
+      <Text style={styles.variantText}>القياس: {order.selectedSize?.trim() || "لا يوجد"}</Text>
+    </View>
+  );
+}
+
+function useOrderCardData(order: ProductOrder, otherUserId: string) {
+  const [phone, setPhone] = useState("لا يوجد");
+  const [media, setMedia] = useState<ProductMedia[] | undefined>(order.productMedia);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMedia(order.productMedia);
+    setPhone("لا يوجد");
+
+    Promise.all([
+      getUserProfile(otherUserId),
+      order.productMedia?.length ? Promise.resolve(null) : getProductById(order.productId),
+    ]).then(([profile, product]) => {
+      if (cancelled) return;
+      setPhone(profile?.phone?.trim() || "لا يوجد");
+      if (product?.media?.length) setMedia(product.media);
+    });
+
+    return () => { cancelled = true; };
+  }, [order.productId, order.productMedia, otherUserId]);
+
+  return { phone, media };
+}
+
 /* ─────────────────────────────────────────────
    PurchaseCard — "طلباتي" (My Orders) tab
 ───────────────────────────────────────────── */
 function PurchaseCard({ order }: { order: ProductOrder }) {
   const cfg = BUYER_STATUS[order.status];
+  const { phone: sellerPhone, media } = useOrderCardData(order, order.sellerId);
   const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
 
-  const goToProfile = () => {
+  const openChat = () => {
+    const user = auth.currentUser;
+    if (!user) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
-      pathname: "/user-profile",
-      params: { userId: order.sellerId, userName: order.sellerName ?? "" },
+      pathname: "/chat",
+      params: {
+        chatId: buildChatId(user.uid, order.sellerId),
+        otherName: order.sellerName ?? "",
+      },
     } as any);
   };
 
@@ -110,9 +217,10 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
+            <ProductVariantDetails order={order} />
           </View>
           <View style={styles.thumbCol}>
-            <ProductThumb uri={order.productImageUrl} />
+            <ProductThumb media={media} fallbackUri={order.productImageUrl} />
             <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
               <Feather name="share-2" size={13} color={C.accent} />
             </TouchableOpacity>
@@ -132,6 +240,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
             <Text style={styles.personName} numberOfLines={1}>
               {order.sellerName || "—"}
             </Text>
+            <Text style={styles.phoneText}>الهاتف: {sellerPhone}</Text>
           </View>
           {/* ── Status badge inline ── */}
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
@@ -145,7 +254,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
         <TouchableOpacity
           style={styles.contactBtn}
           activeOpacity={0.82}
-          onPress={goToProfile}
+          onPress={openChat}
         >
           <LinearGradient
             colors={[C.accent, "#B8952A"]}
@@ -153,7 +262,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           >
             <Feather name="message-circle" size={16} color={C.primary} />
-            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
+            <Text style={styles.contactBtnText}>دردشة</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -167,28 +276,48 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
 ───────────────────────────────────────────── */
 function SaleCard({ order, onAccept, onReject }: {
   order: ProductOrder;
-  onAccept: () => void;
-  onReject: () => void;
+  onAccept: () => Promise<void>;
+  onReject: () => Promise<void>;
 }) {
   const [acting, setActing] = useState(false);
-  const cfg = SELLER_STATUS[order.status];
+  const [resolvedStatus, setResolvedStatus] = useState<ProductOrder["status"] | null>(null);
+  const displayStatus = resolvedStatus ?? order.status;
+  const cfg = SELLER_STATUS[displayStatus];
+  const { phone: buyerPhone, media } = useOrderCardData(order, order.buyerId);
   const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
 
-  const act = async (fn: () => void) => {
+  const act = async (nextStatus: "accepted" | "rejected", fn: () => Promise<void>) => {
     setActing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try { await fn(); }
+    try {
+      await fn();
+      setResolvedStatus(nextStatus);
+    }
     finally { setActing(false); }
   };
 
-  const goToProfile = () => {
+  const openChat = () => {
+    const user = auth.currentUser;
+    if (!user) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
-      pathname: "/user-profile",
-      params: { userId: order.buyerId, userName: order.buyerName },
+      pathname: "/chat",
+      params: {
+        chatId: buildChatId(user.uid, order.buyerId),
+        otherName: order.buyerName,
+      },
     } as any);
+  };
+
+  const openBuyerLocation = () => {
+    if (!order.buyerLocation) {
+      Alert.alert("الموقع غير متاح", "لم يشارك المشتري موقع التوصيل لهذا الطلب.");
+      return;
+    }
+    const { lat, lng } = order.buyerLocation;
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`);
   };
 
   const handleShare = async () => {
@@ -210,9 +339,10 @@ function SaleCard({ order, onAccept, onReject }: {
           <View style={styles.productInfo}>
             <Text style={styles.productTitle} numberOfLines={2}>{order.productTitle}</Text>
             <PriceDisplay order={order} />
+            <ProductVariantDetails order={order} />
           </View>
           <View style={styles.thumbCol}>
-            <ProductThumb uri={order.productImageUrl} />
+            <ProductThumb media={media} fallbackUri={order.productImageUrl} />
             <TouchableOpacity style={styles.cardShareBtn} onPress={handleShare} activeOpacity={0.7}>
               <Feather name="share-2" size={13} color={C.accent} />
             </TouchableOpacity>
@@ -230,6 +360,7 @@ function SaleCard({ order, onAccept, onReject }: {
           <View style={styles.personMeta}>
             <Text style={styles.personRoleLabel}>المشتري</Text>
             <Text style={styles.personName} numberOfLines={1}>{order.buyerName}</Text>
+            <Text style={styles.phoneText}>الهاتف: {buyerPhone}</Text>
           </View>
           {/* ── Status badge inline ── */}
           <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
@@ -240,31 +371,15 @@ function SaleCard({ order, onAccept, onReject }: {
         {/* ── Date + contact details ── */}
         <Text style={styles.dateText}>{date}</Text>
 
-        {order.buyerPhone ? (
-          <View style={styles.phoneRow}>
-            <Feather name="phone" size={13} color={C.textSecondary} />
-            <Text style={styles.phoneText}>{order.buyerPhone}</Text>
-          </View>
-        ) : null}
-
-        {order.buyerLocation && (
-          <View style={styles.phoneRow}>
-            <Feather name="map-pin" size={13} color={C.accent} />
-            <Text style={[styles.phoneText, { color: C.accent }]}>
-              {order.buyerLocation.lat.toFixed(4)}, {order.buyerLocation.lng.toFixed(4)}
-            </Text>
-          </View>
-        )}
-
         {/* ── Accept / Reject (pending only) ── */}
-        {order.status === "pending" && (
+        {displayStatus === "pending" && (
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.rejectBtn, acting && styles.btnDisabled]}
               onPress={() =>
                 Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
                   { text: "إلغاء", style: "cancel" },
-                  { text: "رفض", style: "destructive", onPress: () => act(onReject) },
+                  { text: "رفض", style: "destructive", onPress: () => act("rejected", onReject) },
                 ])
               }
               disabled={acting}
@@ -283,9 +398,9 @@ function SaleCard({ order, onAccept, onReject }: {
             <TouchableOpacity
               style={[styles.acceptBtn, acting && styles.btnDisabled]}
               onPress={() =>
-                Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب وتحديد المنتج كـ مباع؟", [
+                Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
                   { text: "إلغاء", style: "cancel" },
-                  { text: "قبول", onPress: () => act(onAccept) },
+                  { text: "قبول", onPress: () => act("accepted", onAccept) },
                 ])
               }
               disabled={acting}
@@ -307,21 +422,31 @@ function SaleCard({ order, onAccept, onReject }: {
           </View>
         )}
 
-        {/* ── Full-width contact button ── */}
-        <TouchableOpacity
-          style={styles.contactBtn}
-          activeOpacity={0.82}
-          onPress={goToProfile}
-        >
-          <LinearGradient
-            colors={[C.accent, "#B8952A"]}
-            style={styles.contactBtnGradient}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        {/* ── Delivery controls: chat + buyer location ── */}
+        <View style={styles.contactActions}>
+          <TouchableOpacity
+            style={[styles.locationBtn, !order.buyerLocation && styles.locationBtnDisabled]}
+            activeOpacity={0.82}
+            onPress={openBuyerLocation}
           >
-            <Feather name="message-circle" size={16} color={C.primary} />
-            <Text style={styles.contactBtnText}>تواصل مع المشتري</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <Feather name="map-pin" size={15} color={order.buyerLocation ? C.accent : C.textMuted} />
+            <Text style={[styles.locationBtnText, !order.buyerLocation && styles.locationBtnTextDisabled]}>الموقع</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.contactBtn, styles.compactContactBtn]}
+            activeOpacity={0.82}
+            onPress={openChat}
+          >
+            <LinearGradient
+              colors={[C.accent, "#B8952A"]}
+              style={styles.contactBtnGradient}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <Feather name="message-circle" size={15} color={C.primary} />
+              <Text style={styles.contactBtnText}>دردشة</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
 
       </View>
     </Animated.View>
@@ -756,7 +881,16 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "flex-start", gap: 12,
   },
   productThumb: { width: 72, height: 72, borderRadius: 14 },
-  thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
+  thumbFallback: {
+    backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
+  },
+  videoThumbBadge: {
+    position: "absolute", right: 6, bottom: 6,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center", justifyContent: "center",
+  },
   thumbCol: { alignItems: "center", gap: 6 },
   cardShareBtn: {
     width: 30, height: 30, borderRadius: 15,
@@ -766,6 +900,10 @@ const styles = StyleSheet.create({
   },
   productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
   productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  variantDetails: {
+    flexDirection: "row-reverse", flexWrap: "wrap", justifyContent: "flex-start", gap: 8,
+  },
+  variantText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary },
 
   // Price pill
   pricePill: {
@@ -790,7 +928,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
     borderWidth: 1, borderColor: "rgba(201,168,76,0.25)",
   },
-  personMeta: { flex: 1, alignItems: "flex-end" },
+  personMeta: { flex: 1, alignItems: "flex-end", gap: 1 },
   personRoleLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
   personName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
 
@@ -812,6 +950,16 @@ const styles = StyleSheet.create({
   contactBtnText: {
     fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
   },
+  contactActions: { flexDirection: "row", alignItems: "stretch", gap: 10, marginTop: 2 },
+  compactContactBtn: { flex: 1, marginTop: 0 },
+  locationBtn: {
+    flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center",
+    gap: 6, borderRadius: 14, borderWidth: 1, borderColor: "rgba(201,168,76,0.45)",
+    backgroundColor: "rgba(201,168,76,0.08)", paddingVertical: 13,
+  },
+  locationBtnDisabled: { borderColor: C.border, backgroundColor: C.inputBg },
+  locationBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.accent },
+  locationBtnTextDisabled: { color: C.textMuted },
 
   // Actions (accept / reject)
   actions: { flexDirection: "row", gap: 10 },
