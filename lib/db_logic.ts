@@ -921,6 +921,8 @@ export interface ChatMessage {
   cardImage?: string;   // image URL for the card thumbnail
   cardTitle?: string;   // display title inside the card bubble
   cardRoute?: string;   // internal Expo Router path to push on tap
+  /** Story reply — thumbnail of the story that was replied to */
+  storyImageUrl?: string;
 }
 
 export const DELETED_MESSAGE_TEXT = "تم حذف هذه الرسالة";
@@ -977,6 +979,53 @@ export const sendMessage = async (
     }
   } catch (err) {
     console.error("notify on sendMessage failed:", err);
+  }
+};
+
+/**
+ * Send a story-reply message to a chat.
+ * Stored as a plain text message with `storyImageUrl` attached so the
+ * chat bubble can show a thumbnail of the story above the reply text.
+ */
+export const sendStoryReply = async (
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  storyImageUrl: string,
+  text: string
+): Promise<void> => {
+  await addDoc(collection(db, "chats", chatId, "messages"), {
+    chatId,
+    senderId,
+    senderName,
+    text,
+    storyImageUrl,
+    createdAt: new Date().toISOString(),
+  });
+  await setDoc(
+    doc(db, "chats", chatId),
+    {
+      participants: chatId.split("_"),
+      lastMessage: text,
+      lastAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+  try {
+    const otherUid = chatId.split("_").find((u) => u !== senderId);
+    if (otherUid) {
+      const profile = await getUserProfile(otherUid);
+      if (profile?.pushToken) {
+        await sendExpoPush(
+          profile.pushToken,
+          `رد على قصتك من ${senderName}`,
+          text.length > 80 ? `${text.slice(0, 80)}…` : text,
+          { type: "chat", chatId, senderId, senderName }
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on sendStoryReply failed:", err);
   }
 };
 

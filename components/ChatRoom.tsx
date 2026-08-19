@@ -17,7 +17,7 @@ import { Image } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Audio } from "expo-av";
@@ -666,6 +666,19 @@ export default function ChatRoom({
     } else {
       bubbleContent = (
         <>
+          {!!item.storyImageUrl && (
+            <View style={styles.storyThumbWrap}>
+              <Image
+                source={{ uri: item.storyImageUrl }}
+                style={styles.storyThumb}
+                contentFit="cover"
+              />
+              <View style={styles.storyThumbBadge}>
+                <Ionicons name="film-outline" size={10} color="#FFF" />
+                <Text style={styles.storyThumbBadgeText}>قصة</Text>
+              </View>
+            </View>
+          )}
           <Text style={[styles.msgText, isMine ? styles.msgTextMine : styles.msgTextTheirs]}>
             {item.text}
           </Text>
@@ -919,6 +932,27 @@ const styles = StyleSheet.create({
   msgTime: { fontSize: 10, fontFamily: "Cairo_400Regular" },
   readIndicator: { flexDirection: "row", alignItems: "center" },
   readIndicatorRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 2 },
+  storyThumbWrap: {
+    width: 120,
+    height: 160,
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 4,
+  },
+  storyThumb: { width: "100%", height: "100%" },
+  storyThumbBadge: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  storyThumbBadgeText: { color: "#FFF", fontSize: 10, fontWeight: "600" },
   imageBubble: { width: 200, height: 200, borderRadius: 10 },
   mediaFooter: { marginTop: 4 },
   audioBubble: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 140 },

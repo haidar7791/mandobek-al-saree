@@ -45,7 +45,7 @@ import {
 } from "@/lib/stories_logic";
 import {
   buildChatId,
-  sendCardMessage,
+  sendStoryReply,
   getUserProfile,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -204,22 +204,21 @@ export default function StoryViewerScreen() {
     setIndex((i) => Math.max(0, i - 1));
   }, []);
 
-  // ── Reply → send as DM card to story owner ──────────────────────────────
+  // ── Reply → send as DM with story thumbnail ─────────────────────────────
   const handleReply = async () => {
     const trimmed = reply.trim();
     if (!trimmed || !story || !currentUserId) return;
     setReply("");
+    setPaused(false);
     Haptics.selectionAsync();
     try {
       const chatId = buildChatId(currentUserId, story.userId);
-      await sendCardMessage(
+      await sendStoryReply(
         chatId,
         currentUserId,
         currentUserName,
         story.mediaUrl,
         trimmed,
-        "",
-        `رد على قصة ${story.userName.split(" ")[0]}: ${trimmed}`,
       );
     } catch (err) {
       console.error("[story-viewer] reply send failed:", err);
@@ -436,11 +435,13 @@ export default function StoryViewerScreen() {
             <TextInput
               style={styles.replyInput}
               placeholder={`أرسل رداً لـ ${story.userName.split(" ")[0]}...`}
-              placeholderTextColor="rgba(255,255,255,0.5)"
+              placeholderTextColor="rgba(212,175,55,0.55)"
               value={reply}
               onChangeText={setReply}
               textAlign="right"
               returnKeyType="send"
+              onFocus={() => setPaused(true)}
+              onBlur={() => setPaused(false)}
               onSubmitEditing={handleReply}
             />
           )}
@@ -448,7 +449,7 @@ export default function StoryViewerScreen() {
             <Ionicons
               name={liked ? "heart" : "heart-outline"}
               size={32}
-              color={liked ? "#FF4B4B" : "#FFF"}
+              color={liked ? "#FF4B4B" : "#FFD700"}
             />
           </TouchableOpacity>
         </View>
@@ -614,7 +615,7 @@ const styles = StyleSheet.create({
   bottomCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     borderRadius: 32,
     paddingHorizontal: 8,
     paddingVertical: 8,
@@ -624,7 +625,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     paddingHorizontal: 14,
-    color: "#FFF",
+    color: "#FFD700",
     fontSize: 13,
   },
   likeBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
