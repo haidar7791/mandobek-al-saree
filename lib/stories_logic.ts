@@ -218,17 +218,31 @@ export function subscribeToMyStories(
 }
 
 /** One-shot fetch of a user's active stories (used inside the viewer).
- *  Single-field query — no composite index required. */
+ *  Single-field query — no composite index required.
+ *  Retries up to 2 times with a 1.5 s back-off to survive transient
+ *  Firestore WebChannel transport errors. */
 export async function fetchUserStories(userId: string): Promise<Story[]> {
-  // Query by userId only, filter last-24h client-side to avoid composite index
   const q = query(
     collection(db, "stories"),
     where("userId", "==", userId),
     orderBy("createdAt", "asc")
   );
-  const snap = await getDocs(q);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  return snap.docs
-    .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
-    .filter((s) => s.createdAt > since);
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Brief back-off before retrying (1.5 s × attempt)
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      }
+      const snap = await getDocs(q);
+      return snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
+        .filter((s) => s.createdAt > since);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }

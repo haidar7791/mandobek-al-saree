@@ -72,6 +72,7 @@ export default function StoryViewerScreen() {
   const [stories, setStories] = useState<Story[]>([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [paused, setPaused] = useState(false);
   const [liked, setLiked] = useState(false);
   const [reply, setReply] = useState("");
@@ -85,30 +86,33 @@ export default function StoryViewerScreen() {
   const duration = story?.mediaType === "video" ? VIDEO_DURATION : IMAGE_DURATION;
 
   // ── Load stories ────────────────────────────────────────────────────────
-  useEffect(() => {
-    // Normalize param — Expo Router can return string | string[]
+  const loadStories = useCallback(async () => {
     const uid = Array.isArray(userId) ? userId[0] : userId;
     if (!uid) { router.back(); return; }
 
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchUserStories(uid);
-        if (cancelled) return;
-        if (!data || data.length === 0) {
-          router.back();
-          return;
-        }
-        setStories(data);
-        setLoading(false);
-      } catch {
-        // Permission error or network failure — exit gracefully, never crash
-        if (!cancelled) router.back();
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const data = await fetchUserStories(uid);
+      if (!data || data.length === 0) {
+        // No active stories for this user — exit cleanly
+        router.back();
+        return;
       }
-    })();
-
-    return () => { cancelled = true; };
+      setStories(data);
+      setLoading(false);
+    } catch {
+      // All retries exhausted — show error UI instead of routing away
+      setLoading(false);
+      setFetchError(true);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadStories().catch(() => { if (!cancelled) setFetchError(true); });
+    return () => { cancelled = true; };
+  }, [loadStories]);
 
   // ── Progress animation ──────────────────────────────────────────────────
   const startProgress = useCallback(
@@ -199,6 +203,22 @@ export default function StoryViewerScreen() {
     return (
       <View style={styles.loadingRoot}>
         <ActivityIndicator size="large" color={C.accent} />
+      </View>
+    );
+  }
+
+  // Network / Firestore error — show retry UI instead of silently exiting
+  if (fetchError) {
+    return (
+      <View style={styles.loadingRoot}>
+        <Feather name="wifi-off" size={40} color="rgba(255,255,255,0.5)" />
+        <Text style={styles.errorText}>تعذّر تحميل القصة</Text>
+        <Pressable style={styles.retryBtn} onPress={loadStories}>
+          <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
+        </Pressable>
+        <Pressable onPress={() => router.back()} style={{ marginTop: 12 }}>
+          <Text style={[styles.errorText, { fontSize: 13 }]}>رجوع</Text>
+        </Pressable>
       </View>
     );
   }
@@ -340,7 +360,10 @@ export default function StoryViewerScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-  loadingRoot: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
+  loadingRoot: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center", gap: 16 },
+  errorText: { color: "rgba(255,255,255,0.65)", fontSize: 15, fontFamily: "Cairo_400Regular", textAlign: "center" },
+  retryBtn: { backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 10, borderRadius: 20 },
+  retryBtnText: { color: "#FFF", fontFamily: "Cairo_700Bold", fontSize: 14 },
 
   // Overlay gradients
   gradTop: {
