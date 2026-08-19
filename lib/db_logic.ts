@@ -1765,8 +1765,6 @@ export interface ProductOrder {
   productId: string;
   productTitle: string;
   productImageUrl: string;
-  /** Media snapshot at the time of ordering; lets order cards render video thumbnails. */
-  productMedia?: ProductMedia[];
   productPrice?: number;
   sellerId: string;
   sellerName?: string;
@@ -2012,17 +2010,6 @@ export const createProductOrder = async (
     console.error("notify seller on productOrder failed:", err);
   }
   return docRef.id;
-};
-
-/** Returns a product for order-card fallbacks created before media snapshots existed. */
-export const getProductById = async (productId: string): Promise<Product | null> => {
-  try {
-    const snap = await getDoc(doc(db, "products", productId));
-    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Product) : null;
-  } catch (err) {
-    console.error("getProductById error:", err);
-    return null;
-  }
 };
 
 export const respondToProductOrder = async (

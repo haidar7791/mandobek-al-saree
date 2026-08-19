@@ -318,7 +318,6 @@ function ProductCard({
         productId: product.id,
         productTitle: product.title,
         productImageUrl: product.imageUrl,
-        productMedia: normalizeProductMedia(product.media, product.imageUrl),
         productPrice: product.price,
         sellerId: product.sellerId,
         sellerName: product.sellerName,
