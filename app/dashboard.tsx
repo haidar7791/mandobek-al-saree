@@ -1084,7 +1084,7 @@ export default function DashboardScreen() {
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
           {activeCategory === "all" && (
             <View style={styles.productsSubBar}>
-              <View style={styles.inlineSearchRow}>
+              <View style={[styles.inlineSearchRow, styles.productSearchRow]}>
                 <Feather name="search" size={14} color={C.textMuted} />
                 <TextInput
                   style={styles.inlineSearchInput}
@@ -1107,7 +1107,7 @@ export default function DashboardScreen() {
                 )}
               </View>
               <TouchableOpacity
-                style={styles.addProductBtn}
+                style={[styles.addProductBtn, styles.addProductBtnPinned]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
                 activeOpacity={0.8}
               >
@@ -1592,15 +1592,21 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   productsSubBar: {
-    flexDirection: "row",
+    position: "relative",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    minHeight: 54,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderBottomColor: C.border,
+  },
+  productSearchRow: {
+    position: "absolute",
+    left: 124,
+    right: 12,
+    top: 9,
+    bottom: 9,
   },
   addProductBtn: {
     flexDirection: "row",
@@ -1612,6 +1618,11 @@ const styles = StyleSheet.create({
     borderColor: C.accent,
     paddingVertical: 6,
     paddingHorizontal: 12,
+  },
+  addProductBtnPinned: {
+    position: "absolute",
+    left: 12,
+    top: 9,
   },
   addProductBtnText: {
     fontSize: 13,
