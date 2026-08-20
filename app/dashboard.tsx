@@ -71,7 +71,7 @@ type CategoryTab = "all" | "services" | "orders";
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
   { key: "all", label: "الرئيسية", icon: "home" },
   { key: "services", label: "الخدمات", icon: "grid" },
-  { key: "orders", label: "طلبات واردة", icon: "inbox" },
+  { key: "orders", label: "الطلبات", icon: "inbox" },
 ];
 
 const SERVICE_CATEGORY_TABS: {
@@ -1031,16 +1031,14 @@ export default function DashboardScreen() {
 
       {/* Category tabs — always visible */}
       <View style={styles.stickyBar}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryTabs}
-              style={styles.categoryTabsWrapper}
-            >
+            <View style={styles.mainCategoryTabs}>
               {CATEGORY_TABS.map((tab) => (
                 <Pressable
                   key={tab.key}
-                  style={[styles.catTab, activeCategory === tab.key && styles.catTabActive]}
+                  style={[
+                    styles.mainCatTab,
+                    activeCategory === tab.key && styles.catTabActive,
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync();
                     setFocusedProductId(null); // stop any playing video immediately
@@ -1056,12 +1054,17 @@ export default function DashboardScreen() {
                     size={14}
                     color={activeCategory === tab.key ? C.primary : C.textSecondary}
                   />
-                  <Text style={[styles.catTabText, activeCategory === tab.key && styles.catTabTextActive]}>
+                  <Text
+                    style={[
+                      styles.mainCatTabText,
+                      activeCategory === tab.key && styles.catTabTextActive,
+                    ]}
+                  >
                     {tab.label}
                   </Text>
                 </Pressable>
               ))}
-            </ScrollView>
+            </View>
 
             {activeCategory === "services" && (
               <ScrollView
@@ -1405,6 +1408,34 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: "center",
     fontSize: 11,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textSecondary,
+  },
+  mainCategoryTabs: {
+    width: "100%",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    gap: 6,
+    flexDirection: "row",
+  },
+  mainCatTab: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: C.background,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  mainCatTabText: {
+    flexShrink: 1,
+    textAlign: "center",
+    fontSize: 14,
     fontFamily: "Cairo_600SemiBold",
     color: C.textSecondary,
   },
