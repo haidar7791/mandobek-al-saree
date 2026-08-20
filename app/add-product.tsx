@@ -90,6 +90,8 @@ export default function AddProductScreen() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
+    // Return immediately after validation; uploading continues in the background.
+    router.back();
     try {
       const profile = await getUserProfile(user.uid);
       await createProduct({
@@ -112,7 +114,6 @@ export default function AddProductScreen() {
       setColors([""]);
       setSizes([""]);
 
-      router.back();
       Alert.alert("تم النشر ✓", "تم نشر منتجك في السوق بنجاح!");
     } catch (err: any) {
       console.error("createProduct error:", err);
