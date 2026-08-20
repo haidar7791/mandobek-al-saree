@@ -45,7 +45,6 @@ import {
   getSpecialtyLabel,
   isFeaturedActive,
   subscribeToUserChatLastAts,
-  subscribeToClientServiceRequests,
   subscribeToProducts,
   createProductOrder,
   deleteProduct,
@@ -63,14 +62,16 @@ import {
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
+import ReservationsScreen from "./reservations";
 
 const C = Colors.light;
 
-type CategoryTab = "all" | "services";
+type CategoryTab = "all" | "services" | "orders";
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
   { key: "all", label: "الرئيسية", icon: "home" },
   { key: "services", label: "الخدمات", icon: "grid" },
+  { key: "orders", label: "طلبات واردة", icon: "inbox" },
 ];
 
 const SERVICE_CATEGORY_TABS: {
@@ -558,7 +559,6 @@ export default function DashboardScreen() {
 
   const [chatLastAts, setChatLastAts] = useState<string[]>([]);
   const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
-  const [pendingBookingCount, setPendingBookingCount] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
 
   // ── Marketplace ──
@@ -745,23 +745,6 @@ export default function DashboardScreen() {
     setProductsRefreshKey((k) => k + 1);
   }, []);
 
-  // Badge: subscribe to active/pending service requests
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    const unsub = subscribeToClientServiceRequests(
-      user.uid,
-      (requests) => {
-        const count = requests.filter((r) =>
-          ["pending", "accepted", "on_the_way", "in_progress"].includes(r.status)
-        ).length;
-        setPendingBookingCount(count);
-      },
-      () => {}
-    );
-    return unsub;
-  }, []);
-
   // Buyer: keep a live map of productId → orderId for MY pending orders
   useEffect(() => {
     if (!userId) return;
@@ -897,19 +880,6 @@ export default function DashboardScreen() {
               <Text style={styles.headerIconLabel}>الإدارة</Text>
             </Pressable>
           )}
-          <Pressable style={styles.headerIconCol} onPress={() => router.push("/reservations" as any)}>
-            <View style={styles.headerIconBtn}>
-              <Feather name="inbox" size={20} color="#FFF" />
-              {pendingBookingCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {pendingBookingCount > 99 ? "99+" : pendingBookingCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.headerIconLabel}>طلبات واردة</Text>
-          </Pressable>
           <Pressable style={styles.headerIconCol} onPress={handleMessagesPress}>
             <View style={styles.headerIconBtn}>
               <Feather name="message-circle" size={20} color="#FFF" />
@@ -1028,32 +998,34 @@ export default function DashboardScreen() {
         </ScrollView>
 
         {/* ── Contextual search bar — above category tabs, inside header ── */}
-        <View style={styles.searchBarRow}>
-          <Feather name="search" size={14} color="rgba(255,255,255,0.6)" />
-          <TextInput
-            style={styles.searchBarInput}
-            placeholder={
-              activeCategory === "all"
-                ? "ابحث في المنتجات..."
-                : "ابحث في الحرفيين..."
-            }
-            placeholderTextColor="rgba(255,255,255,0.45)"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            textAlign="right"
-          />
-          {searchQuery.length > 0 && (
-            <Pressable
-              onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
-              style={styles.searchClearBtn}
-              hitSlop={8}
-              accessibilityLabel="مسح البحث"
-            >
-              <Feather name="x" size={14} color="rgba(255,255,255,0.7)" />
-            </Pressable>
-          )}
-        </View>
+        {activeCategory !== "orders" && (
+          <View style={styles.searchBarRow}>
+            <Feather name="search" size={14} color="rgba(255,255,255,0.6)" />
+            <TextInput
+              style={styles.searchBarInput}
+              placeholder={
+                activeCategory === "all"
+                  ? "ابحث في المنتجات..."
+                  : "ابحث في الحرفيين..."
+              }
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              textAlign="right"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
+                style={styles.searchClearBtn}
+                hitSlop={8}
+                accessibilityLabel="مسح البحث"
+              >
+                <Feather name="x" size={14} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            )}
+          </View>
+        )}
 
       </LinearGradient>
 
@@ -1150,9 +1122,11 @@ export default function DashboardScreen() {
             </View>
           )}
 
-          {/* ── Conditional list: Products (الرئيسية) OR Artisans (specialty tabs) ── */}
+          {/* ── Conditional content: products, services, or inline incoming orders ── */}
           <View style={styles.listWrapper}>
-            {activeCategory === "all" ? (
+            {activeCategory === "orders" ? (
+              <ReservationsScreen inline />
+            ) : activeCategory === "all" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
                 key={`feed-list-${activeCategory}`}

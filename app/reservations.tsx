@@ -216,7 +216,7 @@ function RequestCard({
   );
 }
 
-export default function ReservationsScreen() {
+export default function ReservationsScreen({ inline = false }: { inline?: boolean }) {
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
@@ -614,20 +614,22 @@ export default function ReservationsScreen() {
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
-          <Feather name="chevron-right" size={22} color="#FFF" />
-        </Pressable>
-        <View style={{ flex: 1, alignItems: "flex-end" }}>
-          <Text style={styles.title}>طلبات واردة</Text>
-          <Text style={styles.sub}>
-            {isArtisan ? "طلبات الخدمات والمنتجات" : "تتبّع طلباتك"}
-          </Text>
-        </View>
-        <View style={styles.iconBadge}>
-          <Ionicons name="calendar" size={20} color={C.accent} />
-        </View>
-      </LinearGradient>
+      {!inline && (
+        <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
+          <Pressable style={styles.backBtn} onPress={() => router.back()}>
+            <Feather name="chevron-right" size={22} color="#FFF" />
+          </Pressable>
+          <View style={{ flex: 1, alignItems: "flex-end" }}>
+            <Text style={styles.title}>طلبات واردة</Text>
+            <Text style={styles.sub}>
+              {isArtisan ? "طلبات الخدمات والمنتجات" : "تتبّع طلباتك"}
+            </Text>
+          </View>
+          <View style={styles.iconBadge}>
+            <Ionicons name="calendar" size={20} color={C.accent} />
+          </View>
+        </LinearGradient>
+      )}
 
       <View style={styles.tabsRow}>
         {(Object.keys(TAB_LABELS) as Tab[]).map((t) => {
