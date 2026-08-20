@@ -70,18 +70,28 @@ import ProductMediaCarousel, { normalizeProductMedia } from "@/components/Produc
 
 const C = Colors.light;
 
-type CategoryTab = "all" | ServiceCategory;
+type CategoryTab = "all" | "services";
 
 const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
   { key: "all", label: "الرئيسية", icon: "home" },
+  { key: "services", label: "الخدمات", icon: "grid" },
+];
+
+const SERVICE_CATEGORY_TABS: {
+  key: ServiceCategory;
+  label: string;
+  icon: string;
+}[] = [
   { key: "home", label: "خدمات المنزل", icon: "home" },
   { key: "car", label: "خدمات السيارات", icon: "truck" },
   { key: "general", label: "خدمات طبية", icon: "activity" },
   { key: "delivery", label: "خدمات توصيل", icon: "navigation" },
 ];
 
-const SPECIALTY_FILTERS: Record<CategoryTab, { key: string; label: string; icon: string }[]> = {
-  all: [],
+const SPECIALTY_FILTERS: Record<
+  ServiceCategory,
+  { key: string; label: string; icon: string }[]
+> = {
   home: HOME_SERVICES,
   car: CAR_SERVICES,
   general: GENERAL_SERVICES,
@@ -553,6 +563,8 @@ export default function DashboardScreen() {
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("all");
+  const [activeServiceCategory, setActiveServiceCategory] =
+    useState<ServiceCategory>("home");
   const [activeSpecialty, setActiveSpecialty] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState("المستخدم");
@@ -815,10 +827,10 @@ export default function DashboardScreen() {
   const filteredArtisans = React.useMemo(() => {
     let result = [...artisans];
 
-    if (activeCategory !== "all") {
+    if (activeCategory === "services") {
       // Specialty sub-tabs: exclude clients, filter by category
       result = result.filter((a) => a.specialty !== "client");
-      result = result.filter((a) => a.category === activeCategory);
+      result = result.filter((a) => a.category === activeServiceCategory);
     }
     if (activeSpecialty !== "all") {
       result = result.filter((a) => a.specialty === activeSpecialty);
@@ -855,7 +867,14 @@ export default function DashboardScreen() {
     }
 
     return result;
-  }, [artisans, activeCategory, activeSpecialty, userLocation, searchQuery]);
+  }, [
+    artisans,
+    activeCategory,
+    activeServiceCategory,
+    activeSpecialty,
+    userLocation,
+    searchQuery,
+  ]);
 
   // Sort products:
   //   1. priorityScore desc  — promoted sellers (score=100) always top 3
@@ -885,7 +904,10 @@ export default function DashboardScreen() {
     );
   }, [sortedProducts, searchQuery]);
 
-  const specialtyFilters = SPECIALTY_FILTERS[activeCategory];
+  const specialtyFilters =
+    activeCategory === "services"
+      ? SPECIALTY_FILTERS[activeServiceCategory]
+      : [];
 
   return (
     <View style={styles.root}>
@@ -1077,6 +1099,9 @@ export default function DashboardScreen() {
                     setSearchQuery("");         // clear search when switching tabs
                     setActiveCategory(tab.key);
                     setActiveSpecialty("all");
+                      if (tab.key === "services") {
+                        setActiveServiceCategory("home");
+                      }
                   }}
                 >
                   <Feather
@@ -1090,6 +1115,50 @@ export default function DashboardScreen() {
                 </Pressable>
               ))}
             </ScrollView>
+
+            {activeCategory === "services" && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryTabs}
+                style={styles.serviceCategoryTabsWrapper}
+              >
+                {SERVICE_CATEGORY_TABS.map((tab) => (
+                  <Pressable
+                    key={tab.key}
+                    style={[
+                      styles.catTab,
+                      activeServiceCategory === tab.key && styles.catTabActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSearchQuery("");
+                      setActiveServiceCategory(tab.key);
+                      setActiveSpecialty("all");
+                    }}
+                  >
+                    <Feather
+                      name={tab.icon as any}
+                      size={14}
+                      color={
+                        activeServiceCategory === tab.key
+                          ? C.primary
+                          : C.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.catTabText,
+                        activeServiceCategory === tab.key &&
+                          styles.catTabTextActive,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
 
             {specialtyFilters.length > 0 && (
               <ScrollView
@@ -1385,6 +1454,12 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   categoryTabsWrapper: { backgroundColor: "#FFF", maxHeight: 54 },
+  serviceCategoryTabsWrapper: {
+    backgroundColor: "#FFF",
+    maxHeight: 54,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
   categoryTabs: {
     paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row",
   },
