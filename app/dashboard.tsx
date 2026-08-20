@@ -1095,14 +1095,14 @@ export default function DashboardScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryTabs}
+                contentContainerStyle={styles.serviceCategoryTabs}
                 style={styles.serviceCategoryTabsWrapper}
               >
                 {SERVICE_CATEGORY_TABS.map((tab) => (
                   <Pressable
                     key={tab.key}
                     style={[
-                      styles.catTab,
+                      styles.serviceCatTab,
                       activeServiceCategory === tab.key && styles.catTabActive,
                     ]}
                     onPress={() => {
@@ -1113,7 +1113,7 @@ export default function DashboardScreen() {
                   >
                     <Feather
                       name={tab.icon as any}
-                      size={14}
+                      size={12}
                       color={
                         activeServiceCategory === tab.key
                           ? C.primary
@@ -1122,7 +1122,7 @@ export default function DashboardScreen() {
                     />
                     <Text
                       style={[
-                        styles.catTabText,
+                        styles.serviceCatTabText,
                         activeServiceCategory === tab.key &&
                           styles.catTabTextActive,
                       ]}
@@ -1405,6 +1405,34 @@ const styles = StyleSheet.create({
     maxHeight: 54,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
+  },
+  serviceCategoryTabs: {
+    width: "100%",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 6,
+    flexDirection: "row",
+  },
+  serviceCatTab: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: C.background,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  serviceCatTabText: {
+    flexShrink: 1,
+    textAlign: "center",
+    fontSize: 11,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textSecondary,
   },
   categoryTabs: {
     paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row",
