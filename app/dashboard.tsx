@@ -79,10 +79,10 @@ const SERVICE_CATEGORY_TABS: {
   label: string;
   icon: string;
 }[] = [
-  { key: "home", label: "خدمات المنزل", icon: "home" },
-  { key: "car", label: "خدمات السيارات", icon: "truck" },
-  { key: "general", label: "خدمات طبية", icon: "activity" },
-  { key: "delivery", label: "خدمات توصيل", icon: "navigation" },
+  { key: "home", label: "منزل", icon: "home" },
+  { key: "car", label: "سيارات", icon: "truck" },
+  { key: "general", label: "طبية", icon: "activity" },
+  { key: "delivery", label: "توصيل", icon: "navigation" },
 ];
 
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
