@@ -42,10 +42,6 @@ import {
   type GeoLocation,
   type Product,
   type ProductMedia,
-  HOME_SERVICES,
-  CAR_SERVICES,
-  GENERAL_SERVICES,
-  DELIVERY_SERVICES,
   getSpecialtyLabel,
   isFeaturedActive,
   subscribeToUserChatLastAts,
@@ -87,16 +83,6 @@ const SERVICE_CATEGORY_TABS: {
   { key: "general", label: "خدمات طبية", icon: "activity" },
   { key: "delivery", label: "خدمات توصيل", icon: "navigation" },
 ];
-
-const SPECIALTY_FILTERS: Record<
-  ServiceCategory,
-  { key: string; label: string; icon: string }[]
-> = {
-  home: HOME_SERVICES,
-  car: CAR_SERVICES,
-  general: GENERAL_SERVICES,
-  delivery: DELIVERY_SERVICES,
-};
 
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -565,7 +551,6 @@ export default function DashboardScreen() {
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("all");
   const [activeServiceCategory, setActiveServiceCategory] =
     useState<ServiceCategory>("home");
-  const [activeSpecialty, setActiveSpecialty] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState("المستخدم");
   const [userRole, setUserRole] = useState<"client" | "artisan" | "admin">("client");
@@ -832,9 +817,6 @@ export default function DashboardScreen() {
       result = result.filter((a) => a.specialty !== "client");
       result = result.filter((a) => a.category === activeServiceCategory);
     }
-    if (activeSpecialty !== "all") {
-      result = result.filter((a) => a.specialty === activeSpecialty);
-    }
     // Contextual text search — name, profession, or phone number
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -871,7 +853,6 @@ export default function DashboardScreen() {
     artisans,
     activeCategory,
     activeServiceCategory,
-    activeSpecialty,
     userLocation,
     searchQuery,
   ]);
@@ -903,11 +884,6 @@ export default function DashboardScreen() {
         p.description?.toLowerCase().includes(q)
     );
   }, [sortedProducts, searchQuery]);
-
-  const specialtyFilters =
-    activeCategory === "services"
-      ? SPECIALTY_FILTERS[activeServiceCategory]
-      : [];
 
   return (
     <View style={styles.root}>
@@ -1081,7 +1057,7 @@ export default function DashboardScreen() {
 
       </LinearGradient>
 
-      {/* Category + specialty tabs — always visible */}
+      {/* Category tabs — always visible */}
       <View style={styles.stickyBar}>
             <ScrollView
               horizontal
@@ -1098,7 +1074,6 @@ export default function DashboardScreen() {
                     setFocusedProductId(null); // stop any playing video immediately
                     setSearchQuery("");         // clear search when switching tabs
                     setActiveCategory(tab.key);
-                    setActiveSpecialty("all");
                       if (tab.key === "services") {
                         setActiveServiceCategory("home");
                       }
@@ -1134,7 +1109,6 @@ export default function DashboardScreen() {
                       Haptics.selectionAsync();
                       setSearchQuery("");
                       setActiveServiceCategory(tab.key);
-                      setActiveSpecialty("all");
                     }}
                   >
                     <Feather
@@ -1160,34 +1134,6 @@ export default function DashboardScreen() {
               </ScrollView>
             )}
 
-            {specialtyFilters.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.specialtyFilters}
-                style={styles.specialtyFilterWrapper}
-              >
-                <Pressable
-                  style={[styles.specFilter, activeSpecialty === "all" && styles.specFilterActive]}
-                  onPress={() => { Haptics.selectionAsync(); setActiveSpecialty("all"); }}
-                >
-                  <Text style={[styles.specFilterText, activeSpecialty === "all" && styles.specFilterTextActive]}>
-                    الكل
-                  </Text>
-                </Pressable>
-                {specialtyFilters.map((sp) => (
-                  <Pressable
-                    key={sp.key}
-                    style={[styles.specFilter, activeSpecialty === sp.key && styles.specFilterActive]}
-                    onPress={() => { Haptics.selectionAsync(); setActiveSpecialty(sp.key); }}
-                  >
-                    <Text style={[styles.specFilterText, activeSpecialty === sp.key && styles.specFilterTextActive]}>
-                      {sp.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
           </View>
 
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
@@ -1474,15 +1420,6 @@ const styles = StyleSheet.create({
   },
   catTabText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   catTabTextActive: { color: C.primary },
-  specialtyFilterWrapper: { backgroundColor: "#FFF", maxHeight: 46, borderBottomWidth: 1, borderBottomColor: C.border },
-  specialtyFilters: { paddingHorizontal: 16, paddingVertical: 8, gap: 8, flexDirection: "row" },
-  specFilter: {
-    paddingHorizontal: 12, paddingVertical: 4, borderRadius: 14,
-    backgroundColor: C.background, borderWidth: 1, borderColor: C.border,
-  },
-  specFilterActive: { backgroundColor: "rgba(13,27,62,0.08)", borderColor: C.primary },
-  specFilterText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-  specFilterTextActive: { color: C.primary, fontFamily: "Cairo_600SemiBold" },
   listContent: { padding: 16, gap: 12 },
   listHeader: {
     flexDirection: "row", alignItems: "center",
