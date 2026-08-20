@@ -997,36 +997,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* ── Contextual search bar — above category tabs, inside header ── */}
-        {activeCategory !== "orders" && (
-          <View style={styles.searchBarRow}>
-            <Feather name="search" size={14} color="rgba(255,255,255,0.6)" />
-            <TextInput
-              style={styles.searchBarInput}
-              placeholder={
-                activeCategory === "all"
-                  ? "ابحث في المنتجات..."
-                  : "ابحث في الحرفيين..."
-              }
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              returnKeyType="search"
-              textAlign="right"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
-                style={styles.searchClearBtn}
-                hitSlop={8}
-                accessibilityLabel="مسح البحث"
-              >
-                <Feather name="x" size={14} color="rgba(255,255,255,0.7)" />
-              </Pressable>
-            )}
-          </View>
-        )}
-
       </LinearGradient>
 
       {/* Category tabs — always visible */}
@@ -1114,6 +1084,28 @@ export default function DashboardScreen() {
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
           {activeCategory === "all" && (
             <View style={styles.productsSubBar}>
+              <View style={styles.inlineSearchRow}>
+                <Feather name="search" size={14} color={C.textMuted} />
+                <TextInput
+                  style={styles.inlineSearchInput}
+                  placeholder="ابحث في المنتجات..."
+                  placeholderTextColor={C.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                  textAlign="right"
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable
+                    onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
+                    style={styles.searchClearBtn}
+                    hitSlop={8}
+                    accessibilityLabel="مسح البحث"
+                  >
+                    <Feather name="x" size={14} color={C.textMuted} />
+                  </Pressable>
+                )}
+              </View>
               <TouchableOpacity
                 style={styles.addProductBtn}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
@@ -1181,14 +1173,36 @@ export default function DashboardScreen() {
                   <ArtisanCard artisan={item} userLocation={userLocation} index={index} />
                 )}
                 ListHeaderComponent={
-                  filteredArtisans.length > 0 && userLocation ? (
-                    <View style={styles.listHeader}>
+                  <View style={styles.listHeader}>
+                    {filteredArtisans.length > 0 && userLocation && (
                       <View style={styles.sortedBadge}>
                         <Feather name="navigation" size={11} color={C.accent} />
                         <Text style={styles.sortedText}>مرتب حسب القرب</Text>
                       </View>
+                    )}
+                    <View style={styles.inlineSearchRow}>
+                      <Feather name="search" size={14} color={C.textMuted} />
+                      <TextInput
+                        style={styles.inlineSearchInput}
+                        placeholder="ابحث في الحرفيين..."
+                        placeholderTextColor={C.textMuted}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        returnKeyType="search"
+                        textAlign="right"
+                      />
+                      {searchQuery.length > 0 && (
+                        <Pressable
+                          onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
+                          style={styles.searchClearBtn}
+                          hitSlop={8}
+                          accessibilityLabel="مسح البحث"
+                        >
+                          <Feather name="x" size={14} color={C.textMuted} />
+                        </Pressable>
+                      )}
                     </View>
-                  ) : null
+                  </View>
                 }
                 ListEmptyComponent={
                   loading ? (
@@ -1552,26 +1566,25 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  // ── Products sub-header bar (fixed, pushes list down) ──
-  // ── Inline search bar ──────────────────────────────────────────────────────
-  searchBarRow: {
+  // ── Inline search bars ─────────────────────────────────────────────────────
+  inlineSearchRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.13)",
-    marginHorizontal: 14,
-    marginTop: 6,
-    marginBottom: 12,
-    borderRadius: 11,
-    paddingHorizontal: 13,
-    paddingVertical: Platform.OS === "ios" ? 10 : 7,
+    gap: 6,
+    backgroundColor: C.inputBg,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: Platform.OS === "ios" ? 8 : 5,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: C.border,
   },
-  searchBarInput: {
+  inlineSearchInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
-    color: "#FFF",
+    color: C.text,
     textAlign: "right",
     paddingVertical: 0,
   },
@@ -1581,8 +1594,9 @@ const styles = StyleSheet.create({
   productsSubBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingHorizontal: 0,
+    justifyContent: "space-between",
+    gap: 8,
+    paddingHorizontal: 12,
     paddingVertical: 9,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
