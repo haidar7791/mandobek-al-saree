@@ -12,7 +12,7 @@ let configured = false;
 // Background task: lets Android deliver/process remote pushes while the app is
 // backgrounded or fully killed (swiped away). Registering it is what makes the
 // system show the notification (and keep the data payload available for the
-// tap handler) even when no JS is running — the same mechanism WhatsApp relies
+// tap handler) even when no JS is running
 // on for its background push delivery on Android.
 export const BACKGROUND_NOTIFICATION_TASK = "BACKGROUND_NOTIFICATION_TASK";
 

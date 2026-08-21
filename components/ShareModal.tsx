@@ -1,7 +1,7 @@
 /**
  * ShareModal.tsx
  * Bottom-sheet that lets the user share content:
- *  - Externally via the device's native Share sheet (WhatsApp, Telegram, …)
+ *  - Externally via the device's native Share sheet
  *    → appends a forus:// deep link when deepLinkPath is provided
  *  - Internally by picking a recent chat and auto-sending:
  *    → a card message (thumbnail + title + "عرض" button) when cardImage/cardRoute provided

@@ -90,7 +90,7 @@ export default function ProfileScreen() {
   const [editPhone, setEditPhone] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
   const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
-  // OTP sub-modal (opens after WhatsApp OTP is sent)
+  // OTP sub-modal (opens after Firebase Phone Auth sends the code)
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);

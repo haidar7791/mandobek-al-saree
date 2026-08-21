@@ -9,3 +9,4 @@
 - [Firebase Storage rules publication](firebase-storage-rules-publication.md) — local Storage rules do not publish automatically; new upload paths 403 until rules are applied in Firebase
 - [Firebase Admin Storage bucket](firebase-admin-storage-bucket.md) — Admin service-account setup may omit the default bucket; derive it from Storage download URLs for server media jobs
 - [Video thumbnail seek time](video-thumbnail-seek-time.md) — extract at second 2 for new video thumbnails, not the commonly black first frame
+- [Firebase phone registration](phone-auth-registration.md) — phone signup must stay on the direct Firebase JS Phone Auth flow, including test numbers

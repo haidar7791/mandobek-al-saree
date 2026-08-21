@@ -453,268 +453,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ─── WhatsApp OTP via UltraMsg ───────────────────────────────────────────────
-
-  /** In-memory OTP store: E.164 phone → { code, expiresAt } (5-min TTL) */
-  const otpStore = new Map<string, { code: string; expiresAt: number }>();
-
-  function generateOtp(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  /**
-   * Convert any Iraqi phone input to E.164 (+9647xxxxxxxx).
-   * Handles: spaces/dashes/parens/plus signs, 00964/+964/964 prefix with
-   * optional redundant leading zero (e.g. 96407… → +9647…), and bare
-   * local formats (07…, 7…).
-   */
-  function toE164Server(phone: string): string {
-    // Strip everything that isn't a digit
-    const t = phone.trim().replace(/[\s\-()+]/g, "");
-
-    if (t.startsWith("00964")) {
-      const rest = t.slice(5);                          // digits after 00964
-      return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
-    }
-    if (t.startsWith("964")) {
-      const rest = t.slice(3);                          // digits after 964
-      return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
-    }
-    if (t.startsWith("07")) return "+964" + t.slice(1); // 07… → +9647…
-    if (t.startsWith("0"))  return "+964" + t.slice(1); // 0…  → +964…
-    if (t.startsWith("7"))  return "+964" + t;           // 7…  → +9647…
-    return "+964" + t;
-  }
-
-  /**
-   * POST /api/send-whatsapp-otp
-   * Body: { phone: string }
-   * Generates a 6-digit OTP, stores it for 5 minutes, and sends it via UltraMsg.
-   */
-  app.post("/api/send-whatsapp-otp", async (req: Request, res: Response) => {
-    const { phone, forRegistration } = req.body as { phone: string; forRegistration?: boolean };
-    if (!phone) {
-      res.status(400).json({ error: "phone is required" });
-      return;
-    }
-
-    const e164   = toE164Server(phone);
-    const waPhone = e164.replace(/^\+/, ""); // UltraMsg wants no leading +
-
-    // ── Duplicate check for new registrations ───────────────────────────────
-    if (forRegistration) {
-      try {
-        const admin = await getAdminApp();
-        const { getAuth } = await import("firebase-admin/auth");
-        await getAuth(admin).getUserByPhoneNumber(e164);
-        // Reached here → user already exists
-        res.status(409).json({ ok: false, error: "الحساب موجود بالفعل، يرجى تسجيل الدخول", exists: true });
-        return;
-      } catch (authErr: any) {
-        if (authErr.code !== "auth/user-not-found") {
-          // Unexpected error (network, config, etc.)
-          console.error("[WhatsApp OTP] duplicate-check error:", authErr);
-          res.status(500).json({ error: "تعذّر التحقق من الحساب — حاول مجدداً" });
-          return;
-        }
-        // auth/user-not-found → no existing account → proceed
-      }
-    }
-
-    // Clean stale entries then generate fresh OTP
-    const now = Date.now();
-    for (const [k, v] of otpStore) if (v.expiresAt < now) otpStore.delete(k);
-
-    const code = generateOtp();
-    otpStore.set(e164, { code, expiresAt: now + 5 * 60 * 1000 });
-
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
-
-    if (!phoneNumberId || !accessToken) {
-      console.error("[WhatsApp OTP] WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN not set");
-      otpStore.delete(e164);
-      res.status(503).json({ error: "خدمة الرسائل غير مهيأة — يرجى التواصل مع الدعم" });
-      return;
-    }
-
-    // waPhone is E.164 without leading + (Meta API format)
-    console.log(`[WhatsApp OTP] sending to ${e164} via Meta Cloud API`);
-    try {
-      const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
-
-      const msgBody = templateName
-        // ── Template message (production: pre-approved OTP template) ──
-        ? {
-            messaging_product: "whatsapp",
-            to: waPhone,
-            type: "template",
-            template: {
-              name: templateName,
-              language: { code: "ar" },
-              components: [{
-                type: "body",
-                parameters: [{ type: "text", text: code }],
-              }],
-            },
-          }
-        // ── Text message (testing / open conversations) ──
-        : {
-            messaging_product: "whatsapp",
-            to: waPhone,
-            type: "text",
-            text: { body: `رمز التحقق الخاص بك في تطبيق فورس هو: *${code}*\nصالح لمدة 5 دقائق ⏱` },
-          };
-
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(msgBody),
-        }
-      );
-      const data = await response.json() as any;
-      console.log("[WhatsApp OTP] Meta API status:", response.status);
-      console.log("[WhatsApp OTP] Meta API response:", JSON.stringify(data));
-
-      if (!response.ok || data?.error) {
-        throw new Error(
-          data?.error?.message ?? `Meta API HTTP ${response.status}: ${JSON.stringify(data)}`
-        );
-      }
-
-      res.json({ ok: true });
-    } catch (err: any) {
-      console.error("[WhatsApp OTP] send error:", err);
-      otpStore.delete(e164);
-      res.status(500).json({ error: err.message ?? "فشل إرسال رمز التحقق" });
-    }
-  });
-
-  /**
-   * POST /api/verify-whatsapp-otp
-   * Body: { phone: string, code: string }
-   * Validates the OTP, then gets-or-creates a Firebase Auth user and returns a custom token.
-   */
-  app.post("/api/verify-whatsapp-otp", async (req: Request, res: Response) => {
-    const { phone, code, password, forRegistration } = req.body as {
-      phone: string; code: string; password?: string; forRegistration?: boolean;
-    };
-    if (!phone || !code) {
-      res.status(400).json({ error: "phone and code are required" });
-      return;
-    }
-
-    const e164  = toE164Server(phone);
-    const entry = otpStore.get(e164)!;
-
-    if (!entry) {
-      res.status(400).json({ error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
-      return;
-    }
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(e164);
-      res.status(400).json({ error: "انتهت صلاحية الرمز — اطلب رمزاً جديداً" });
-      return;
-    }
-    if (entry.code !== code.trim()) {
-      res.status(400).json({ error: "الرمز غير صحيح — تحقق وأعد المحاولة" });
-      return;
-    }
-
-    // OTP valid — consume it (single-use)
-    otpStore.delete(e164);
-
-    try {
-      const admin = await getAdminApp();
-      const { getAuth } = await import("firebase-admin/auth");
-
-      // Fake-email used for password-based login compatibility (matches client toFirebaseEmail)
-      const rawLocal  = e164ToIraqiLocal(e164); // 07xxxxxxxx
-      const fakeEmail = `${rawLocal}@sanad.app`;
-      const passwordValue: string = String(password ?? "");
-      const safePass  = passwordValue.length >= 6 ? passwordValue : undefined;
-
-      let uid: string;
-      try {
-        const existing = await getAuth(admin).getUserByPhoneNumber(e164);
-        uid = existing.uid;
-        // On registration: ensure the user has fake-email + password for signInWithEmailAndPassword
-        if (forRegistration && safePass) {
-          await getAuth(admin).updateUser(uid, {
-            email: fakeEmail,
-            emailVerified: true,
-            password: safePass,
-          }).catch(() => {/* non-fatal if email already claimed */});
-        }
-      } catch (notFound: any) {
-        if (notFound.code !== "auth/user-not-found") throw notFound;
-        // New user — create with phone + fake-email + password for dual-auth
-        const created = await getAuth(admin).createUser({
-          phoneNumber: e164,
-          ...(safePass ? {
-            email: fakeEmail,
-            emailVerified: true,
-            password: safePass,
-          } : {}),
-        });
-        uid = created.uid;
-      }
-
-      const customToken = await getAuth(admin).createCustomToken(uid);
-      res.json({ ok: true, customToken, uid, e164 });
-    } catch (err: any) {
-      console.error("[WhatsApp OTP] verify error:", err);
-      res.status(500).json({ error: err.message ?? "فشل التحقق من الرمز" });
-    }
-  });
-
-  /**
-   * POST /api/verify-otp-only
-   * Body: { phone: string, code: string }
-   *
-   * Validates a WhatsApp OTP without creating or modifying any Firebase Auth user.
-   * Used by the profile screen to verify a new phone number before persisting it.
-   */
-  app.post("/api/verify-otp-only", async (req: Request, res: Response) => {
-    res.status(410).json({
-      ok: false,
-      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
-    });
-    return;
-    const { phone, code } = req.body as { phone: string; code: string };
-    if (!phone || !code) {
-      res.status(400).json({ ok: false, error: "phone and code are required" });
-      return;
-    }
-    const e164  = toE164Server(phone);
-    const entry = otpStore.get(e164)!;
-    if (!entry) {
-      res.status(400).json({ ok: false, error: "لم يُرسل رمز لهذا الرقم — أرسل رمزاً جديداً" });
-      return;
-    }
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(e164);
-      res.status(400).json({ ok: false, error: "انتهت صلاحية الرمز — اطلب رمزاً جديداً" });
-      return;
-    }
-    if (entry.code !== code.trim()) {
-      res.status(400).json({ ok: false, error: "الرمز غير صحيح — تحقق وأعد المحاولة" });
-      return;
-    }
-    // Valid — consume (single-use)
-    otpStore.delete(e164);
-    res.json({ ok: true });
-  });
-
   // ─── Email OTP ───────────────────────────────────────────────────────────────
 
   /** In-memory Email OTP store: email → { code, expiresAt } (5-min TTL) */
   const emailOtpStore = new Map<string, { code: string; expiresAt: number }>();
+
+  function generateOtp(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 
   /**
    * POST /api/send-email-otp
@@ -881,7 +627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return "https://forus-backend-laoeoqcoza-ew.a.run.app";
   }
 
-  // ─── Reset-password web page (opened from the link in WhatsApp / email) ─────
+  // ─── Reset-password web page ───────────────────────────────────────────────
   /**
    * GET /reset-password?token=<token>
    *
@@ -1017,11 +763,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/forgot-password
-   * Body: { identifier: string }  — E.164 phone or email address
+   * Body: { identifier: string }  — email address
    *
    * 1. Checks that the account exists in Firebase Auth.
    * 2. Generates a 40-char secure token (15-min TTL).
-   * 3. Sends the reset link via WhatsApp (phone) or email.
+   * 3. Sends the reset link via email.
    */
   app.post("/api/forgot-password", async (req: Request, res: Response) => {
     const { identifier } = req.body as { identifier?: string };
@@ -1031,12 +777,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const trimmed = identifier.trim();
-    const isPhone = /^[\d\+]/.test(trimmed) && !trimmed.includes("@");
-
-    if (isPhone) {
+    if (/^[\d\+]/.test(trimmed) && !trimmed.includes("@")) {
       res.status(410).json({
         ok: false,
-        error: "تم إيقاف إعادة تعيين الهاتف عبر الخادم — استخدم Firebase Phone Auth داخل التطبيق",
+        error: "إعادة تعيين كلمة مرور الهاتف تتم عبر Firebase Phone Auth داخل التطبيق",
       });
       return;
     }
@@ -1047,36 +791,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let uid: string;
 
-      if (isPhone) {
-        const e164 = toE164Server(trimmed);
-        try {
-          const user = await getAuth(admin).getUserByPhoneNumber(e164);
-          uid = user.uid;
-        } catch {
-          // Also try the fake-email pattern
-          const rawLocal = e164ToIraqiLocal(e164);
-          const fakeEmail = `${rawLocal}@sanad.app`;
-          try {
-            const user = await getAuth(admin).getUserByEmail(fakeEmail);
-            uid = user.uid;
-          } catch {
-            res.status(404).json({ error: "رقم الهاتف غير مسجل في النظام" });
-            return;
-          }
-        }
-      } else {
-        // email path
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-          res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
-          return;
-        }
-        try {
-          const user = await getAuth(admin).getUserByEmail(trimmed.toLowerCase());
-          uid = user.uid;
-        } catch {
-          res.status(404).json({ error: "البريد الإلكتروني غير مسجل في النظام" });
-          return;
-        }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
+        return;
+      }
+      try {
+        const user = await getAuth(admin).getUserByEmail(trimmed.toLowerCase());
+        uid = user.uid;
+      } catch {
+        res.status(404).json({ error: "البريد الإلكتروني غير مسجل في النظام" });
+        return;
       }
 
       // Clean stale tokens
@@ -1087,51 +811,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       resetTokenStore.set(token, {
         uid,
         identifier: trimmed,
-        type: isPhone ? "phone" : "email",
+        type: "email",
         expiresAt: now + 15 * 60 * 1000,
       });
 
       const resetLink = `${getResetLinkBase()}/reset-password?token=${token}`;
       console.log(`[ForgotPassword] token for uid=${uid} link=${resetLink}`);
 
-      if (isPhone) {
-        // ── Send via Meta WhatsApp Cloud API ──
-        const e164    = toE164Server(trimmed);
-        const waPhone = e164.replace(/^\+/, ""); // E.164 without leading +
-        const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-        const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
-
-        if (!phoneNumberId || !accessToken) {
-          res.status(503).json({ error: "خدمة WhatsApp غير مهيأة — يرجى التواصل مع الدعم" });
-          return;
-        }
-
-        const waBody =
-          `مرحباً، تم طلب إعادة تعيين كلمة المرور لحسابك في تطبيق فورس.\n` +
-          `انقر على الرابط لإعادة تعيين كلمة المرور (صالح 15 دقيقة):\n${resetLink}`;
-
-        const waRes = await fetch(
-          `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messaging_product: "whatsapp",
-              to: waPhone,
-              type: "text",
-              text: { body: waBody },
-            }),
-          }
-        );
-        const waData = await waRes.json() as any;
-        if (!waRes.ok || waData?.error) {
-          throw new Error(waData?.error?.message ?? `Meta API HTTP ${waRes.status}: ${JSON.stringify(waData)}`);
-        }
-        console.log(`[ForgotPassword] WhatsApp reset link sent to ${e164} via Meta Cloud API`);
-      } else {
+      {
         // ── Send via Email ──
         const emailUser = process.env.EMAIL_USER;
         const emailPass = process.env.EMAIL_PASS;
