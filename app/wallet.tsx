@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,8 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { auth } from "@/lib/firebase";
+import * as Clipboard from "expo-clipboard";
+import { app, auth } from "@/lib/firebase";
 import {
   getBalance,
   getWalletRequestsByUser,
@@ -142,9 +143,47 @@ export default function WalletScreen() {
   const [amount, setAmount] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [depositAccounts, setDepositAccounts] = useState({
+    zainCash: ZAIN_CASH,
+    superKey: SUPER_KEY_CARD,
+  });
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
+
+  // Remote Config is web-only in the Firebase JS SDK. Keep native Expo Go
+  // builds on the verified fallback numbers and load overrides on web.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    let mounted = true;
+    (async () => {
+      try {
+        const { getRemoteConfig, fetchAndActivate, getString } =
+          await import("firebase/remote-config");
+        const remoteConfig = getRemoteConfig(app);
+        remoteConfig.settings = {
+          minimumFetchIntervalMillis: 60 * 60 * 1000,
+          fetchTimeoutMillis: 5000,
+        };
+        await fetchAndActivate(remoteConfig);
+        if (!mounted) return;
+        setDepositAccounts({
+          zainCash: getString(remoteConfig, "wallet_zain_cash") || ZAIN_CASH,
+          superKey: getString(remoteConfig, "wallet_super_key") || SUPER_KEY_CARD,
+        });
+      } catch (error) {
+        // Remote Config is optional; fallback values must keep deposits usable.
+        console.warn("[Wallet] Remote Config unavailable; using fallback accounts", error);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const copyAccount = async (value: string) => {
+    await Clipboard.setStringAsync(value);
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("تم النسخ!", "تم نسخ رقم الحساب إلى الحافظة.");
+  };
 
   const loadData = useCallback(async () => {
     const user = auth.currentUser;
@@ -292,16 +331,34 @@ export default function WalletScreen() {
               <View style={styles.bannerRow}>
                 <MaterialCommunityIcons name="cellphone" size={14} color={C.textSecondary} />
                 <Text style={styles.bannerAccount}>
-                  زين كاش: <Text style={styles.bannerNum}>{ZAIN_CASH}</Text>
+                  زين كاش: <Text style={styles.bannerNum}>{depositAccounts.zainCash}</Text>
                 </Text>
+                <Pressable
+                  style={styles.copyBtn}
+                  onPress={() => copyAccount(depositAccounts.zainCash)}
+                  accessibilityRole="button"
+                  accessibilityLabel="نسخ رقم زين كاش"
+                >
+                  <Feather name="copy" size={13} color={C.primary} />
+                  <Text style={styles.copyBtnText}>نسخ</Text>
+                </Pressable>
               </View>
               <View style={styles.bannerRow}>
                 <View style={styles.superKeyBadge}>
                   <MaterialCommunityIcons name="credit-card-chip" size={12} color={C.primary} />
                 </View>
                 <Text style={styles.bannerAccount}>
-                  بطاقة إئتمان سوبر كي: <Text style={styles.bannerNum}>{SUPER_KEY_CARD}</Text>
+                   بطاقة إئتمان سوبر كي: <Text style={styles.bannerNum}>{depositAccounts.superKey}</Text>
                 </Text>
+                <Pressable
+                  style={styles.copyBtn}
+                  onPress={() => copyAccount(depositAccounts.superKey)}
+                  accessibilityRole="button"
+                  accessibilityLabel="نسخ رقم بطاقة سوبر كي"
+                >
+                  <Feather name="copy" size={13} color={C.primary} />
+                  <Text style={styles.copyBtnText}>نسخ</Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -541,6 +598,14 @@ const styles = StyleSheet.create({
   },
   bannerNum: {
     fontFamily: "Cairo_700Bold", color: C.accent,
+  },
+  copyBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: C.accent, borderRadius: 7,
+    paddingVertical: 4, paddingHorizontal: 7,
+  },
+  copyBtnText: {
+    fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary,
   },
   superKeyBadge: {
     width: 18, height: 18, borderRadius: 5,

@@ -1377,8 +1377,22 @@ export const getWalletRequestsByUser = async (userId: string): Promise<WalletReq
 export const createWalletRequest = async (
   req: Omit<WalletRequest, "id" | "createdAt" | "status">
 ): Promise<string> => {
-  const docRef = await addDoc(collection(db, "walletRequests"), {
+  // Create the ID first so a receipt can be stored at a stable, user-owned path.
+  const docRef = doc(collection(db, "walletRequests"));
+  let receiptUrl = req.imageUri;
+
+  if (req.imageUri) {
+    const response = await fetch(req.imageUri);
+    if (!response.ok) throw new Error(`wallet receipt fetch failed: ${response.status}`);
+    const blob = await response.blob();
+    const receiptRef = ref(storage, `walletReceipts/${req.userId}/${docRef.id}.jpg`);
+    await uploadBytes(receiptRef, blob, { contentType: blob.type || "image/jpeg" });
+    receiptUrl = await getDownloadURL(receiptRef);
+  }
+
+  await setDoc(docRef, {
     ...req,
+    imageUri: receiptUrl,
     status: "pending",
     createdAt: new Date().toISOString(),
   });
