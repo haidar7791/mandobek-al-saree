@@ -219,7 +219,6 @@ export default function StoryCreatorScreen() {
               resizeMode={ResizeMode.COVER}
               shouldPlay
               isLooping
-              isMuted
               useNativeControls={false}
             />
           ) : (
