@@ -21,18 +21,8 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-na
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import {
-  EmailAuthProvider,
-  linkWithCredential,
-  signInWithPhoneNumber,
-  signInWithCustomToken,
-  type ConfirmationResult,
-} from "firebase/auth";
+import { signInWithCustomToken } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import FirebaseRecaptcha, {
-  type FirebaseRecaptchaHandle,
-  getPhoneAuthErrorMessage,
-} from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
   getCategoryForSpecialty,
@@ -184,6 +174,37 @@ function requireIraqiMobileE164(phone: string): string {
   return normalized;
 }
 
+async function fetchWithTimeout(
+  url: string,
+  options: Parameters<typeof fetch>[1],
+  timeoutMs = 15000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      const timeoutError: any = new Error("انتهت مهلة الاتصال بالخادم (15 ثانية)");
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function otpNetworkError(error: any): string {
+  if (error?.code === "timeout") {
+    return "تعذّر الاتصال بخادم التحقق خلال 15 ثانية. تحقق من الإنترنت واضغط إعادة المحاولة.";
+  }
+  if (error?.message?.includes("Network request failed") || error?.message?.includes("Failed to fetch")) {
+    return "تعذّر الاتصال بخادم التحقق. تحقق من الإنترنت واضغط إعادة المحاولة.";
+  }
+  return error?.message || "تعذّر إرسال رمز التحقق، حاول مجدداً.";
+}
+
 
 const C = Colors.light;
 
@@ -327,7 +348,6 @@ export default function RegisterScreen() {
   const [regOtpCode, setRegOtpCode] = useState("");
   const [regOtpSending, setRegOtpSending] = useState(false);
   const [regOtpVerifying, setRegOtpVerifying] = useState(false);
-  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
   const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
 
   // ── Email OTP flow ──
@@ -339,7 +359,6 @@ export default function RegisterScreen() {
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
-  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   // ── Explicit auth method toggle ──
   const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
@@ -371,8 +390,14 @@ export default function RegisterScreen() {
       return;
     }
     const rawContact = contact.trim();
+    if (isPhone && !/^\+?[\d\s()-]+$/.test(rawContact)) {
+      Alert.alert("صيغة الرقم غير صحيحة", "أدخل رقم الهاتف العراقي بصيغة 07XXXXXXXX ثم أعد المحاولة.");
+      return;
+    }
     if (!isValidContact(rawContact)) {
-      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح أو رقم هاتف صحيح");
+      Alert.alert("خطأ", isPhone
+        ? "يرجى إدخال رقم هاتف عراقي صحيح بصيغة 07XXXXXXXX"
+        : "يرجى إدخال بريد إلكتروني صحيح");
       return;
     }
     if (!specialty) {
@@ -386,26 +411,32 @@ export default function RegisterScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (authMethod === "phone") {
-        // ── Phone registration: send OTP through Firebase Phone Auth ──
+      // ── Phone registration: Cloud Run / API OTP ──
       setRegOtpSending(true);
       try {
         const location = await requestLocation();
         setSavedLocation(location);
-          const verifier = recaptchaRef.current?.verifier;
-          if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
-          const confirmation = await signInWithPhoneNumber(
-            auth,
-            requireIraqiMobileE164(rawContact),
-            verifier,
-          );
-          setPhoneConfirmation(confirmation);
+        const phone = requireIraqiMobileE164(rawContact);
+        const endpoint = `${getServerUrl()}api/send-whatsapp-otp`;
+        const res = await fetchWithTimeout(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, forRegistration: true }),
+        });
+        const data = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "فشل إرسال رمز التحقق");
+        }
         setRegOtpCode("");
         setRegOtpStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err: any) {
         console.error("[OTP-Register] send error:", err?.message ?? err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("خطأ", getPhoneAuthErrorMessage(err));
+        Alert.alert("تعذّر إرسال رمز التحقق", otpNetworkError(err), [
+          { text: "إغلاق", style: "cancel" },
+          { text: "إعادة المحاولة", onPress: () => void handleRegister() },
+        ]);
       } finally {
         setRegOtpSending(false);
       }
@@ -446,7 +477,7 @@ export default function RegisterScreen() {
     }
   };
 
-  // ─── Verify Firebase Phone OTP and complete registration ──────────────────
+  // ─── Verify API phone OTP and complete registration ───────────────────────
 
   const handleVerifyRegisterOtp = async () => {
     if (regOtpCode.length !== 6) return;
@@ -457,20 +488,25 @@ export default function RegisterScreen() {
 
     setRegOtpVerifying(true);
     try {
-      if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
-      const credential = await phoneConfirmation.confirm(regOtpCode);
-      const uid = credential.user.uid;
-
-      // Preserve the app's existing phone-to-email login compatibility by
-      // linking a real password provider after Phone Auth confirms the number.
-      try {
-        await linkWithCredential(
-          credential.user,
-          EmailAuthProvider.credential(toFirebaseEmail(rawContact), password),
-        );
-      } catch (linkErr: any) {
-        if (linkErr?.code !== "auth/provider-already-linked") throw linkErr;
+      const endpoint = `${getServerUrl()}api/verify-whatsapp-otp`;
+      const res = await fetchWithTimeout(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: e164,
+          code: regOtpCode,
+          password,
+          forRegistration: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; customToken?: string; uid?: string; error?: string;
+      };
+      if (!res.ok || !data.ok || !data.customToken) {
+        throw new Error(data.error || "الرمز غير صحيح أو منتهي الصلاحية");
       }
+      const credential = await signInWithCustomToken(auth, data.customToken);
+      const uid = credential.user.uid;
 
       // Create Firestore user document after the phone identity is confirmed.
       await ensureUserDocument(uid, e164, role, {
@@ -485,7 +521,10 @@ export default function RegisterScreen() {
     } catch (err: any) {
       console.error("[OTP-Register] verify error:", err?.message ?? err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", err?.message ?? "تعذّر التحقق من الرمز — يرجى المحاولة مجدداً");
+      Alert.alert("تعذّر التحقق", otpNetworkError(err), [
+        { text: "إغلاق", style: "cancel" },
+        { text: "إعادة المحاولة", onPress: () => void handleVerifyRegisterOtp() },
+      ]);
     } finally {
       setRegOtpVerifying(false);
     }
@@ -760,9 +799,7 @@ export default function RegisterScreen() {
         </View>
       </Modal>
 
-      {isPhone && <FirebaseRecaptcha ref={recaptchaRef} />}
-
-      {/* ── OTP modal: Firebase SMS (phone) ── */}
+      {/* ── OTP modal: Cloud Run phone OTP ── */}
       <Modal
         visible={regOtpStep === "otp"}
         transparent

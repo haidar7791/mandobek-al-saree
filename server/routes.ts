@@ -492,11 +492,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Generates a 6-digit OTP, stores it for 5 minutes, and sends it via UltraMsg.
    */
   app.post("/api/send-whatsapp-otp", async (req: Request, res: Response) => {
-    res.status(410).json({
-      ok: false,
-      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
-    });
-    return;
     const { phone, forRegistration } = req.body as { phone: string; forRegistration?: boolean };
     if (!phone) {
       res.status(400).json({ error: "phone is required" });
@@ -606,11 +601,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Validates the OTP, then gets-or-creates a Firebase Auth user and returns a custom token.
    */
   app.post("/api/verify-whatsapp-otp", async (req: Request, res: Response) => {
-    res.status(410).json({
-      ok: false,
-      error: "تم إيقاف WhatsApp OTP — استخدم Firebase Phone Auth داخل التطبيق",
-    });
-    return;
     const { phone, code, password, forRegistration } = req.body as {
       phone: string; code: string; password?: string; forRegistration?: boolean;
     };
