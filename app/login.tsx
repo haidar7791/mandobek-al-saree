@@ -438,6 +438,7 @@ export default function LoginScreen() {
     setForgotSending(true);
     try {
       if (isPhoneInput(id)) {
+        setLoading(true);
         let registered = false;
         try {
           registered = await withTimeout(phoneIsRegistered(id), PHONE_OTP_TIMEOUT_MS, "phone lookup");
@@ -445,6 +446,7 @@ export default function LoginScreen() {
           throw new Error("تعذّر التحقق من الرقم حالياً، تحقق من الاتصال وأعد المحاولة");
         }
         if (!registered) {
+          setLoading(false);
           Alert.alert("الرقم غير مسجل", "هذا الرقم غير مسجل، يرجى إنشاء حساب جديد");
           return;
         }
@@ -489,6 +491,7 @@ export default function LoginScreen() {
         : "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
       setForgotSending(false);
+      if (isPhoneInput(id)) setLoading(false);
     }
   };
 

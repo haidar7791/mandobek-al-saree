@@ -28,7 +28,8 @@ import {
   signInWithCustomToken,
   type ConfirmationResult,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import FirebaseRecaptcha, {
   type FirebaseRecaptchaHandle,
   getPhoneAuthErrorMessage,
@@ -182,6 +183,17 @@ function requireIraqiMobileE164(phone: string): string {
     throw new Error("يرجى إدخال رقم هاتف عراقي محمول صحيح بصيغة +9647xxxxxxxxx");
   }
   return normalized;
+}
+
+async function phoneIsRegistered(phone: string): Promise<boolean> {
+  const normalized = requireIraqiMobileE164(phone);
+  const candidates = Array.from(new Set([phone.trim(), normalized]));
+  const snapshots = await Promise.all(
+    candidates.map((value) =>
+      getDocs(query(collection(db, "users"), where("phone", "==", value))),
+    ),
+  );
+  return snapshots.some((snapshot) => !snapshot.empty);
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -406,7 +418,18 @@ export default function RegisterScreen() {
     if (authMethod === "phone") {
       // ── Phone registration: Firebase Phone Auth ──
       setRegOtpSending(true);
+      setLoading(true);
       try {
+        const registered = await withTimeout(
+          phoneIsRegistered(rawContact),
+          PHONE_OTP_TIMEOUT_MS,
+        );
+        if (registered) {
+          setLoading(false);
+          Alert.alert("لديك حساب بالفعل", "لديك حساب بالفعل، يرجى تسجيل الدخول");
+          return;
+        }
+
         const location = await requestLocation();
         setSavedLocation(location);
         const phone = requireIraqiMobileE164(rawContact);
@@ -432,6 +455,7 @@ export default function RegisterScreen() {
         ]);
       } finally {
         setRegOtpSending(false);
+        setLoading(false);
       }
     } else {
       // ── Email registration: send OTP to email ──
