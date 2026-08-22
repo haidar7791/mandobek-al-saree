@@ -140,6 +140,15 @@ function isPhoneInput(s: string): boolean {
   return /^[\d\+]/.test(t) && !t.includes("@");
 }
 
+/** Removes punctuation/+ and keeps phone input in Iraqi international digits. */
+function sanitizePhoneInput(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00964")) return digits.slice(2);
+  if (digits.startsWith("964")) return digits;
+  if (digits.startsWith("0")) return `964${digits.slice(1)}`;
+  return digits;
+}
+
 /** Validates that the contact is either a non-empty email or a phone (min 7 digits) */
 function isValidContact(s: string): boolean {
   const t = s.trim();
@@ -161,7 +170,7 @@ function toFirebaseEmail(contact: string): string {
  *   7xxxxxxxx                              → +9647xxxxxxxx
  */
 function toE164(phone: string): string {
-  const t = phone.trim().replace(/[^\d]/g, "");
+  const t = sanitizePhoneInput(phone);
 
   if (t.startsWith("00964")) {
     const rest = t.slice(5);
@@ -187,7 +196,15 @@ function requireIraqiMobileE164(phone: string): string {
 
 async function phoneIsRegistered(phone: string): Promise<boolean> {
   const normalized = requireIraqiMobileE164(phone);
+  const internationalDigits = normalized.slice(1);
+  const local = `0${internationalDigits.slice(3)}`;
+  const candidates = [local, normalized, internationalDigits];
   const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
+  console.log("[PhoneLookup][register]", {
+    input: phone,
+    candidates,
+    userDocument: snapshot.exists() ? snapshot.data() : null,
+  });
   return snapshot.exists();
 }
 
@@ -649,11 +666,11 @@ export default function RegisterScreen() {
                 </View>
                 <TextInput
                   ref={contactRef}
-                  style={styles.input}
+                  style={[styles.input, isPhone && styles.phoneInput]}
                   placeholder={isPhone ? "07xxxxxxxxxx" : "example@email.com"}
                   placeholderTextColor={C.textMuted}
                   value={contact}
-                  onChangeText={setContact}
+                   onChangeText={(value) => setContact(isPhone ? sanitizePhoneInput(value) : value)}
                   keyboardType={contactKeyboardType}
                   textAlign="right"
                   textAlignVertical="center"
@@ -960,6 +977,7 @@ const styles = StyleSheet.create({
     flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
     color: C.text, paddingVertical: 13, textAlign: "right",
   },
+  phoneInput: { writingDirection: "ltr", textAlign: "left" },
   eyeBtn: { padding: 6 },
   phoneNote: {
     flexDirection: "row", alignItems: "center", gap: 8,

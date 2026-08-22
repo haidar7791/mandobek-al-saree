@@ -262,7 +262,6 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
     verifier: verifierRef.current,
     reset() {
       verifierRef.current.reset();
-      setWebviewKey((k) => k + 1);
     },
   }));
 

@@ -65,6 +65,15 @@ function isPhoneInput(s: string): boolean {
   return /^[\d\+]/.test(t) && !t.includes("@");
 }
 
+/** Removes punctuation/+ and keeps phone input in Iraqi international digits. */
+function sanitizePhoneInput(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00964")) return digits.slice(2);
+  if (digits.startsWith("964")) return digits;
+  if (digits.startsWith("0")) return `964${digits.slice(1)}`;
+  return digits;
+}
+
 function toFirebaseEmail(contact: string): string {
   const trimmed = contact.trim().toLowerCase();
   if (trimmed.includes("@")) return trimmed;
@@ -76,7 +85,7 @@ function toFirebaseEmail(contact: string): string {
  * 07xxxxxxxx → +9647xxxxxxxx
  */
 function toE164(phone: string): string {
-  const t = phone.trim().replace(/[^\d]/g, "");
+  const t = sanitizePhoneInput(phone);
   if (t.startsWith("00964")) return "+" + t.slice(2);
   if (t.startsWith("964")) return "+" + t;
   if (t.startsWith("07")) return "+964" + t.slice(1);
@@ -94,7 +103,15 @@ function requireIraqiMobileE164(phone: string): string {
 
 async function phoneIsRegistered(phone: string): Promise<boolean> {
   const normalized = requireIraqiMobileE164(phone);
+  const internationalDigits = normalized.slice(1);
+  const local = `0${internationalDigits.slice(3)}`;
+  const candidates = [local, normalized, internationalDigits];
   const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
+  console.log("[PhoneLookup][login]", {
+    input: phone,
+    candidates,
+    userDocument: snapshot.exists() ? snapshot.data() : null,
+  });
   return snapshot.exists();
 }
 
@@ -193,7 +210,7 @@ function InputField({
         <View style={styles.inputIcon}>{icon}</View>
         <TextInput
           ref={innerRef}
-          style={styles.input}
+          style={[styles.input, isPhoneInput(value) && styles.phoneInput]}
           placeholder={placeholder}
           placeholderTextColor={C.textMuted}
           value={value}
@@ -622,7 +639,7 @@ export default function LoginScreen() {
               label="البريد الإلكتروني أو رقم الهاتف"
               placeholder="example@email.com أو 07xxxxxxxx"
               value={contact}
-              onChangeText={setContact}
+              onChangeText={(value) => setContact(isPhoneInput(value) ? sanitizePhoneInput(value) : value)}
               icon={<Feather name="user" size={18} color={C.textSecondary} />}
               keyboardType={contactKeyboardType}
               onSubmitEditing={() => passwordRef.current?.focus()}
@@ -737,11 +754,13 @@ export default function LoginScreen() {
                     <Feather name="user" size={18} color={C.textSecondary} />
                   </View>
                   <TextInput
-                    style={styles.input}
+                     style={[styles.input, isPhoneInput(forgotIdentifier) && styles.phoneInput]}
                     placeholder="07xxxxxxxxxx أو example@email.com"
                     placeholderTextColor={C.textMuted}
                     value={forgotIdentifier}
-                    onChangeText={setForgotIdentifier}
+                     onChangeText={(value) => setForgotIdentifier(
+                       isPhoneInput(value) ? sanitizePhoneInput(value) : value,
+                     )}
                     keyboardType="default"
                     textAlign="right"
                     autoCapitalize="none"
@@ -906,6 +925,7 @@ const styles = StyleSheet.create({
     flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
     color: C.text, paddingVertical: 13, textAlign: "right",
   },
+  phoneInput: { writingDirection: "ltr", textAlign: "left" },
   eyeBtn: { padding: 6 },
   forgotBtn: {
     alignSelf: "flex-end", marginTop: -8,
