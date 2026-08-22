@@ -34,7 +34,7 @@ import {
   updatePassword,
   type ConfirmationResult,
 } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
 import FirebaseRecaptcha, {
@@ -94,13 +94,8 @@ function requireIraqiMobileE164(phone: string): string {
 
 async function phoneIsRegistered(phone: string): Promise<boolean> {
   const normalized = requireIraqiMobileE164(phone);
-  const candidates = Array.from(new Set([phone.trim(), normalized]));
-  const snapshots = await Promise.all(
-    candidates.map((value) =>
-      getDocs(query(collection(db, "users"), where("phone", "==", value))),
-    ),
-  );
-  return snapshots.some((snapshot) => !snapshot.empty);
+  const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
+  return snapshot.exists();
 }
 
 /**
@@ -446,10 +441,10 @@ export default function LoginScreen() {
           throw new Error("تعذّر التحقق من الرقم حالياً، تحقق من الاتصال وأعد المحاولة");
         }
         if (!registered) {
-          setLoading(false);
-          Alert.alert("الرقم غير مسجل", "هذا الرقم غير مسجل، يرجى إنشاء حساب جديد");
+          Alert.alert("الرقم غير مسجل", "هذا الرقم غير مسجل لدينا، يرجى إنشاء حساب جديد");
           return;
         }
+        forgotRecaptchaRef.current?.reset();
         const verifier = forgotRecaptchaRef.current?.verifier;
         if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
         suspendAuthRouting();
@@ -491,7 +486,7 @@ export default function LoginScreen() {
         : "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
       setForgotSending(false);
-      if (isPhoneInput(id)) setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -514,6 +509,7 @@ export default function LoginScreen() {
       Alert.alert("خطأ", message);
     } finally {
       setForgotVerifying(false);
+      setLoading(false);
     }
   };
 

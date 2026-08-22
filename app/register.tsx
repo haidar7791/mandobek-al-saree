@@ -28,7 +28,7 @@ import {
   signInWithCustomToken,
   type ConfirmationResult,
 } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import FirebaseRecaptcha, {
   type FirebaseRecaptchaHandle,
@@ -187,13 +187,8 @@ function requireIraqiMobileE164(phone: string): string {
 
 async function phoneIsRegistered(phone: string): Promise<boolean> {
   const normalized = requireIraqiMobileE164(phone);
-  const candidates = Array.from(new Set([phone.trim(), normalized]));
-  const snapshots = await Promise.all(
-    candidates.map((value) =>
-      getDocs(query(collection(db, "users"), where("phone", "==", value))),
-    ),
-  );
-  return snapshots.some((snapshot) => !snapshot.empty);
+  const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
+  return snapshot.exists();
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -425,7 +420,6 @@ export default function RegisterScreen() {
           PHONE_OTP_TIMEOUT_MS,
         );
         if (registered) {
-          setLoading(false);
           Alert.alert("لديك حساب بالفعل", "لديك حساب بالفعل، يرجى تسجيل الدخول");
           return;
         }
@@ -433,6 +427,7 @@ export default function RegisterScreen() {
         const location = await requestLocation();
         setSavedLocation(location);
         const phone = requireIraqiMobileE164(rawContact);
+        recaptchaRef.current?.reset();
         const verifier = recaptchaRef.current?.verifier;
         if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
         const confirmation = await withTimeout(
@@ -543,6 +538,7 @@ export default function RegisterScreen() {
       ]);
     } finally {
       setRegOtpVerifying(false);
+      setLoading(false);
     }
   };
 

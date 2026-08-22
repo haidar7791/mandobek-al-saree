@@ -34,6 +34,8 @@ import { firebaseConfig } from "@/lib/firebase";
 export interface FirebaseRecaptchaHandle {
   /** Implements ApplicationVerifier — pass to signInWithPhoneNumber */
   readonly verifier: ApplicationVerifier;
+  /** Clears the one-time token and remounts the verifier for a new OTP request. */
+  reset(): void;
 }
 
 /**
@@ -258,6 +260,10 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
 
   useImperativeHandle(ref, () => ({
     verifier: verifierRef.current,
+    reset() {
+      verifierRef.current.reset();
+      setWebviewKey((k) => k + 1);
+    },
   }));
 
   const handleMessage = useCallback((event: WebViewMessageEvent) => {

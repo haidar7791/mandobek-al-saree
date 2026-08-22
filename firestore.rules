@@ -50,6 +50,17 @@ service cloud.firestore {
       }
     }
 
+    // Public phone-existence check only. The actual user document is never
+    // readable before authentication; list queries are explicitly blocked.
+    match /phoneIndex/{phone} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasOnly(["phone", "userId"])
+        && request.resource.data.phone == phone;
+      allow delete: if isAdmin();
+    }
+
     // ── الحرفيون والبائعون ───────────────────────────────────────────────────
     // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث isPromoted وpriorityScore)
     match /artisans/{artisanId} {

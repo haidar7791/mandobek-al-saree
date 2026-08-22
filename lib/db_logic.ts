@@ -2217,6 +2217,12 @@ export const ensureUserDocument = async (
         },
         { merge: true }
       );
+      if (storedPhone.startsWith("+")) {
+        await setDoc(doc(db, "phoneIndex", storedPhone), {
+          phone: storedPhone,
+          userId,
+        });
+      }
     } else {
       const updates: Record<string, any> = {};
       if (extraData?.location !== undefined) updates.location = extraData.location;
@@ -2225,6 +2231,10 @@ export const ensureUserDocument = async (
       if (extraData?.phone) updates.phone = extraData.phone;
       if (Object.keys(updates).length > 0) {
         await updateDoc(ref, updates);
+      }
+      const phone = extraData?.phone;
+      if (phone?.startsWith("+")) {
+        await setDoc(doc(db, "phoneIndex", phone), { phone, userId }, { merge: true });
       }
     }
   } catch (err) {
