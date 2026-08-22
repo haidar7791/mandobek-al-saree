@@ -51,6 +51,7 @@ import Colors from "@/constants/colors";
 
 const CREDS_KEY = "forus.biometric.creds";
 const RESEND_COUNTDOWN = 60; // seconds
+const PHONE_OTP_TIMEOUT_MS = 5 * 60 * 1000;
 
 const SECURE_OPTS: SecureStore.SecureStoreOptions = {
   keychainService: CREDS_KEY,
@@ -89,6 +90,17 @@ function requireIraqiMobileE164(phone: string): string {
     throw new Error("يرجى إدخال رقم هاتف عراقي محمول صحيح بصيغة +9647xxxxxxxxx");
   }
   return normalized;
+}
+
+async function phoneIsRegistered(phone: string): Promise<boolean> {
+  const normalized = requireIraqiMobileE164(phone);
+  const candidates = Array.from(new Set([phone.trim(), normalized]));
+  const snapshots = await Promise.all(
+    candidates.map((value) =>
+      getDocs(query(collection(db, "users"), where("phone", "==", value))),
+    ),
+  );
+  return snapshots.some((snapshot) => !snapshot.empty);
 }
 
 /**
@@ -426,13 +438,23 @@ export default function LoginScreen() {
     setForgotSending(true);
     try {
       if (isPhoneInput(id)) {
+        let registered = false;
+        try {
+          registered = await withTimeout(phoneIsRegistered(id), PHONE_OTP_TIMEOUT_MS, "phone lookup");
+        } catch {
+          throw new Error("تعذّر التحقق من الرقم حالياً، تحقق من الاتصال وأعد المحاولة");
+        }
+        if (!registered) {
+          Alert.alert("الرقم غير مسجل", "هذا الرقم غير مسجل، يرجى إنشاء حساب جديد");
+          return;
+        }
         const verifier = forgotRecaptchaRef.current?.verifier;
         if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
         suspendAuthRouting();
-        const confirmation = await signInWithPhoneNumber(
-          auth,
-          requireIraqiMobileE164(id),
-          verifier,
+        const confirmation = await withTimeout(
+          signInWithPhoneNumber(auth, requireIraqiMobileE164(id), verifier),
+          PHONE_OTP_TIMEOUT_MS,
+          "send phone OTP",
         );
         setForgotPhoneConfirmation(confirmation);
         setForgotOtpCode("");
@@ -474,12 +496,19 @@ export default function LoginScreen() {
     if (!forgotPhoneConfirmation || forgotOtpCode.length !== 6) return;
     setForgotVerifying(true);
     try {
-      await forgotPhoneConfirmation.confirm(forgotOtpCode);
+      await withTimeout(
+        forgotPhoneConfirmation.confirm(forgotOtpCode),
+        PHONE_OTP_TIMEOUT_MS,
+        "verify phone OTP",
+      );
       setForgotStep("password");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", err?.message ?? "رمز التحقق غير صحيح أو منتهي الصلاحية");
+      const message = err?.code === "timeout"
+        ? "استغرق التحقق أكثر من 5 دقائق. تحقق من الاتصال وأعد المحاولة."
+        : getPhoneAuthErrorMessage(err);
+      Alert.alert("خطأ", message);
     } finally {
       setForgotVerifying(false);
     }

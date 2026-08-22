@@ -197,6 +197,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 const C = Colors.light;
+const PHONE_OTP_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ─── InputField ───────────────────────────────────────────────────────────────
 
@@ -413,7 +414,7 @@ export default function RegisterScreen() {
         if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
         const confirmation = await withTimeout(
           signInWithPhoneNumber(auth, phone, verifier),
-          15000,
+          PHONE_OTP_TIMEOUT_MS,
         );
         setPhoneConfirmation(confirmation);
         setRegOtpCode("");
@@ -423,7 +424,7 @@ export default function RegisterScreen() {
         console.error("[OTP-Register] send error:", err?.message ?? err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         const message = err?.code === "timeout"
-          ? "استغرق الاتصال أكثر من 15 ثانية. تحقق من الإنترنت واضغط إعادة المحاولة."
+          ? "استغرق الاتصال أكثر من 5 دقائق. تحقق من الإنترنت واضغط إعادة المحاولة."
           : getPhoneAuthErrorMessage(err);
         Alert.alert("تعذّر إرسال رمز التحقق", message, [
           { text: "إغلاق", style: "cancel" },
@@ -481,7 +482,10 @@ export default function RegisterScreen() {
     setRegOtpVerifying(true);
     try {
       if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
-      const credential = await phoneConfirmation.confirm(regOtpCode);
+      const credential = await withTimeout(
+        phoneConfirmation.confirm(regOtpCode),
+        PHONE_OTP_TIMEOUT_MS,
+      );
       const uid = credential.user.uid;
 
       try {
@@ -507,7 +511,7 @@ export default function RegisterScreen() {
       console.error("[OTP-Register] verify error:", err?.message ?? err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const message = err?.code === "timeout"
-        ? "استغرق التحقق أكثر من 15 ثانية. تحقق من الإنترنت واضغط إعادة المحاولة."
+        ? "استغرق التحقق أكثر من 5 دقائق. تحقق من الإنترنت واضغط إعادة المحاولة."
         : getPhoneAuthErrorMessage(err);
       Alert.alert("تعذّر التحقق من الرمز", message, [
         { text: "إغلاق", style: "cancel" },
