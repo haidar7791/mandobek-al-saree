@@ -69,7 +69,6 @@ const C = Colors.light;
 const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
-const PRODUCT_PROGRESS_PERIMETER = 2 * (133 + 35);
 
 type CategoryTab = "all" | "services" | "orders";
 
@@ -642,6 +641,7 @@ const isFocused = useIsFocused();
   const [storyPublishProgress, setStoryPublishProgress] = useState(0);
   const [productPublishing, setProductPublishing] = useState(false);
   const [productPublishProgress, setProductPublishProgress] = useState(0);
+  const [productProgressSize, setProductProgressSize] = useState({ width: 0, height: 0 });
 
   // Background publish indicators. Progress intentionally approaches 92%
   // while uploading and reaches 100% only when the background task removes
@@ -1211,32 +1211,44 @@ try {
               <View style={styles.addProductProgressWrap}>
                 <TouchableOpacity
                   style={styles.addProductBtn}
+                  onLayout={(event) => {
+                    const { width, height } = event.nativeEvent.layout;
+                    if (width > 0 && height > 0 &&
+                      (Math.abs(productProgressSize.width - width) > 0.5 ||
+                        Math.abs(productProgressSize.height - height) > 0.5)) {
+                      setProductProgressSize({ width, height });
+                    }
+                  }}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
                   activeOpacity={0.8}
                 >
                   <Feather name="plus" size={13} color={C.accent} />
                   <Text style={styles.addProductBtnText}>إضافة منتج</Text>
-                </TouchableOpacity>
 
-                {productPublishing && (
-                  <View style={styles.productProgressOverlay} pointerEvents="none">
-                    <Svg width={136} height={38} viewBox="0 0 136 38">
-                      <Rect
-                        x="1.5"
-                        y="1.5"
-                        width="133"
-                        height="35"
-                        rx="9"
-                        fill="none"
-                        stroke="#4BFF8A"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeDasharray={`${PRODUCT_PROGRESS_PERIMETER} ${PRODUCT_PROGRESS_PERIMETER}`}
-                        strokeDashoffset={PRODUCT_PROGRESS_PERIMETER * (1 - productPublishProgress)}
-                      />
-                    </Svg>
-                  </View>
-                )}
+                  {productPublishing && productProgressSize.width > 0 && productProgressSize.height > 0 && (
+                    <View style={styles.productProgressOverlay} pointerEvents="none">
+                      <Svg
+                        width={productProgressSize.width}
+                        height={productProgressSize.height}
+                        viewBox={`0 0 ${productProgressSize.width} ${productProgressSize.height}`}
+                      >
+                        <Rect
+                          x="1.5"
+                          y="1.5"
+                          width={Math.max(0, productProgressSize.width - 3)}
+                          height={Math.max(0, productProgressSize.height - 3)}
+                          rx={8}
+                          fill="none"
+                          stroke="#4BFF8A"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3))} ${2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3))}`}
+                          strokeDashoffset={2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3)) * (1 - productPublishProgress)}
+                        />
+                      </Svg>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -1680,7 +1692,7 @@ availOnline: { backgroundColor: "#22C55E" },
   },
   btnDisabled: { opacity: 0.6 },
 
-  // ── Product card share button ──
+  // ── Product card  share button ──
   productShareBtn: {
     position: "absolute",
     top: 8,
@@ -1762,11 +1774,7 @@ availOnline: { backgroundColor: "#22C55E" },
     paddingHorizontal: 12,
   },
   productProgressOverlay: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: 136,
-    height: 38,
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
   },
