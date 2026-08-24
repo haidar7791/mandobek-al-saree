@@ -108,7 +108,7 @@ export default function ProfileScreen() {
 
   const specialtyLabel =
     specialty === "client"
-      ? "زبون"
+      ? ""
       : ALL_SPECIALTIES.find((s) => s.key === specialty)?.label || specialty || "";
 
   // ── Load profile on screen focus ───────────────────────────────────────────
@@ -473,10 +473,12 @@ export default function ProfileScreen() {
           {/* Name only — NO email/contact line */}
           <Text style={styles.displayName}>{name || "—"}</Text>
 
-          {/* Specialty */}
-          <View style={styles.specialtyPill}>
-            <Text style={styles.specialtyPillText}>{specialtyLabel || "زبون"}</Text>
-          </View>
+          {/* Specialty — client accounts intentionally show no role label here. */}
+          {specialty !== "client" && specialtyLabel ? (
+            <View style={styles.specialtyPill}>
+              <Text style={styles.specialtyPillText}>{specialtyLabel}</Text>
+            </View>
+          ) : null}
 
           {/* Bio — plain text, without a heading */}
           {bio ? <Text style={styles.heroBio}>{bio}</Text> : null}
@@ -666,7 +668,7 @@ export default function ProfileScreen() {
                       ]}
                     >
                       {editSpecialty === "client"
-                        ? "زبون (عميل)"
+                        ? "عام"
                         : ALL_SPECIALTIES.find((s) => s.key === editSpecialty)?.label ||
                           "اختر التخصص"}
                     </Text>
@@ -788,7 +790,7 @@ export default function ProfileScreen() {
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
               {/* ── Client option ── */}
               <Text style={styles.spCategoryHeader}>عام</Text>
-              {[{ key: "client", label: "زبون (عميل)" }].map((item) => (
+              {[{ key: "client", label: "عام" }].map((item) => (
                 <Pressable
                   key={item.key}
                   style={[

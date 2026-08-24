@@ -672,22 +672,6 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            {/* 3 ── نوع الحساب */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>نوع الحساب</Text>
-              <View style={[styles.inputRow, styles.pickerRow]}>
-                <Text style={[styles.input, { paddingVertical: 13, color: C.text }]}>
-                  زبون
-                </Text>
-                <View style={styles.inputIcon}>
-                  <Feather name="user" size={15} color={C.textMuted} />
-                </View>
-              </View>
-              <Text style={styles.helperText}>
-                يمكنك تغيير التخصص لاحقاً من ملفك الشخصي
-              </Text>
-            </View>
-
             {/* 4 ── كلمة المرور (دائماً ظاهرة) ── */}
             <InputField
               label="كلمة المرور"
@@ -922,7 +906,7 @@ const styles = StyleSheet.create({
   loginLink: { alignItems: "center", paddingVertical: 8 },
   loginLinkText: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
 
-  // ── OTP Modal ──
+  // ──  OTP Modal ──
   modalOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "center", alignItems: "center", paddingHorizontal: 24,

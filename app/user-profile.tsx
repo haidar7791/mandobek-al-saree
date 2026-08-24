@@ -75,8 +75,10 @@ export default function UserProfileScreen() {
         const p = await getUserProfile(userId);
         if (cancelled) return;
 
-        if (p?.role === "artisan") {
-          // Hand off to artisan-profile for a richer view
+        if (p?.role === "artisan" && p?.specialty !== "client") {
+          // Hand off only real specialty owners to the richer artisan view.
+          // Client accounts may have legacy role=artisan data, but must use
+          // the same public client profile everywhere.
           const artisan = await getArtisanByUserId(userId);
           if (cancelled) return;
           if (artisan) {

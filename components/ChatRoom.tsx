@@ -181,7 +181,10 @@ export default function ChatRoom({
       getUserProfile(otherUid),
     ]).then(([artisan, userProf]) => {
       if (cancelled) return;
-      setOtherArtisanProfile(artisan);
+      // A client must always use the public client profile, even if a legacy
+      // user document can still be converted to an ArtisanProfile object.
+      const isRealArtisan = userProf?.role === "artisan" && userProf?.specialty !== "client";
+      setOtherArtisanProfile(isRealArtisan ? artisan : null);
       if (userProf) {
         setOtherUserName(userProf.name || null);
         setOtherUserPhoto(userProf.photoUri || null);

@@ -97,6 +97,19 @@ export default function ArtisanProfileScreen() {
 
       const artisanData = await getArtisanById(artisanId);
       if (artisanData) {
+        // Canonical routing: client accounts always use /user-profile so the
+        // public profile looks identical regardless of where it was opened.
+        if (artisanData.specialty === "client") {
+          router.replace({
+            pathname: "/user-profile",
+            params: {
+              userId: artisanData.userId,
+              userName: artisanData.name,
+              userPhoto: artisanData.photoUri || "",
+            },
+          } as any);
+          return;
+        }
         setArtisan(artisanData);
         const [artisanProfile, engagement] = await Promise.all([
           getUserProfile(artisanData.userId),
@@ -121,6 +134,19 @@ export default function ArtisanProfileScreen() {
       setLoading(false);
     }
   }, [artisanId]);
+
+  useEffect(() => {
+    if (initialArtisan?.specialty === "client") {
+      router.replace({
+        pathname: "/user-profile",
+        params: {
+          userId: initialArtisan.userId,
+          userName: initialArtisan.name,
+          userPhoto: initialArtisan.photoUri || "",
+        },
+      } as any);
+    }
+  }, [initialArtisan]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
