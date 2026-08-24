@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -24,6 +25,7 @@ import ProductMediaCarousel from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
+const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 
 export default function AddProductScreen() {
   const insets = useSafeAreaInsets();
@@ -85,11 +87,32 @@ export default function AddProductScreen() {
       return;
     }
 
+    const validColors = colors.map((c) => c.trim()).filter(Boolean);
+    const validSizes = sizes.map((s) => s.trim()).filter(Boolean);
+
+    if (validColors.length === 0) {
+      Alert.alert("اللون مطلوب", "يجب إضافة لون واحد على الأقل للمنتج قبل النشر.");
+      return;
+    }
+
+    if (validSizes.length === 0) {
+      Alert.alert("القياس مطلوب", "يجب إضافة قياس واحد على الأقل للمنتج قبل النشر.");
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) { router.replace("/login" as any); return; }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
+
+    // Persist the publish state before leaving so the home feed can show
+    // a visible progress ring around the "إضافة منتج" button.
+    await AsyncStorage.setItem(
+      PRODUCT_PUBLISH_PROGRESS_KEY(user.uid),
+      JSON.stringify({ startedAt: Date.now() })
+    );
+
     // Return immediately after validation; uploading continues in the background.
     router.back();
     try {
@@ -102,8 +125,8 @@ export default function AddProductScreen() {
         sellerId: user.uid,
         sellerName: profile?.name || "مجهول",
         sellerPhone: profile?.phone || "",
-        colors: colors.filter((c) => c.trim()),
-        sizes: sizes.filter((s) => s.trim()),
+        colors: validColors,
+        sizes: validSizes,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -126,6 +149,9 @@ export default function AddProductScreen() {
           ? `تفاصيل الخطأ: ${err.message}`
           : "حدث خطأ أثناء نشر المنتج، يرجى المحاولة مجدداً";
       Alert.alert("خطأ في النشر", msg);
+    } finally {
+      // Remove the status only after the background publish has finished.
+      await AsyncStorage.removeItem(PRODUCT_PUBLISH_PROGRESS_KEY(user.uid));
       setLoading(false);
     }
   };
@@ -242,7 +268,7 @@ export default function AddProductScreen() {
             {/* Colors */}
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>
-                الألوان المتاحة <Text style={styles.optional}>(اختياري)</Text>
+                الألوان المتاحة <Text style={styles.required}>*</Text>
               </Text>
               {colors.map((color, index) => (
                 <View key={index} style={styles.dynamicRow}>
@@ -276,7 +302,7 @@ export default function AddProductScreen() {
             {/* Sizes */}
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>
-                القياسات المتاحة <Text style={styles.optional}>(اختياري)</Text>
+                القياسات المتاحة <Text style={styles.required}>*</Text>
               </Text>
               {sizes.map((size, index) => (
                 <View key={index} style={styles.dynamicRow}>

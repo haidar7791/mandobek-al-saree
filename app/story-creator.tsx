@@ -7,6 +7,7 @@
  *   • Upload to Firebase Storage → create Firestore doc → back
  */
 import React, { useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -40,6 +41,7 @@ import {
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
+const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
 
 const TEXT_COLORS = [
   "#FFFFFF", "#FFD200", "#FF4B4B",
@@ -130,38 +132,54 @@ export default function StoryCreatorScreen() {
     }
 
     setLoading(true);
-    try {
-      const profile = await getUserProfile(user.uid);
-      const mediaUrl = await uploadStoryMedia(
-        mediaUri,
-        mediaType,
-        user.uid,
-        mediaMimeType,
-        mediaFileName
-      );
 
-      const storyId = await createStory({
-        userId: user.uid,
-        userName: profile?.name || "مستخدم فورس",
-        userPhotoUri: profile?.photoUri || null,
-        mediaUrl,
-        mediaType,
-        thumbnailUrl: mediaType === "image" ? mediaUrl : null,
-        text: overlayText.trim() || null,
-        textColor: overlayText.trim() ? textColor : null,
-        musicName: selectedMusic.id === "none" ? null : selectedMusic.name,
-      });
-      if (mediaType === "video") {
-        await generateStoryVideoThumbnail(storyId);
+    // Publish status is persisted before leaving the screen so the home feed
+    // can show a visible progress ring while the upload continues in the background.
+    await AsyncStorage.setItem(
+      STORY_PUBLISH_PROGRESS_KEY(user.uid),
+      JSON.stringify({ startedAt: Date.now() })
+    );
+
+    // Leave the editor immediately, while the upload continues in the background.
+    router.back();
+
+    void (async () => {
+      try {
+        const profile = await getUserProfile(user.uid);
+        const mediaUrl = await uploadStoryMedia(
+          mediaUri,
+          mediaType,
+          user.uid,
+          mediaMimeType,
+          mediaFileName
+        );
+
+        const storyId = await createStory({
+          userId: user.uid,
+          userName: profile?.name || "مستخدم فورس",
+          userPhotoUri: profile?.photoUri || null,
+          mediaUrl,
+          mediaType,
+          thumbnailUrl: mediaType === "image" ? mediaUrl : null,
+          text: overlayText.trim() || null,
+          textColor: overlayText.trim() ? textColor : null,
+          musicName: selectedMusic.id === "none" ? null : selectedMusic.name,
+        });
+
+        if (mediaType === "video") {
+          // Thumbnail generation is intentionally part of the same background
+          // task and must never keep the creator screen open.
+          await generateStoryVideoThumbnail(storyId);
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err) {
+        console.error("[story-creator] background publish failed:", err);
+      } finally {
+        // The home feed sees this removal and completes/hides the progress ring.
+        await AsyncStorage.removeItem(STORY_PUBLISH_PROGRESS_KEY(user.uid));
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } catch (err) {
-      console.error("[story-creator] publish failed:", err);
-      Alert.alert("خطأ في النشر", "تعذّر نشر القصة. تحقق من اتصالك وحاول مجدداً.");
-    } finally {
-      setLoading(false);
-    }
+    })();
   };
 
   // ─────────────────────────────────────────────────────────────────────────

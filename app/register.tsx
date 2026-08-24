@@ -36,11 +36,6 @@ import FirebaseRecaptcha, {
 } from "@/components/FirebaseRecaptcha";
 import {
   ensureUserDocument,
-  getCategoryForSpecialty,
-  HOME_SERVICES,
-  CAR_SERVICES,
-  GENERAL_SERVICES,
-  DELIVERY_SERVICES,
   type GeoLocation,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -335,18 +330,6 @@ const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: strin
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const CLIENT_OPTION = { key: "client", label: "زبون", icon: "user" };
-
-const SPECIALTY_SECTIONS = [
-  { title: "نوع الحساب", items: [CLIENT_OPTION] },
-  { title: "خدمات المنزل", items: HOME_SERVICES },
-  { title: "خدمات السيارات", items: CAR_SERVICES },
-  { title: "خدمات طبية", items: GENERAL_SERVICES },
-  { title: "خدمات توصيل", items: DELIVERY_SERVICES },
-];
-
-const ALL_OPTIONS = [CLIENT_OPTION, ...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function RegisterScreen() {
@@ -354,8 +337,6 @@ export default function RegisterScreen() {
   const [fullName, setFullName] = useState("");
   const [contact, setContact] = useState(""); // phone or email
   const [password, setPassword] = useState("");
-  const [specialty, setSpecialty] = useState("");
-  const [specialtyModal, setSpecialtyModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // ── Firebase Phone Auth registration flow ──
@@ -383,7 +364,9 @@ export default function RegisterScreen() {
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
 
-  const role: "client" | "artisan" = specialty === "client" ? "client" : "artisan";
+  // Every new account starts as a client. The user can choose/change their
+  // professional specialty later from the profile screen.
+  const role: "client" = "client";
   const isPhone = authMethod === "phone";
   const contactKeyboardType: "phone-pad" | "email-address" = isPhone ? "phone-pad" : "email-address";
 
@@ -417,11 +400,6 @@ export default function RegisterScreen() {
         : "يرجى إدخال بريد إلكتروني صحيح");
       return;
     }
-    if (!specialty) {
-      Alert.alert("خطأ", "يرجى اختيار نوع الحساب أو التخصص");
-      return;
-    }
-
     btnScale.value = withSpring(0.96, { damping: 12 }, () => {
       btnScale.value = withSpring(1);
     });
@@ -536,7 +514,6 @@ export default function RegisterScreen() {
       // Create Firestore user document after the phone identity is confirmed.
       await ensureUserDocument(uid, e164, role, {
         name: trimmedName,
-        specialty,
         location: savedLocation,
         phone: rawContact,
       });
@@ -560,7 +537,6 @@ export default function RegisterScreen() {
   };
 
   // ─── Verify Email OTP and complete registration ──────────────────────────
-
   const handleVerifyEmailOtp = async () => {
     if (emailOtpCode.length !== 6) return;
 
@@ -594,7 +570,6 @@ export default function RegisterScreen() {
 
       await ensureUserDocument(uid, rawContact, role, {
         name: trimmedName,
-        specialty,
         location: savedLocation,
       });
 
@@ -611,7 +586,6 @@ export default function RegisterScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
-  const selectedSpecialtyLabel = ALL_OPTIONS.find((s) => s.key === specialty)?.label ?? "";
   const anyLoading = loading || regOtpSending || emailOtpSending;
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -698,27 +672,23 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            {/* 3 ── نوع الحساب / التخصص */}
+            {/* 3 ── نوع الحساب */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>نوع الحساب / التخصص</Text>
-              <Pressable
-                style={[styles.inputRow, styles.pickerRow]}
-                onPress={() => setSpecialtyModal(true)}
-              >
-                <Feather name="chevron-down" size={16} color={C.textMuted} />
-                <Text style={[styles.input, { paddingVertical: 13, color: specialty ? C.text : C.textMuted }]}>
-                  {selectedSpecialtyLabel || "اختر زبون أو تخصصك المهني"}
+              <Text style={styles.fieldLabel}>نوع الحساب</Text>
+              <View style={[styles.inputRow, styles.pickerRow]}>
+                <Text style={[styles.input, { paddingVertical: 13, color: C.text }]}>
+                  زبون
                 </Text>
                 <View style={styles.inputIcon}>
-                  <Feather name="briefcase" size={15} color={C.textMuted} />
+                  <Feather name="user" size={15} color={C.textMuted} />
                 </View>
-              </Pressable>
+              </View>
               <Text style={styles.helperText}>
                 يمكنك تغيير التخصص لاحقاً من ملفك الشخصي
               </Text>
             </View>
 
-            {/* 4 ── كلمة المرور (دائماً ظاهرة) */}
+            {/* 4 ── كلمة المرور (دائماً ظاهرة) ── */}
             <InputField
               label="كلمة المرور"
               placeholder="أدخل كلمة المرور (6 أحرف على الأقل)"
@@ -781,52 +751,6 @@ export default function RegisterScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* ── Specialty picker modal ── */}
-      <Modal visible={specialtyModal} transparent animationType="slide" onRequestClose={() => setSpecialtyModal(false)}>
-        <View style={modalStyles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSpecialtyModal(false)} />
-          <View style={modalStyles.sheet}>
-            <View style={modalStyles.handle} />
-            <View style={modalStyles.header}>
-              <Pressable onPress={() => setSpecialtyModal(false)} style={modalStyles.closeBtn}>
-                <Feather name="x" size={18} color={C.textSecondary} />
-              </Pressable>
-              <Text style={modalStyles.title}>اختر تخصصك</Text>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-              {SPECIALTY_SECTIONS.map((section) => (
-                <View key={section.title}>
-                  <View style={modalStyles.sectionHeader}>
-                    <Text style={modalStyles.sectionTitle}>{section.title}</Text>
-                  </View>
-                  {section.items.map((item) => (
-                    <Pressable
-                      key={item.key}
-                      style={[modalStyles.item, specialty === item.key && modalStyles.itemSelected]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setSpecialty(item.key);
-                        setSpecialtyModal(false);
-                      }}
-                    >
-                      {specialty === item.key ? (
-                        <Feather name="check" size={16} color={C.accent} />
-                      ) : (
-                        <View style={{ width: 16 }} />
-                      )}
-                      <Text style={[modalStyles.itemText, specialty === item.key && modalStyles.itemTextSelected]}>
-                        {item.label}
-                      </Text>
-                      <Feather name={item.icon as any} size={16} color={specialty === item.key ? C.accent : C.textMuted} />
-                    </Pressable>
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       <FirebaseRecaptcha ref={recaptchaRef} />
 

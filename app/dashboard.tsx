@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import Svg, { Circle, Rect } from "react-native-svg";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
@@ -65,6 +66,10 @@ import ProductMediaCarousel, { normalizeProductMedia } from "@/components/Produc
 import ReservationsScreen from "./reservations";
 
 const C = Colors.light;
+const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
+const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
+const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
+const PRODUCT_PROGRESS_PERIMETER = 2 * (133 + 35);
 
 type CategoryTab = "all" | "services" | "orders";
 
@@ -192,7 +197,6 @@ function ArtisanCard({
           {artisan.bio ? (
             <Text style={styles.artisanBio} numberOfLines={4}>{artisan.bio}</Text>
           ) : null}
-
           <View style={styles.cardFooter}>
             {distance !== null ? (
               <View style={styles.distancePill}>
@@ -251,6 +255,11 @@ function ProductCard({
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
 
+  // Empty color/size lists mean the seller did not define variants. In that
+  // case the buyer must be able to place the order without choosing anything.
+  const availableColors = (product.colors ?? []).filter((value) => value.trim());
+  const availableSizes = (product.sizes ?? []).filter((value) => value.trim());
+
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert("حذف المنتج", `هل أنت متأكد من حذف "${product.title}"؟`, [
@@ -307,6 +316,19 @@ function ProductCard({
   const handleConfirmBuy = async () => {
     const user = auth.currentUser;
     if (!user) return;
+
+    // New products are required to have at least one color and one size.
+    // Keep the modal open and explain exactly what is missing instead of
+    // silently failing or closing the purchase sheet.
+    if (availableColors.length === 0 || !selectedColor) {
+      Alert.alert("اختيار مطلوب", "يجب اختيار اللون قبل إتمام الشراء.");
+      return;
+    }
+    if (availableSizes.length === 0 || !selectedSize) {
+      Alert.alert("اختيار مطلوب", "يجب اختيار القياس قبل إتمام الشراء.");
+      return;
+    }
+
     onLoadingChange(product.id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -331,8 +353,8 @@ function ProductCard({
         buyerName: selfProfile?.name || userName,
         buyerPhone: selfProfile?.phone || "",
         buyerLocation: userLocation,
-        selectedColor: selectedColor || undefined,
-        selectedSize: selectedSize || undefined,
+        selectedColor,
+        selectedSize,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setBuyModalVisible(false);
@@ -353,8 +375,7 @@ function ProductCard({
       >
         <Feather name="share-2" size={13} color={C.accent} />
       </Pressable>
-      <View>
-        <ProductMediaCarousel
+      <View><ProductMediaCarousel
           media={normalizeProductMedia(product.media, product.imageUrl)}
           height={380}
           isVisible={isVisible}
@@ -472,12 +493,14 @@ function ProductCard({
             </Text>
 
             {/* Color selector */}
-            {(product.colors ?? []).filter((c) => c.trim()).length > 0 && (
+            {availableColors.length > 0 && (
               <View style={styles.buyModalSection}>
-                <Text style={styles.buyModalSectionLabel}>اختر اللون</Text>
+                <Text style={styles.buyModalSectionLabel}>
+                  اختر اللون <Text style={styles.buyModalRequired}>*</Text>
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.chipRow}>
-                  {(product.colors ?? []).filter((c) => c.trim()).map((color) => (
+                  {availableColors.map((color) => (
                     <TouchableOpacity
                       key={color}
                       style={[styles.chip, selectedColor === color && styles.chipActive]}
@@ -493,12 +516,14 @@ function ProductCard({
             )}
 
             {/* Size selector */}
-            {(product.sizes ?? []).filter((s) => s.trim()).length > 0 && (
+            {availableSizes.length > 0 && (
               <View style={styles.buyModalSection}>
-                <Text style={styles.buyModalSectionLabel}>اختر القياس</Text>
+                <Text style={styles.buyModalSectionLabel}>
+                  اختر القياس <Text style={styles.buyModalRequired}>*</Text>
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.chipRow}>
-                  {(product.sizes ?? []).filter((s) => s.trim()).map((size) => (
+                  {availableSizes.map((size) => (
                     <TouchableOpacity
                       key={size}
                       style={[styles.chip, selectedSize === size && styles.chipActive]}
@@ -545,7 +570,7 @@ function ProductCard({
 
 export default function DashboardScreen() {
   // Screen-level focus — drives video start/stop & viewability guard
-  const isFocused = useIsFocused();
+const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
@@ -613,6 +638,61 @@ export default function DashboardScreen() {
   // ── Stories ───────────────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [myStories, setMyStories] = useState<Story[]>([]);
+  const [storyPublishing, setStoryPublishing] = useState(false);
+  const [storyPublishProgress, setStoryPublishProgress] = useState(0);
+  const [productPublishing, setProductPublishing] = useState(false);
+  const [productPublishProgress, setProductPublishProgress] = useState(0);
+
+  // Background publish indicators. Progress intentionally approaches 92%
+  // while uploading and reaches 100% only when the background task removes
+  // its status key, so the user can see that publishing is still in progress.
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+    const refreshPublishProgress = async () => {
+      try {
+        const [storyRaw, productRaw] = await Promise.all([
+          AsyncStorage.getItem(STORY_PUBLISH_PROGRESS_KEY(userId)),
+          AsyncStorage.getItem(PRODUCT_PUBLISH_PROGRESS_KEY(userId)),
+        ]);
+
+        const now = Date.now();
+
+        if (!cancelled) {
+          if (storyRaw) {
+            const startedAt = Number(JSON.parse(storyRaw)?.startedAt || now);
+            const elapsed = Math.max(0, now - startedAt);
+            setStoryPublishing(true);
+            setStoryPublishProgress(Math.min(0.92, elapsed / 90000 * 0.92));
+          } else {
+            setStoryPublishing(false);
+            setStoryPublishProgress(0);
+          }
+
+          if (productRaw) {
+            const startedAt = Number(JSON.parse(productRaw)?.startedAt || now);
+            const elapsed = Math.max(0, now - startedAt);
+            setProductPublishing(true);
+            setProductPublishProgress(Math.min(0.92, elapsed / 90000 * 0.92));
+          } else {
+            setProductPublishing(false);
+            setProductPublishProgress(0);
+          }
+        }
+      } catch (err) {
+        console.error("publish progress refresh failed:", err);
+      }
+    };
+
+    refreshPublishProgress();
+    const timer = setInterval(refreshPublishProgress, 500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
     const unsub1 = subscribeToActiveStories(userId, setStoryGroups);
@@ -656,7 +736,7 @@ export default function DashboardScreen() {
       setArtisans(allArtisans);
 
       // Location is best-effort — failure must never block the rest of the UI
-      try {
+try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === "granted") {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -934,7 +1014,7 @@ export default function DashboardScreen() {
                 styles.storyRing,
                 myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
               ]}>
-                <View style={styles.storyInner}>
+<View style={styles.storyInner}>
                   {/* Show latest story thumbnail if available, otherwise profile photo */}
                   {myCoverImageUri ? (
                     <Image
@@ -946,6 +1026,28 @@ export default function DashboardScreen() {
                     <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} disableNavigation />
                   )}
                 </View>
+
+                {storyPublishing && (
+                  <View style={styles.storyProgressOverlay} pointerEvents="none">
+                    <Svg width={62} height={62} viewBox="0 0 62 62">
+                      <Circle
+                        cx="31"
+                        cy="31"
+                        r="29"
+                        fill="none"
+                        stroke="#4BFF8A"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeDasharray={`${PROGRESS_CIRCUMFERENCE} ${PROGRESS_CIRCUMFERENCE}`}
+                        strokeDashoffset={PROGRESS_CIRCUMFERENCE * (1 - storyPublishProgress)}
+                        transform="rotate(-90 31 31)"
+                      />
+                      {storyPublishProgress < 0.02 && (
+                        <Circle cx="31" cy="2" r="2.5" fill="#4BFF8A" />
+                      )}
+                    </Svg>
+                  </View>
+                )}
                 {/* + badge always visible: taps independently to add a new story */}
                 <Pressable
                   style={styles.storyAddBadge}
@@ -1106,14 +1208,36 @@ export default function DashboardScreen() {
                   </Pressable>
                 )}
               </View>
-              <TouchableOpacity
-                style={[styles.addProductBtn, styles.addProductBtnPinned]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
-                activeOpacity={0.8}
-              >
-                <Feather name="plus" size={13} color={C.accent} />
-                <Text style={styles.addProductBtnText}>إضافة منتج</Text>
-              </TouchableOpacity>
+              <View style={styles.addProductProgressWrap}>
+                <TouchableOpacity
+                  style={styles.addProductBtn}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="plus" size={13} color={C.accent} />
+                  <Text style={styles.addProductBtnText}>إضافة منتج</Text>
+                </TouchableOpacity>
+
+                {productPublishing && (
+                  <View style={styles.productProgressOverlay} pointerEvents="none">
+                    <Svg width={136} height={38} viewBox="0 0 136 38">
+                      <Rect
+                        x="1.5"
+                        y="1.5"
+                        width="133"
+                        height="35"
+                        rx="9"
+                        fill="none"
+                        stroke="#4BFF8A"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeDasharray={`${PRODUCT_PROGRESS_PERIMETER} ${PRODUCT_PROGRESS_PERIMETER}`}
+                        strokeDashoffset={PRODUCT_PROGRESS_PERIMETER * (1 - productPublishProgress)}
+                      />
+                    </Svg>
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
@@ -1180,7 +1304,7 @@ export default function DashboardScreen() {
                         <Text style={styles.sortedText}>مرتب حسب القرب</Text>
                       </View>
                     )}
-                    <View style={styles.inlineSearchRow}>
+<View style={styles.inlineSearchRow}>
                       <Feather name="search" size={14} color={C.textMuted} />
                       <TextInput
                         style={styles.inlineSearchInput}
@@ -1315,6 +1439,15 @@ const styles = StyleSheet.create({
   storyRingSeen:   { borderColor: "rgba(255,255,255,0.25)" }, // dim = already seen
   storyRingMine:   { borderColor: "#4BFF8A" },          // green = I have a story
   storyRingEmpty:  { borderColor: "rgba(255,255,255,0.2)" },  // plain = no story yet
+  storyProgressOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 62,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   /** Inner clip circle */
   storyInner: {
     width: 54,
@@ -1497,7 +1630,7 @@ const styles = StyleSheet.create({
     width: 12, height: 12, borderRadius: 6,
     borderWidth: 2, borderColor: C.card,
   },
-  availOnline: { backgroundColor: "#22C55E" },
+availOnline: { backgroundColor: "#22C55E" },
   availOffline: { backgroundColor: "#9CA3AF" },
   cardBody: { flex: 1, gap: 4 },
   cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
@@ -1608,6 +1741,15 @@ const styles = StyleSheet.create({
     top: 9,
     bottom: 9,
   },
+  addProductProgressWrap: {
+    position: "absolute",
+    left: 7,
+    top: 6,
+    width: 136,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   addProductBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1618,6 +1760,15 @@ const styles = StyleSheet.create({
     borderColor: C.accent,
     paddingVertical: 6,
     paddingHorizontal: 12,
+  },
+  productProgressOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 136,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addProductBtnPinned: {
     position: "absolute",
@@ -1748,6 +1899,12 @@ const styles = StyleSheet.create({
   buyModalSectionLabel: {
     fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right",
   },
+  buyModalOptional: {
+    fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted,
+  },
+  buyModalRequired: {
+    fontSize: 13, fontFamily: "Cairo_700Bold", color: "#4BFF8A",
+  },
   chipRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
   chip: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
@@ -1771,4 +1928,3 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
 });
-

@@ -91,7 +91,7 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
   private _cachedError: string | null = null;
 
   /**
-   * Called by the component when it needs to reload the WebView to
+ * Called by the component when it needs to reload the WebView to
    * generate a new reCAPTCHA token (e.g. resend scenario).
    */
   _onNeedRefresh: (() => void) | null = null;
@@ -172,7 +172,7 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
 
 function buildHtml(config: typeof firebaseConfig): string {
   // Keep the compat SDK aligned with the Firebase JS SDK used by the app.
-  const sdkVersion = "12.17.0";
+  const sdkVersion = "12.11.0";
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -298,6 +298,8 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
         javaScriptEnabled
         domStorageEnabled
         originWhitelist={["*"]}
+        thirdPartyCookiesEnabled
+        sharedCookiesEnabled
         focusable={false}
         accessible={false}
       />
@@ -310,7 +312,6 @@ FirebaseRecaptcha.displayName = "FirebaseRecaptcha";
 export default FirebaseRecaptcha;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   hidden: {
     position: "absolute",
