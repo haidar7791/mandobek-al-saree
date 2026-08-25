@@ -1,0 +1,44 @@
+import { Platform } from "react-native";
+import {
+  GoogleSignin,
+  isSuccessResponse,
+} from "@react-native-google-signin/google-signin";
+
+let configured = false;
+
+/** * Opens the native Google account chooser and returns only the selected email. * * Important: this helper does NOT keep the user signed in with Google. * We use Google only as an account picker, read the email, then immediately * sign out from the Google Sign-In session. The app's existing email/password * authentication remains completely unchanged. */
+export async function pickGoogleEmail(): Promise<string | null> {
+  if (Platform.OS !== "android") {
+    throw new Error("اختيار حساب Google متاح حالياً على أجهزة Android فقط");
+  }
+
+  if (!configured) {
+    // Email + profile are the default identity scopes. No Drive/Calendar/etc.
+    // permissions are requested and offline access is disabled.
+    GoogleSignin.configure({
+      scopes: ["email", "profile"],
+      offlineAccess: false,
+    });
+    configured = true;
+  }
+
+  try {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+    // Clear any previous Google session so the account chooser is shown.
+    await GoogleSignin.signOut().catch(() => {});
+
+    const response = await GoogleSignin.signIn();
+
+    if (!isSuccessResponse(response)) {
+      return null;
+    }
+
+    const email = response.data.user.email?.trim().toLowerCase();
+    return email || null;
+  } finally {
+    // Google is used only to pick the email. Do not leave a Google session
+    // active inside the app after the email has been selected.
+    await GoogleSignin.signOut().catch(() => {});
+  }
+}

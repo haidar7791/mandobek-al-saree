@@ -21,7 +21,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from "react-native-reanimated";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
@@ -46,6 +46,7 @@ import {
   suspendAuthRouting,
 } from "@/lib/auth_flow";
 import Colors from "@/constants/colors";
+import { pickGoogleEmail } from "@/lib/google-email-picker";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -292,6 +293,7 @@ export default function LoginScreen() {
   const [contact, setContact] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
   // ── Forgot password modal ──
@@ -348,6 +350,28 @@ export default function LoginScreen() {
     await ensureUserDocument(credential.user.uid, email);
     return credential;
   }, []);
+
+  // Google is used only to pick an email from the device. The selected
+  // address is placed into the existing contact field; password login remains
+  // exactly the same as before.
+  const handleGoogleEmailPick = async () => {
+    if (googleLoading) return;
+    setGoogleLoading(true);
+    try {
+      const email = await pickGoogleEmail();
+      if (!email) return;
+
+      setContact(email);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => passwordRef.current?.focus(), 150);
+    } catch (err: any) {
+      console.error("[Google-Email-Picker] login error:", err?.message ?? err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("تعذّر اختيار حساب Google", err?.message ?? "تعذّر جلب حسابات Google على الجهاز");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!contact.trim() || !password) {
@@ -692,6 +716,22 @@ export default function LoginScreen() {
               </Pressable>
             </Animated.View>
 
+            <TouchableOpacity
+              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+              onPress={handleGoogleEmailPick}
+              disabled={googleLoading || loading}
+              activeOpacity={0.8}
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#4285F4" />
+              ) : (
+                <FontAwesome name="google" size={20} color="#4285F4" />
+              )}
+              <Text style={styles.googleBtnText}>
+                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
+              </Text>
+            </TouchableOpacity>
+
             {showBiometricBtn && (
               <TouchableOpacity
                 style={[styles.biometricBtn, biometricLoading && styles.btnDisabled]}
@@ -939,6 +979,12 @@ const styles = StyleSheet.create({
     paddingVertical: 15, paddingHorizontal: 24, gap: 8,
   },
   loginBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  googleBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, paddingVertical: 13, borderRadius: 14,
+    borderWidth: 1.5, borderColor: "#D9DDE5", backgroundColor: "#FFF",
+  },
+  googleBtnText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text },
   btnDisabled: { opacity: 0.6 },
   biometricBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",

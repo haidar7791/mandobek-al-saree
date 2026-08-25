@@ -53,6 +53,7 @@
           "origin": "https://mandobek-al-saree.firebaseapp.com/"
         }
       ],
+      "@react-native-google-signin/google-signin",
       "expo-font",
       "expo-web-browser",
       [

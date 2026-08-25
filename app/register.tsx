@@ -18,7 +18,7 @@ import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import {
@@ -39,6 +39,7 @@ import {
   type GeoLocation,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import { pickGoogleEmail } from "@/lib/google-email-picker";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,7 @@ export default function RegisterScreen() {
   const [contact, setContact] = useState(""); // phone or email
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // ── Firebase Phone Auth registration flow ──
   const [regOtpStep, setRegOtpStep] = useState<"form" | "otp">("form");
@@ -378,6 +380,29 @@ export default function RegisterScreen() {
       return { lat: loc.coords.latitude, lng: loc.coords.longitude };
     } catch {
       return null;
+    }
+  };
+
+  // Google is used only to choose an email from the device. It switches the
+  // registration method to email and fills the existing email field; the
+  // current email OTP flow remains unchanged.
+  const handleGoogleEmailPick = async () => {
+    if (googleLoading) return;
+    setGoogleLoading(true);
+    try {
+      const email = await pickGoogleEmail();
+      if (!email) return;
+
+      setAuthMethod("email");
+      setContact(email);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => passwordRef.current?.focus(), 150);
+    } catch (err: any) {
+      console.error("[Google-Email-Picker] register error:", err?.message ?? err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("تعذّر اختيار حساب Google", err?.message ?? "تعذّر جلب حسابات Google على الجهاز");
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -586,7 +611,7 @@ export default function RegisterScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
-  const anyLoading = loading || regOtpSending || emailOtpSending;
+  const anyLoading = loading || regOtpSending || emailOtpSending || googleLoading;
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -725,6 +750,20 @@ export default function RegisterScreen() {
                 </LinearGradient>
               </Pressable>
             </Animated.View>
+            <Pressable
+              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+              onPress={handleGoogleEmailPick}
+              disabled={anyLoading}
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#4285F4" />
+              ) : (
+                <FontAwesome name="google" size={20} color="#4285F4" />
+              )}
+              <Text style={styles.googleBtnText}>
+                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
+              </Text>
+            </Pressable>
           </View>
 
           <Pressable onPress={() => router.push("/login")} style={styles.loginLink}>
@@ -902,6 +941,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15, paddingHorizontal: 24, gap: 8,
   },
   registerBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  googleBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, paddingVertical: 13, borderRadius: 14,
+    borderWidth: 1.5, borderColor: "#D9DDE5", backgroundColor: "#FFF",
+    marginTop: -4,
+  },
+  googleBtnText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text },
   btnDisabled: { opacity: 0.6 },
   loginLink: { alignItems: "center", paddingVertical: 8 },
   loginLinkText: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },

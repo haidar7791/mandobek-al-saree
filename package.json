@@ -79,7 +79,8 @@
     "tsx": "^4.23.12",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "@react-native-google-signin/google-signin": "^16.1.4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
