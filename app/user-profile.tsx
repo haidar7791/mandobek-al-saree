@@ -34,6 +34,7 @@ import {
   type ProfilePost,
 } from "../lib/db_logic";
 import ProfilePostFeed from "@/components/ProfilePostFeed";
+import { ShareModal } from "@/components/ShareModal";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -63,6 +64,7 @@ export default function UserProfileScreen() {
 
   // Viewer's GPS location (to compute distance + enable directions)
   const [viewerLocation, setViewerLocation] = useState<GeoLocation | null>(null);
+  const [shareVisible, setShareVisible] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -327,6 +329,10 @@ export default function UserProfileScreen() {
                 <Feather name="message-circle" size={16} color="#FFF" />
                 <Text style={styles.actionBtnText}>دردشة</Text>
               </Pressable>
+              <Pressable style={[styles.actionBtn, styles.shareBtn]} onPress={() => setShareVisible(true)}>
+                <Feather name="share-2" size={16} color={C.accent} />
+                <Text style={[styles.actionBtnText, { color: C.accent }]}>مشاركة</Text>
+              </Pressable>
             </View>
           )}
 
@@ -338,6 +344,17 @@ export default function UserProfileScreen() {
           )}
         </ScrollView>
       )}
+      <ShareModal
+        visible={shareVisible}
+        onClose={() => setShareVisible(false)}
+        title={displayName}
+        cardImage={photoUri}
+        cardTitle={displayName}
+        cardRoute={userId ? `/user-profile?userId=${userId}` : undefined}
+        deepLinkPath={userId ? `user/${userId}` : undefined}
+        shareText={`👤 ${displayName}\nملف شخصي على تطبيق فورس`}
+        shareMessage={`👤 تعرّف على ${displayName} على تطبيق فورس`}
+      />
     </View>
   );
 }
@@ -391,6 +408,7 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF", includeFontPadding: false },
   chatBtn: { backgroundColor: "#2563EB" },
+  shareBtn: { backgroundColor: "rgba(201,168,76,0.1)", borderWidth: 1, borderColor: "rgba(201,168,76,0.35)" },
   followBtn: { backgroundColor: "#0F172A" },
   followingBtn: {
     backgroundColor: "rgba(201,168,76,0.1)",

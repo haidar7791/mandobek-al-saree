@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
@@ -223,6 +223,46 @@ function e164ToIraqiLocal(e164: string): string {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export async function registerRoutes(app: Express): Promise<Server> {
+
+  // Browser fallbacks for shared public profiles when the app is not installed.
+  const sendProfileFallback = async (req: Request, res: Response, next: NextFunction, userId: string) => {
+    if (!userId || !/^[A-Za-z0-9_-]+$/.test(userId)) return next();
+    try {
+      const admin = await getAdminApp();
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const snap = await getFirestore(admin).collection("users").doc(userId).get();
+      const data = snap.exists ? snap.data() || {} : null;
+      const escape = (value: string) => value.replace(/[&<>\"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch] || ch));
+      const name = escape(String(data?.name || "مستخدم فورس"));
+      const playUrl = "https://play.google.com/store/apps/details?id=com.haidar.forus";
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${name}</h2><p>هذا الملف الشخصي متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض الملف الشخصي.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
+    } catch (err) { next(err); }
+  };
+
+  app.get("/profile/:userId", async (req, res, next) => sendProfileFallback(req, res, next, req.params.userId));
+  app.get("/user/:userId", async (req, res, next) => sendProfileFallback(req, res, next, req.params.userId));
+
+  // Browser fallback for shared product links. Installed Android builds claim
+  // the same HTTPS URL through Android App Links; browsers reach this page
+  // when the app is not installed and can go directly to Google Play.
+  app.get("/product/:productId", async (req, res, next) => {
+    const productId = req.params.productId;
+    if (!productId || !/^[A-Za-z0-9_-]+$/.test(productId)) return next();
+    try {
+      const admin = await getAdminApp();
+      const { getFirestore } = await import("firebase-admin/firestore");
+      const snap = await getFirestore(admin).collection("products").doc(productId).get();
+      const data = snap.exists ? snap.data() || {} : null;
+      const escape = (value: string) => value.replace(/[&<>\"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch] || ch));
+      const title = escape(String(data?.title || "منتج على فورس"));
+      const image = String(data?.imageUrl || data?.thumbnailUrl || "").replace(/[<>\"']/g, "");
+      const playUrl = "https://play.google.com/store/apps/details?id=com.haidar.forus";
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta property="og:title" content="${title}">${image ? `<meta property="og:image" content="${image}">` : ""}<title>${title} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${title}</h2><p>هذا المنتج متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض المنتج مباشرة.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
+    } catch (err) { next(err); }
+  });
+
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
   });

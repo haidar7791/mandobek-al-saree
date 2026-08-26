@@ -20,6 +20,8 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
 import ProductOrderThumbnail from "@/components/ProductOrderThumbnail";
+import { ShareModal } from "@/components/ShareModal";
+import { PUBLIC_SHARE_BASE_URL } from "@/lib/config";
 import {
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
@@ -28,6 +30,7 @@ import {
   getUserProfile,
   buildChatId,
   type ProductOrder,
+  type OrderSharePayload,
 } from "@/lib/db_logic";
 
 /** Orders in these statuses may be deleted */
@@ -94,7 +97,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
     const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
-    const deepLink = order.productId ? `\n🔗 forus://product/${order.productId}` : "";
+    const deepLink = order.productId ? `\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${order.productId}` : "";
     await Share.share({
       message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}\n👤 البائع: ${order.sellerName || ""}${deepLink}`,
       title: order.productTitle,
@@ -239,7 +242,7 @@ function SaleCard({ order, onAccept, onReject }: {
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
     const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
-    const deepLink = order.productId ? `\n🔗 forus://product/${order.productId}` : "";
+    const deepLink = order.productId ? `\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${order.productId}` : "";
     await Share.share({
       message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}${deepLink}`,
       title: order.productTitle,
@@ -408,6 +411,7 @@ export default function ProductOrdersScreen() {
   const [selectMode, setSelectMode]     = useState(false);
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
   const [deleting, setDeleting]         = useState(false);
+  const [shareOrders, setShareOrders] = useState<OrderSharePayload[]>([]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -499,6 +503,42 @@ export default function ProductOrdersScreen() {
 
   const allSelected =
     deletableInList.length > 0 && selectedIds.size === deletableInList.length;
+
+
+  const handleShareSelected = async () => {
+    if (activeTab !== "sales") return;
+    const selectedAccepted = saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted");
+    if (!selectedAccepted.length) {
+      Alert.alert("المشاركة", "يمكن مشاركة الطلبات المقبولة فقط بعد الموافقة عليها.");
+      return;
+    }
+    const me = auth.currentUser;
+    if (!me) return;
+    try {
+      const seller = await getUserProfile(me.uid);
+      const payloads: OrderSharePayload[] = selectedAccepted.map((o) => ({
+        orderId: o.id,
+        productId: o.productId,
+        productTitle: o.productTitle,
+        productImageUrl: o.productImageUrl,
+        productPrice: o.productPrice,
+        selectedColor: o.selectedColor,
+        selectedSize: o.selectedSize,
+        buyerId: o.buyerId,
+        buyerName: o.buyerName,
+        buyerPhone: o.buyerPhone,
+        buyerLocation: o.buyerLocation || null,
+        sellerId: o.sellerId,
+        sellerName: o.sellerName || seller?.name || "البائع",
+        sellerPhone: seller?.phone || "",
+        sellerLocation: seller?.location || null,
+        createdAt: o.createdAt,
+      }));
+      setShareOrders(payloads);
+    } catch {
+      Alert.alert("خطأ", "تعذّر تجهيز الطلب للمشاركة.");
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -663,6 +703,18 @@ export default function ProductOrdersScreen() {
           <Text style={styles.bottomBarCount}>
             {selectedIds.size} طلب محدد
           </Text>
+          <View style={styles.bottomBarActions}>
+            {activeTab === "sales" && selectedIds.size > 0 && (
+              <TouchableOpacity
+                style={[styles.shareSelectedBtn, saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted").length === 0 && styles.btnDisabled]}
+                activeOpacity={0.85}
+                disabled={saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted").length === 0}
+                onPress={handleShareSelected}
+              >
+                <Feather name="share-2" size={16} color="#FFF" />
+                <Text style={styles.deleteSelectedText}>مشاركة</Text>
+              </TouchableOpacity>
+            )}
           <TouchableOpacity
             style={[styles.deleteSelectedBtn, deleting && styles.btnDisabled]}
             activeOpacity={0.85}
@@ -678,8 +730,18 @@ export default function ProductOrdersScreen() {
               </>
             )}
           </TouchableOpacity>
+          </View>
         </View>
       )}
+
+      <ShareModal
+        visible={shareOrders.length > 0}
+        onClose={() => setShareOrders([])}
+        title="طلبات البيع"
+        shareText={shareOrders.map((o) => `📦 ${o.productTitle}\n💰 ${o.productPrice != null ? Number(o.productPrice).toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}\n👤 المشتري: ${o.buyerName}\n📞 ${o.buyerPhone || "لا يوجد"}`).join("\n\n")}
+        shareMessage={`📦 تم مشاركة ${shareOrders.length} طلب${shareOrders.length > 1 ? "ات" : ""} بيع من فورس`}
+        orderCards={shareOrders}
+      />
     </View>
   );
 }
@@ -706,7 +768,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
 
-  // ── Tabs ──
+  // ── Tabs  ──
   tabsBar: {
     flexDirection: "row", backgroundColor: C.card,
     borderBottomWidth: 1, borderBottomColor: C.border,
@@ -785,6 +847,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
   },
   bottomBarCount: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  bottomBarActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  shareSelectedBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#2563EB", borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
   deleteSelectedBtn: {
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "#EF4444", borderRadius: 12,

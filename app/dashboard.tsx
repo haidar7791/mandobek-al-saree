@@ -1365,11 +1365,7 @@ try {
         title={shareProduct?.title || "منتج"}
         cardImage={shareProduct?.imageUrl}
         cardTitle={shareProduct?.title}
-        cardRoute={
-          shareProduct
-            ? `/user-profile?userId=${shareProduct.sellerId}&userName=${encodeURIComponent(shareProduct.sellerName || "")}`
-            : undefined
-        }
+        cardRoute={shareProduct ? `/product/${shareProduct.id}` : undefined}
         deepLinkPath={shareProduct ? `product/${shareProduct.id}` : undefined}
         shareText={
           shareProduct

@@ -1,24 +1,11 @@
 /**
- * ShareModal.tsx
- * Bottom-sheet that lets the user share content:
- *  - Externally via the device's native Share sheet
- *    → appends a forus:// deep link when deepLinkPath is provided
- *  - Internally by picking a recent chat and auto-sending:
- *    → a card message (thumbnail + title + "عرض" button) when cardImage/cardRoute provided
- *    → a plain text message otherwise
+ * ShareModal â€” external sharing plus internal sharing.
+ * Internal sharing keeps recent chats and also provides a global user search.
  */
 import React, { useEffect, useState } from "react";
 import {
-  Modal,
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  Share,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  Image,
+  Modal, View, Text, FlatList, Pressable, Share, StyleSheet,
+  ActivityIndicator, Alert, Image, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -27,332 +14,201 @@ import { auth } from "@/lib/firebase";
 import {
   sendMessage,
   sendCardMessage,
+  sendOrderCardMessage,
   getUserChats,
   getUserProfile,
+  searchUsersForSharing,
   type ChatSummary,
+  type ShareUserResult,
+  type OrderSharePayload,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import { PUBLIC_SHARE_BASE_URL } from "@/lib/config";
 
 const C = Colors.light;
 
 export interface ShareModalProps {
   visible: boolean;
   onClose: () => void;
-  /** Full text for the native share sheet (deep link appended automatically) */
   shareText: string;
-  /** Shorter text used as preview when sending a plain-text in-app message */
   shareMessage: string;
-  /** Optional title shown in the native share sheet header */
   title?: string;
-
-  // ── Card / deep-link props ──────────────────────────────────────────────────
-  /** Thumbnail URL shown in the card bubble and on the preview row */
   cardImage?: string;
-  /** Title text rendered inside the card bubble (falls back to title prop) */
   cardTitle?: string;
-  /**
-   * Internal Expo Router path pushed when the receiver taps the card's "عرض"
-   * button, e.g. "/artisan-profile?artisanId=XXX"
-   */
   cardRoute?: string;
-  /**
-   * Deep-link path segment appended to forus:// for external shares,
-   * e.g. "profile/artisanId" → "forus://profile/artisanId"
-   */
+  /** Path without scheme, e.g. product/ABC or profile/UID. */
   deepLinkPath?: string;
+  /** One or more accepted seller orders to send as rich order cards. */
+  orderCards?: OrderSharePayload[];
 }
 
 export function ShareModal({
-  visible,
-  onClose,
-  shareText,
-  shareMessage,
-  title,
-  cardImage,
-  cardTitle,
-  cardRoute,
-  deepLinkPath,
+  visible, onClose, shareText, shareMessage, title, cardImage, cardTitle, cardRoute,
+  deepLinkPath, orderCards,
 }: ShareModalProps) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [searchResults, setSearchResults] = useState<ShareUserResult[]>([]);
+  const [searchText, setSearchText] = useState("");
   const [loadingChats, setLoadingChats] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) {
-      setChats([]);
-      return;
+      setChats([]); setSearchResults([]); setSearchText(""); return;
     }
     const user = auth.currentUser;
     if (!user) return;
     setLoadingChats(true);
     getUserChats(user.uid, user.email).then((c) => {
-      setChats(c.slice(0, 8));
-      setLoadingChats(false);
-    });
+      setChats(c.slice(0, 12));
+    }).finally(() => setLoadingChats(false));
   }, [visible]);
 
-  // ── External share (native sheet) ──────────────────────────────────────────
+  useEffect(() => {
+    if (!visible || !searchText.trim()) { setSearchResults([]); setSearching(false); return; }
+    const timer = setTimeout(async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      setSearching(true);
+      try { setSearchResults(await searchUsersForSharing(searchText, user.uid)); }
+      catch { setSearchResults([]); }
+      finally { setSearching(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchText, visible]);
+
   const handleExternalShare = async () => {
     try {
-      // Send the registered app scheme first so tapping the message opens the
-      // installed app directly. Keep an HTTPS fallback for recipients who do
-      // not have the app installed yet.
-      const shareLinks = deepLinkPath
-        ? `\n\n🔗 افتح في تطبيق فورس: forus://${deepLinkPath}\n📲 لا تملك التطبيق؟ حمّله وافتح الرابط من هنا: https://forus.app/${deepLinkPath}`
-        : "";
-      await Share.share({ message: shareText + shareLinks, title });
-    } catch {
-      // user cancelled or not supported — silently ignore
-    }
+      let links = "";
+      if (deepLinkPath) {
+        const httpsLink = `${PUBLIC_SHARE_BASE_URL}/${deepLinkPath.replace(/^\//, "")}`;
+        links = `\n\nðŸ”— ${httpsLink}`;
+      }
+      if (orderCards?.length) {
+        links = orderCards.map((o) => `\n\nðŸ“¦ ${o.productTitle}\nðŸ”— ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
+      }
+      await Share.share({ message: shareText + links, title });
+    } catch {}
   };
 
-  // ── Internal chat send ──────────────────────────────────────────────────────
-  const handleSendToChat = async (chat: ChatSummary) => {
+  const sendToRecipient = async (recipient: { chatId?: string; otherUserId?: string; otherName: string }) => {
     const user = auth.currentUser;
     if (!user) return;
-    setSendingId(chat.chatId);
+    const recipientId = recipient.otherUserId;
+    if (!recipientId) return;
+    const chatId = recipient.chatId || [user.uid, recipientId].sort().join("_");
+    setSendingId(recipientId);
     try {
       const myProfile = await getUserProfile(user.uid);
-      const senderName = myProfile?.name || "مستخدم";
-
-      if (cardRoute) {
-        // Send a rich card message
-        await sendCardMessage(
-          chat.chatId,
-          user.uid,
-          senderName,
-          cardImage || "",
-          cardTitle || title || shareMessage,
-          cardRoute,
-          `📎 ${cardTitle || title || shareMessage}`
-        );
+      const senderName = myProfile?.name || "Ù…Ø³ØªØ®Ø¯Ù…";
+      if (orderCards?.length) {
+        for (const order of orderCards) await sendOrderCardMessage(chatId, user.uid, senderName, order);
+      } else if (cardRoute) {
+        await sendCardMessage(chatId, user.uid, senderName, cardImage || "", cardTitle || title || shareMessage, cardRoute, `ðŸ“Ž ${cardTitle || title || shareMessage}`);
       } else {
-        // Fallback: plain text
-        await sendMessage(chat.chatId, user.uid, senderName, shareMessage);
+        await sendMessage(chatId, user.uid, senderName, shareMessage);
       }
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
-      router.push({
-        pathname: "/chat",
-        params: { chatId: chat.chatId, otherName: chat.otherName },
-      } as any);
+      router.push({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
     } catch {
-      Alert.alert("خطأ", "تعذّر إرسال الرسالة، حاول مجدداً");
-    } finally {
-      setSendingId(null);
-    }
+      Alert.alert("Ø®Ø·Ø£", "ØªØ¹Ø°Ù‘Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ©ØŒ Ø­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ø§Ù‹");
+    } finally { setSendingId(null); }
+  };
+
+  const renderRecipient = (item: { chatId?: string; otherUserId?: string; otherName: string; otherPhotoUri?: string | null; roleLabel?: string }) => {
+    const id = item.otherUserId || item.chatId || "";
+    const isSending = sendingId === id;
+    return (
+      <Pressable style={({ pressed }) => [styles.chatRow, pressed && { opacity: .7 }]} onPress={() => { Haptics.selectionAsync(); sendToRecipient(item); }} disabled={!!sendingId}>
+        {item.otherPhotoUri ? <Image source={{ uri: item.otherPhotoUri }} style={styles.chatAvatarImg} /> : <View style={styles.chatAvatar}><Text style={styles.chatInitial}>{(item.otherName || "?")[0]}</Text></View>}
+        <View style={styles.recipientMeta}>
+          <Text style={styles.chatName} numberOfLines={1}>{item.otherName || "Ù…Ø³ØªØ®Ø¯Ù…"}</Text>
+          {item.roleLabel ? <Text style={styles.roleLabel}>{item.roleLabel}</Text> : null}
+        </View>
+        {isSending ? <ActivityIndicator size="small" color={C.accent} /> : <Feather name="send" size={15} color={C.accent} />}
+      </Pressable>
+    );
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      {/* Scrim */}
-      <Pressable style={styles.overlay} onPress={onClose} />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <Pressable style={styles.overlay} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.sheetTitle}>Ù…Ø´Ø§Ø±ÙƒØ©</Text>
 
-      {/* Bottom sheet */}
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-        <Text style={styles.sheetTitle}>مشاركة</Text>
+          {(cardImage || cardTitle || orderCards?.length) && (
+            <View style={styles.cardPreview}>
+              {orderCards?.length ? <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="package" size={18} color={C.textMuted} /></View> : cardImage ? <Image source={{ uri: cardImage }} style={styles.cardPreviewImg} /> : <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="user" size={18} color={C.textMuted} /></View>}
+              <Text style={styles.cardPreviewTitle} numberOfLines={2}>{orderCards?.length ? `Ù…Ø´Ø§Ø±ÙƒØ© ${orderCards.length} Ø·Ù„Ø¨${orderCards.length > 1 ? "Ø§Øª" : ""}` : cardTitle || title}</Text>
+            </View>
+          )}
 
-        {/* ── Card preview row (shown when card props are available) ── */}
-        {(cardImage || cardTitle) && (
-          <View style={styles.cardPreview}>
-            {cardImage ? (
-              <Image source={{ uri: cardImage }} style={styles.cardPreviewImg} />
-            ) : (
-              <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}>
-                <Feather name="image" size={18} color={C.textMuted} />
-              </View>
-            )}
-            <Text style={styles.cardPreviewTitle} numberOfLines={2}>
-              {cardTitle || title}
-            </Text>
+          <Pressable style={styles.externalBtn} onPress={handleExternalShare} accessibilityRole="button">
+            <Feather name="share-2" size={17} color="#FFF" />
+            <Text style={styles.externalBtnText}>Ù…Ø´Ø§Ø±ÙƒØ© Ø®Ø§Ø±Ø¬ÙŠØ© (ÙˆØ§ØªØ³Ø§Ø¨ØŒ ØªÙŠÙ„ÙŠØºØ±Ø§Ù…â€¦)</Text>
+          </Pressable>
+
+          <View style={styles.divider} />
+          <Text style={styles.sectionLabel}>Ø¥Ø±Ø³Ø§Ù„ Ù„ØµØ¯ÙŠÙ‚ Ø¹Ø¨Ø± Ø§Ù„Ø±Ø³Ø§Ø¦Ù„</Text>
+          <View style={styles.searchBox}>
+            <Feather name="search" size={18} color={C.textMuted} />
+            <TextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Ø§Ø¨Ø­Ø« Ø¹Ù† Ø§Ø³Ù… Ø£ÙŠ Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ ÙÙˆØ±Ø³"
+              placeholderTextColor={C.textMuted}
+              style={styles.searchInput}
+              textAlign="right"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {!!searchText && <Pressable onPress={() => setSearchText("")}><Feather name="x-circle" size={17} color={C.textMuted} /></Pressable>}
           </View>
-        )}
 
-        {/* ── External share ── */}
-        <Pressable
-          style={styles.externalBtn}
-          onPress={handleExternalShare}
-          accessibilityRole="button"
-        >
-          <Feather name="share-2" size={17} color="#FFF" />
-          <Text style={styles.externalBtnText}>مشاركة خارجية (واتساب، تيليغرام…)</Text>
-        </Pressable>
-
-        {/* ── Internal chat share ── */}
-        <View style={styles.divider} />
-        <Text style={styles.sectionLabel}>إرسال لصديق عبر الرسائل</Text>
-
-        {loadingChats ? (
-          <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
-        ) : chats.length === 0 ? (
-          <Text style={styles.emptyText}>لا توجد محادثات بعد</Text>
-        ) : (
-          <FlatList
-            data={chats}
-            keyExtractor={(c) => c.chatId}
-            style={styles.chatList}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => {
-              const isSending = sendingId === item.chatId;
-              return (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.chatRow,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    handleSendToChat(item);
-                  }}
-                  disabled={!!sendingId}
-                >
-                  <View style={styles.chatAvatar}>
-                    <Text style={styles.chatInitial}>
-                      {(item.otherName || "?")[0]}
-                    </Text>
-                  </View>
-                  <Text style={styles.chatName} numberOfLines={1}>
-                    {item.otherName || "مستخدم"}
-                  </Text>
-                  {isSending ? (
-                    <ActivityIndicator size="small" color={C.accent} />
-                  ) : (
-                    <Feather name="send" size={15} color={C.accent} />
-                  )}
-                </Pressable>
-              );
-            }}
-          />
-        )}
-      </View>
+          {searchText.trim() ? (
+            searching ? <ActivityIndicator color={C.accent} style={{ marginVertical: 16 }} /> : searchResults.length ? (
+              <FlatList data={searchResults} keyExtractor={(u) => u.userId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ otherUserId: item.userId, otherName: item.name, otherPhotoUri: item.photoUri, roleLabel: item.roleLabel })} />
+            ) : <Text style={styles.emptyText}>Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø§Ø³Ù…</Text>
+          ) : loadingChats ? (
+            <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
+          ) : chats.length === 0 ? (
+            <Text style={styles.emptyText}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ø¨Ø¹Ø¯ â€” Ø§Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø¨Ø­Ø« Ø£Ø¹Ù„Ø§Ù‡</Text>
+          ) : (
+            <FlatList data={chats} keyExtractor={(c) => c.chatId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ ...item, otherUserId: item.otherUserId, otherName: item.otherName, otherPhotoUri: item.otherPhotoUri })} />
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  sheet: {
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    paddingTop: 14,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#E2E8F0",
-    alignSelf: "center",
-    marginBottom: 14,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    fontFamily: "Cairo_700Bold",
-    color: C.text,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  // Card preview strip
-  cardPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: C.inputBg,
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 14,
-  },
-  cardPreviewImg: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-  },
-  cardPreviewImgFallback: {
-    backgroundColor: C.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardPreviewTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.text,
-    textAlign: "right",
-  },
-  externalBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: C.primary,
-    borderRadius: 14,
-    paddingVertical: 13,
-    marginBottom: 16,
-  },
-  externalBtnText: {
-    fontSize: 14,
-    fontFamily: "Cairo_700Bold",
-    color: "#FFF",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#F1F5F9",
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.textSecondary,
-    textAlign: "right",
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 13,
-    fontFamily: "Cairo_400Regular",
-    color: C.textMuted,
-    textAlign: "center",
-    marginVertical: 20,
-  },
-  chatList: { maxHeight: 240 },
-  chatRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8FAFC",
-  },
-  chatAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(201,168,76,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chatInitial: {
-    fontSize: 15,
-    fontFamily: "Cairo_700Bold",
-    color: C.accent,
-  },
-  chatName: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
-    color: C.text,
-    textAlign: "right",
-  },
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
+  sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 14, maxHeight: "88%" },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#E2E8F0", alignSelf: "center", marginBottom: 14 },
+  sheetTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center", marginBottom: 16 },
+  cardPreview: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.inputBg, borderRadius: 12, padding: 10, marginBottom: 14 },
+  cardPreviewImg: { width: 48, height: 48, borderRadius: 10 },
+  cardPreviewImgFallback: { backgroundColor: C.border, alignItems: "center", justifyContent: "center" },
+  cardPreviewTitle: { flex: 1, fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  externalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 13, marginBottom: 16 },
+  externalBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 12 },
+  sectionLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary, textAlign: "right", marginBottom: 8 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.inputBg, borderRadius: 13, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, marginBottom: 8 },
+  searchInput: { flex: 1, minHeight: 44, fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text },
+  emptyText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center", marginVertical: 20 },
+  chatList: { maxHeight: 300 },
+  chatRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F8FAFC" },
+  chatAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(201,168,76,0.15)", alignItems: "center", justifyContent: "center" },
+  chatAvatarImg: { width: 38, height: 38, borderRadius: 19 },
+  chatInitial: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent },
+  recipientMeta: { flex: 1, alignItems: "flex-end" },
+  chatName: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  roleLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 1 },
 });

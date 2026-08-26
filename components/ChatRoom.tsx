@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Animated,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
@@ -577,6 +578,57 @@ export default function ChatRoom({
           </View>
         </View>
       );
+    } else if (item.type === "order_card" && item.orderCard) {
+      const order = item.orderCard;
+      const price = order.productPrice != null ? `${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : "غير محدد";
+      const openMap = (location: { lat: number; lng: number } | null | undefined, label: string) => {
+        if (!location) {
+          Alert.alert("الموقع", `لا يوجد موقع ${label} محفوظ لهذا الطلب.`);
+          return;
+        }
+        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`).catch(() => {});
+      };
+      const chatSeller = () => {
+        const me = auth.currentUser;
+        if (!me || !order.sellerId) return;
+        const cid = [me.uid, order.sellerId].sort().join("_");
+        router.push({ pathname: "/chat", params: { chatId: cid, otherUserId: order.sellerId, otherName: order.sellerName } } as any);
+      };
+      bubbleContent = (
+        <View style={styles.orderCardBubble}>
+          {order.productImageUrl ? <Image source={{ uri: order.productImageUrl }} style={styles.orderCardImage} contentFit="cover" /> : null}
+          <Text style={[styles.orderCardTitle, isMine ? { color: "#FFF" } : { color: C.text }]} numberOfLines={2}>{order.productTitle}</Text>
+          <View style={styles.orderDetailGrid}>
+            <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>السعر: {price}</Text>
+            {order.selectedColor ? <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>اللون: {order.selectedColor}</Text> : null}
+            {order.selectedSize ? <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>القياس: {order.selectedSize}</Text> : null}
+            <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>المشتري: {order.buyerName}</Text>
+            <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>الهاتف: {order.buyerPhone || "لا يوجد"}</Text>
+            <Text style={[styles.orderDetailText, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.textSecondary }]}>البائع: {order.sellerName}</Text>
+          </View>
+          <View style={styles.orderActionRow}>
+            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={chatSeller}>
+              <Feather name="message-circle" size={14} color={isMine ? C.primary : "#FFF"} />
+              <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>دردشة</Text>
+            </Pressable>
+            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={() => openMap(order.buyerLocation, "المشتري")}>
+              <Feather name="map-pin" size={14} color={isMine ? C.primary : "#FFF"} />
+              <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>موقع المشتري</Text>
+            </Pressable>
+          </View>
+          <View style={styles.orderActionRow}>
+            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={() => openMap(order.sellerLocation, "البائع")}>
+              <Feather name="map-pin" size={14} color={isMine ? C.primary : "#FFF"} />
+              <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>موقع البائع</Text>
+            </Pressable>
+            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={() => router.push({ pathname: "/product/[id]", params: { id: order.productId } } as any)}>
+              <Feather name="package" size={14} color={isMine ? C.primary : "#FFF"} />
+              <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>المنتج</Text>
+            </Pressable>
+          </View>
+          <View style={styles.readIndicatorRow}>{readIndicator}<Text style={[styles.msgTime, isMine ? { color: "rgba(255,255,255,0.6)" } : { color: C.textMuted }]}>{time}</Text></View>
+        </View>
+      );
     } else if (item.type === "card" && item.cardRoute) {
       bubbleContent = (
         <View style={styles.cardBubble}>
@@ -1041,6 +1093,17 @@ const styles = StyleSheet.create({
   },
   confirmRecordingBtn: { width: 44, height: 44, borderRadius: 14, overflow: "hidden" },
   confirmRecordingGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
+  // ── Shared order card ──
+  orderCardBubble: { gap: 8, minWidth: 230, maxWidth: 290 },
+  orderCardImage: { width: "100%", height: 125, borderRadius: 10 },
+  orderCardTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", textAlign: "right", lineHeight: 23 },
+  orderDetailGrid: { gap: 3 },
+  orderDetailText: { fontSize: 11, fontFamily: "Cairo_400Regular", textAlign: "right", lineHeight: 18 },
+  orderActionRow: { flexDirection: "row", gap: 6 },
+  orderActionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8, paddingVertical: 7 },
+  orderActionMine: { backgroundColor: "rgba(255,255,255,0.2)" },
+  orderActionTheirs: { backgroundColor: C.primary },
+  orderActionText: { fontSize: 10, fontFamily: "Cairo_700Bold" },
   // ── Card bubble ──
   cardBubble: { gap: 8, minWidth: 210 },
   cardBubbleImage: { width: "100%", height: 120, borderRadius: 10 },

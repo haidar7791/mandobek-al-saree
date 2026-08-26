@@ -377,6 +377,12 @@ export default function ArtisanProfileScreen() {
             <Feather name="map-pin" size={16} color={C.accent} />
             <Text style={styles.mapBtnText}>الخريطة</Text>
           </Pressable>
+
+          {/* Share */}
+          <Pressable style={[styles.actionBtn, styles.shareBtn]} onPress={() => setShareVisible(true)}>
+            <Feather name="share-2" size={16} color={C.accent} />
+            <Text style={styles.mapBtnText}>مشاركة</Text>
+          </Pressable>
         </View>
       )}
 
@@ -562,6 +568,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: C.accent,
     backgroundColor: "rgba(201,168,76,0.06)",
   },
+  shareBtn: { backgroundColor: "rgba(201,168,76,0.1)", borderWidth: 1, borderColor: "rgba(201,168,76,0.35)" },
   mapBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent, includeFontPadding: false },
 
   // ── Row 2: full-width book button ───────────────────────────────────────────

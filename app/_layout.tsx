@@ -156,7 +156,14 @@ export default function RootLayout() {
     if (!authChecked) return;
 
     const navigate = (url: string) => {
-      if (!url.startsWith("forus://")) return;
+      let path = "";
+      if (url.startsWith("forus://")) {
+        path = url.replace(/^forus:\/\//, "");
+      } else if (url.startsWith("https://forus-backend-911663879269.europe-west1.run.app/")) {
+        path = url.replace(/^https:\/\/forus-backend-911663879269\.europe-west1\.run\.app\//, "");
+      } else {
+        return;
+      }
       if (!isLoggedIn) {
         pendingDeepLink.current = url;
         return;
@@ -164,18 +171,17 @@ export default function RootLayout() {
       if (handledDeepLink.current === url) return;
       handledDeepLink.current = url;
 
-        const withoutScheme = url.replace(/^forus:\/\//, "");
-        const [type, rawId] = withoutScheme.split("/");
-        const id = rawId ? decodeURIComponent(rawId.split("?")[0]) : "";
-        if (!id) return;
+      const [type, rawId] = path.split("/");
+      const id = rawId ? decodeURIComponent(rawId.split("?")[0]) : "";
+      if (!id) return;
 
-        if (type === "profile") {
-          router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
-        } else if (type === "user") {
-          router.push({ pathname: "/user-profile", params: { userId: id } } as any);
-        } else if (type === "product") {
-          router.push({ pathname: "/product/[id]", params: { id } } as any);
-        }
+      if (type === "profile") {
+        router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
+      } else if (type === "user") {
+        router.push({ pathname: "/user-profile", params: { userId: id } } as any);
+      } else if (type === "product") {
+        router.push({ pathname: "/product/[id]", params: { id } } as any);
+      }
     };
 
     if (isLoggedIn && pendingDeepLink.current) {

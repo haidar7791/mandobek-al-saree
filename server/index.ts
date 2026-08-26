@@ -246,6 +246,26 @@ function setupErrorHandler(app: express.Application) {
   setupBodyParsing(app);
   setupRequestLogging(app);
 
+
+  // Android App Links verification. This endpoint must be reachable at
+  // https://forus-backend-911663879269.europe-west1.run.app/.well-known/assetlinks.json and must return JSON directly.
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(200).send(JSON.stringify([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "com.haidar.forus",
+          sha256_cert_fingerprints: [
+            "15:A4:80:3A:05:29:B5:59:99:83:D0:85:1D:5C:39:30:C1:15:8D:96:76:B0:4E:C2:E8:20:19:BA:21:A9:19:C3",
+          ],
+        },
+      },
+    ]));
+  });
+
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);

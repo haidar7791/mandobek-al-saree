@@ -627,7 +627,7 @@ export const cancelServiceRequest = async (requestId: string): Promise<void> => 
 };
 
 /**
- * Soft-delete one or more service requests from the current user's own
+* Soft-delete one or more service requests from the current user's own
  * "السجل" history view. Adds userId to each request's hiddenFor array
  * instead of deleting the document, so the other participant's history and
  * any linked records stay intact. Capped batches of 400 writes, same
@@ -913,7 +913,7 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   read?: boolean;
-  type?: "text" | "image" | "audio" | "card";
+  type?: "text" | "image" | "audio" | "card" | "order_card";
   mediaUrl?: string;
   duration?: number;
   deleted?: boolean;
@@ -923,6 +923,7 @@ export interface ChatMessage {
   cardRoute?: string;   // internal Expo Router path to push on tap
   /** Story reply — thumbnail of the story that was replied to */
   storyImageUrl?: string;
+  orderCard?: OrderSharePayload;
 }
 
 export const DELETED_MESSAGE_TEXT = "تم حذف هذه الرسالة";
@@ -1106,6 +1107,107 @@ const UNRESTRICTED_INBOX_EMAIL = "haidar.askry@gmail.com";
 export function canViewAllChats(viewerEmail?: string | null): boolean {
   return viewerEmail?.toLowerCase() === UNRESTRICTED_INBOX_EMAIL;
 }
+
+
+export interface ShareUserResult {
+  userId: string;
+  name: string;
+  photoUri: string | null;
+  role: UserProfile["role"];
+  roleLabel: string;
+}
+
+export const searchUsersForSharing = async (
+  searchText: string,
+  excludeUserId?: string | null
+): Promise<ShareUserResult[]> => {
+  const term = searchText.trim().toLocaleLowerCase("ar");
+  if (!term) return [];
+
+  const snap = await getDocs(collection(db, "users"));
+  const results: ShareUserResult[] = [];
+
+  snap.docs.forEach((d) => {
+    if (excludeUserId && d.id === excludeUserId) return;
+    const data = d.data() as UserProfile;
+    const name = String(data.name || "").trim();
+    if (!name || !name.toLocaleLowerCase("ar").includes(term)) return;
+    const role = data.role || "client";
+    results.push({
+      userId: d.id,
+      name,
+      photoUri: data.photoUri || null,
+      role,
+      roleLabel: role === "artisan" ? (data.specialty || "صاحب اختصاص") : role === "admin" ? "إدارة" : "عام",
+    });
+  });
+
+  return results.sort((a, b) => {
+    const aa = a.name.toLocaleLowerCase("ar");
+    const bb = b.name.toLocaleLowerCase("ar");
+    const as = aa.startsWith(term) ? 0 : 1;
+    const bs = bb.startsWith(term) ? 0 : 1;
+    return as - bs || aa.localeCompare(bb, "ar");
+  }).slice(0, 30);
+};
+
+export interface OrderSharePayload {
+  orderId: string;
+  productId: string;
+  productTitle: string;
+  productImageUrl: string;
+  productPrice?: number;
+  selectedColor?: string;
+  selectedSize?: string;
+  buyerId: string;
+  buyerName: string;
+  buyerPhone: string;
+  buyerLocation?: GeoLocation | null;
+  sellerId: string;
+  sellerName: string;
+  sellerPhone?: string;
+  sellerLocation?: GeoLocation | null;
+  createdAt: string;
+}
+
+export const sendOrderCardMessage = async (
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  order: OrderSharePayload,
+): Promise<void> => {
+  const previewText = `📦 طلب بيع: ${order.productTitle}${order.productPrice != null ? ` — ${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : ""}`;
+  await addDoc(collection(db, "chats", chatId, "messages"), {
+    chatId,
+    senderId,
+    senderName,
+    text: previewText,
+    type: "order_card",
+    orderCard: order,
+    createdAt: new Date().toISOString(),
+  });
+  await setDoc(doc(db, "chats", chatId), {
+    participants: chatId.split("_"),
+    lastMessage: previewText,
+    lastAt: new Date().toISOString(),
+  }, { merge: true });
+  try {
+    const otherUid = chatId.split("_").find((u) => u !== senderId);
+    if (otherUid) {
+      const profile = await getUserProfile(otherUid);
+      if (profile?.pushToken) {
+        await sendExpoPush(
+          profile.pushToken,
+          `طلب بيع من ${senderName}`,
+          previewText,
+          { type: "orderCard", chatId, senderId, orderId: order.orderId, productId: order.productId },
+        );
+      }
+    }
+  } catch (err) {
+    console.error("notify on sendOrderCardMessage failed:", err);
+  }
+};
 
 export const getUserChats = async (
   userId: string,
