@@ -11,3 +11,4 @@
 - [Video thumbnail seek time](video-thumbnail-seek-time.md) — extract at second 2 for new video thumbnails, not the commonly black first frame
 - [Firebase phone registration](phone-auth-registration.md) — phone signup must stay on the direct Firebase JS Phone Auth flow, including test numbers
 - [Firestore phone lookup privacy](firestore-phone-lookup-privacy.md) — field-level masking is unavailable; use a public get-only phone index instead of users queries
+- [Firebase module type exports](firebase-module-types.md) — Firebase subpath runtime imports can lack top-level declarations; re-export @firebase types locally

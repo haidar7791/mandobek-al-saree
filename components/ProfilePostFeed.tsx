@@ -131,7 +131,7 @@ export default function ProfilePostFeed({
         {header}
         <Ionicons name="images-outline" size={42} color={C.textMuted} />
         <Text style={styles.emptyTitle}>لا توجد منشورات بعد</Text>
-        <Text style={styles.emptyHint}>اضغط "إضافة منشور" لاختيار صورة أو فيديو</Text>
+        <Text style={styles.emptyHint}>اضغط على إضافة منشور لاختيار صورة أو فيديو</Text>
       </View>
     );
   }
@@ -188,6 +188,12 @@ export default function ProfilePostFeed({
                   </Animated.View>
                 )}
               </Pressable>
+
+              <View style={styles.likesRow}>
+                <Ionicons name="heart" size={15} color="#EF4444" />
+                <Text style={styles.likesText}>{post.likesCount ?? 0}</Text>
+                <Text style={styles.likesLabel}>إعجاب</Text>
+              </View>
 
               {canDelete && onDelete && (
                 <Pressable
@@ -302,6 +308,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.68)",
   },
+  likesRow: {
+    position: "absolute",
+    left: 10,
+    bottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.62)",
+  },
+  likesText: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_700Bold" },
+  likesLabel: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontFamily: "Cairo_400Regular" },
   failed: {
     flex: 1,
     alignItems: "center",

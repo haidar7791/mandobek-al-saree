@@ -47,10 +47,9 @@ import {
   isFeaturedActive,
   subscribeToUserChatLastAts,
   subscribeToProducts,
-  createProductOrder,
   deleteProduct,
-  cancelProductOrder,
   likeProduct,
+  rankProductsForFeed,
   subscribeToBuyerProductOrders,
   type ProductOrder,
 } from "../lib/db_logic";
@@ -64,6 +63,7 @@ import {
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
+import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReservationsScreen from "./reservations";
 
 const C = Colors.light;
@@ -251,14 +251,11 @@ function ProductCard({
   const isFocused = useIsFocused();
   const isVisible = isFocused && isActive;
   const isMine = product.sellerId === userId;
-  const [buyModalVisible, setBuyModalVisible] = useState(false);
-  const [selectedColor, setSelectedColor] = useState("");
-  const [selectedSize, setSelectedSize] = useState("");
+  const [likesCount, setLikesCount] = useState(product.likesCount ?? 0);
 
-  // Empty color/size lists mean the seller did not define variants. In that
-  // case the buyer must be able to place the order without choosing anything.
-  const availableColors = (product.colors ?? []).filter((value) => value.trim());
-  const availableSizes = (product.sizes ?? []).filter((value) => value.trim());
+  useEffect(() => {
+    setLikesCount(product.likesCount ?? 0);
+  }, [product.likesCount]);
 
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -282,90 +279,6 @@ function ProductCard({
     ]);
   };
 
-  const handleCancelOrder = () => {
-    if (!pendingOrderId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert("إلغاء طلب الشراء", "هل تريد إلغاء طلبك المعلق لهذا المنتج؟", [
-      { text: "تراجع", style: "cancel" },
-      {
-        text: "إلغاء الطلب",
-        style: "destructive",
-        onPress: async () => {
-          onLoadingChange(product.id);
-          try {
-            await cancelProductOrder(pendingOrderId);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          } catch {
-            Alert.alert("خطأ", "تعذّر إلغاء الطلب، حاول مجدداً.");
-          } finally {
-            onLoadingChange(null);
-          }
-        },
-      },
-    ]);
-  };
-
-  const openBuyModal = () => {
-    const user = auth.currentUser;
-    if (!user) { router.replace("/login" as any); return; }
-    setSelectedColor("");
-    setSelectedSize("");
-    setBuyModalVisible(true);
-  };
-
-  const handleConfirmBuy = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // New products are required to have at least one color and one size.
-    // Keep the modal open and explain exactly what is missing instead of
-    // silently failing or closing the purchase sheet.
-    if (availableColors.length === 0 || !selectedColor) {
-      Alert.alert("اختيار مطلوب", "يجب اختيار اللون قبل إتمام الشراء.");
-      return;
-    }
-    if (availableSizes.length === 0 || !selectedSize) {
-      Alert.alert("اختيار مطلوب", "يجب اختيار القياس قبل إتمام الشراء.");
-      return;
-    }
-
-    onLoadingChange(product.id);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      const selfProfile = await getUserProfile(user.uid);
-      // Prefer the first image URL from media; fall back to imageUrl only if it's
-      // actually an image (video-only products store a video URL in imageUrl).
-      const bestImageUrl =
-        product.media?.find((m) => m.type === "image")?.url ||
-        (product.imageUrl && !/\.(mp4|mov|m4v|webm|avi|mkv)(?:$|[?#])/i.test(product.imageUrl)
-          ? product.imageUrl
-          : null) ||
-        "";
-      await createProductOrder({
-        productId: product.id,
-        productTitle: product.title,
-        productImageUrl: bestImageUrl,
-        productMedia: product.media,
-        productPrice: product.price,
-        sellerId: product.sellerId,
-        sellerName: product.sellerName,
-        buyerId: user.uid,
-        buyerName: selfProfile?.name || userName,
-        buyerPhone: selfProfile?.phone || "",
-        buyerLocation: userLocation,
-        selectedColor,
-        selectedSize,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setBuyModalVisible(false);
-      Alert.alert("تم الإرسال ✓", "تم إرسال طلب الشراء للبائع، سيتواصل معك قريباً.");
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
-    } finally {
-      onLoadingChange(null);
-    }
-  };
-
   return (
     <View style={styles.productCard}>
       <Pressable
@@ -383,7 +296,15 @@ function ProductCard({
           onDoubleTapLike={async () => {
             const viewer = auth.currentUser;
             if (!viewer || isMine) return false;
-            return likeProduct(viewer.uid, product.id);
+            setLikesCount((count) => count + 1);
+            try {
+              const liked = await likeProduct(viewer.uid, product.id);
+              if (!liked) setLikesCount((count) => Math.max(0, count - 1));
+              return liked;
+            } catch (error) {
+              setLikesCount((count) => Math.max(0, count - 1));
+              throw error;
+            }
           }}
         />
       </View>
@@ -418,6 +339,11 @@ function ProductCard({
         {product.description ? (
           <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
         ) : null}
+        <View style={styles.productEngagement}>
+          <Ionicons name="heart" size={15} color="#EF4444" />
+          <Text style={styles.productLikesText}>{likesCount}</Text>
+          <Text style={styles.productLikesLabel}>إعجاب</Text>
+        </View>
       </View>
       {isMine ? (
           <TouchableOpacity
@@ -437,138 +363,17 @@ function ProductCard({
               )}
             </View>
           </TouchableOpacity>
-        ) : pendingOrderId ? (
-          <TouchableOpacity
-            style={[styles.buyBtn, styles.cancelOrderBtn]}
-            activeOpacity={0.85}
-            disabled={isLoading}
-            onPress={handleCancelOrder}
-          >
-            <View style={styles.cancelOrderBtnInner}>
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Feather name="x-circle" size={14} color="#FFF" />
-                  <Text style={styles.cancelOrderBtnText}>إلغاء الطلب</Text>
-                </>
-              )}
-            </View>
-          </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={[styles.buyBtn, isLoading && styles.btnDisabled]}
-            activeOpacity={0.85}
-            disabled={isLoading}
-            onPress={openBuyModal}
-          >
-            <LinearGradient
-              colors={[C.accent, C.accentLight]}
-              style={styles.buyBtnGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color={C.primary} />
-              ) : (
-                <>
-                  <Ionicons name="cart-outline" size={14} color={C.primary} />
-                  <Text style={styles.buyBtnText}>تفاصيل الشراء</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+          <ProductPurchaseButton
+            product={product}
+            userId={userId}
+            userName={userName}
+            userLocation={userLocation}
+            pendingOrderId={pendingOrderId}
+            isLoading={isLoading}
+            onLoadingChange={onLoadingChange}
+          />
         )}
-
-      {/* ── Buy Details Modal ── */}
-      <Modal
-        visible={buyModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setBuyModalVisible(false)}
-      >
-        <Pressable style={styles.buyModalOverlay} onPress={() => setBuyModalVisible(false)}>
-          <Pressable style={styles.buyModalSheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.buyModalHandle} />
-            <Text style={styles.buyModalTitle}>تفاصيل الشراء</Text>
-            <Text style={styles.buyModalProductName} numberOfLines={2}>{product.title}</Text>
-            <Text style={styles.buyModalPriceText}>
-              {product.price.toLocaleString("ar-IQ")}{" "}
-              <Text style={styles.buyModalCurrency}>د.ع</Text>
-            </Text>
-
-            {/* Color selector */}
-            {availableColors.length > 0 && (
-              <View style={styles.buyModalSection}>
-                <Text style={styles.buyModalSectionLabel}>
-                  اختر اللون <Text style={styles.buyModalRequired}>*</Text>
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipRow}>
-                  {availableColors.map((color) => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[styles.chip, selectedColor === color && styles.chipActive]}
-                      onPress={() => setSelectedColor(color)}
-                    >
-                      <Text style={[styles.chipText, selectedColor === color && styles.chipTextActive]}>
-                        {color}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Size selector */}
-            {availableSizes.length > 0 && (
-              <View style={styles.buyModalSection}>
-                <Text style={styles.buyModalSectionLabel}>
-                  اختر القياس <Text style={styles.buyModalRequired}>*</Text>
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipRow}>
-                  {availableSizes.map((size) => (
-                    <TouchableOpacity
-                      key={size}
-                      style={[styles.chip, selectedSize === size && styles.chipActive]}
-                      onPress={() => setSelectedSize(size)}
-                    >
-                      <Text style={[styles.chipText, selectedSize === size && styles.chipTextActive]}>
-                        {size}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Confirm */}
-            <TouchableOpacity
-              style={[styles.buyModalConfirmBtn, isLoading && styles.btnDisabled]}
-              disabled={isLoading}
-              onPress={handleConfirmBuy}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={[C.accent, C.accentLight]}
-                style={styles.buyBtnGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="small" color={C.primary} />
-                ) : (
-                  <>
-                    <Ionicons name="cart-outline" size={16} color={C.primary} />
-                    <Text style={styles.buyBtnText}>شراء</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -597,6 +402,7 @@ const isFocused = useIsFocused();
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsRefreshing, setProductsRefreshing] = useState(false);
   const [productsRefreshKey, setProductsRefreshKey] = useState(0);
+  const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
@@ -830,6 +636,7 @@ try {
 
   const onProductsRefresh = useCallback(() => {
     setProductsRefreshing(true);
+    setSmartFeedSeed((seed) => seed + 1);
     setProductsRefreshKey((k) => k + 1);
   }, []);
 
@@ -928,21 +735,12 @@ try {
     searchQuery,
   ]);
 
-  // Sort products:
-  //   1. priorityScore desc  — promoted sellers (score=100) always top 3
-  //   2. featuredUntil active — second tier (paid but score not set yet)
-  //   3. createdAt desc      — recency as tiebreaker
-  const sortedProducts = React.useMemo(() => {
-    return [...products].sort((a, b) => {
-      const pa = a.priorityScore ?? 0;
-      const pb = b.priorityScore ?? 0;
-      if (pb !== pa) return pb - pa;
-      const aF = isFeaturedActive({ featuredUntil: a.sellerFeaturedUntil }) ? 0 : 1;
-      const bF = isFeaturedActive({ featuredUntil: b.sellerFeaturedUntil }) ? 0 : 1;
-      if (aF !== bF) return aF - bF;
-      return (b.createdAt || "").localeCompare(a.createdAt || "");
-    });
-  }, [products]);
+  // Smart feed: one sponsored slot first, then a rotating mix of engagement,
+  // recency, interest, and affinity. The seed changes only on pull-to-refresh.
+  const sortedProducts = React.useMemo(
+    () => rankProductsForFeed(products, smartFeedSeed),
+    [products, smartFeedSeed],
+  );
 
   // Filter sorted products by search query (empty query → all products)
   const filteredProducts = React.useMemo(() => {
@@ -1886,6 +1684,12 @@ availOnline: { backgroundColor: "#22C55E" },
   productPriceLabel: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   productCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.accent },
   productDesc: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  productEngagement: {
+    flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5,
+    paddingTop: 2,
+  },
+  productLikesText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+  productLikesLabel: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
   productFeaturedBadge: {
     flexDirection: "row", alignItems: "center", gap: 3,
     backgroundColor: C.accent, borderRadius: 7,

@@ -845,7 +845,11 @@ export const likeProduct = async (likerId: string, productId: string): Promise<b
     const ownerRef = doc(db, "users", ownerId);
     const ownerSnap = await transaction.get(ownerRef);
     if (!ownerSnap.exists()) throw new Error("Product owner does not exist");
+    const currentLikes = Number((productSnap.data() as any).likesCount ?? 0);
     transaction.set(likeRef, { likedAt: serverTimestamp(), likerId });
+    transaction.update(productRef, {
+      likesCount: Math.max(0, currentLikes) + 1,
+    });
     transaction.update(ownerRef, { contentLikesCount: increment(1) });
     return true;
   });
@@ -867,7 +871,11 @@ export const unlikeProduct = async (likerId: string, productId: string): Promise
       ownerRef = doc(db, "users", ownerId);
       ownerSnap = await transaction.get(ownerRef);
     }
+    const currentLikes = Number((productSnap.data() as any).likesCount ?? 0);
     transaction.delete(likeRef);
+    transaction.update(productRef, {
+      likesCount: Math.max(0, currentLikes - 1),
+    });
     if (ownerRef && ownerSnap?.exists()) {
       const current = Number((ownerSnap.data() as any).contentLikesCount ?? 0);
       transaction.update(ownerRef, { contentLikesCount: Math.max(0, current - 1) });
@@ -895,6 +903,13 @@ export const likeProfilePost = async (likerId: string, userId: string, postId: s
     if (!posts.some((post) => post?.id === postId)) return false;
     if (likeSnap.exists()) return false;
     transaction.set(likeRef, { likedAt: serverTimestamp(), likerId });
+    transaction.update(userRef, {
+      profilePosts: posts.map((post) =>
+        post?.id === postId
+          ? { ...post, likesCount: Number(post.likesCount ?? 0) + 1 }
+          : post
+      ),
+    });
     transaction.update(userRef, { contentLikesCount: increment(1) });
     return true;
   });
@@ -910,7 +925,15 @@ export const unlikeProfilePost = async (likerId: string, userId: string, postId:
     ]);
     if (!userSnap.exists() || !likeSnap.exists()) return false;
     const current = Number((userSnap.data() as any).contentLikesCount ?? 0);
+    const posts = ((userSnap.data() as any).profilePosts ?? []) as ProfilePost[];
     transaction.delete(likeRef);
+    transaction.update(userRef, {
+      profilePosts: posts.map((post) =>
+        post?.id === postId
+          ? { ...post, likesCount: Math.max(0, Number(post.likesCount ?? 0) - 1) }
+          : post
+      ),
+    });
     transaction.update(userRef, { contentLikesCount: Math.max(0, current - 1) });
     return true;
   });
@@ -1671,6 +1694,7 @@ export interface ProfilePost {
   url: string;
   mediaType: "image" | "video";
   createdAt: string;
+  likesCount?: number;
   storagePath?: string;
   mimeType?: string | null;
   /** Added only while normalizing old portfolio URLs; never persisted. */
@@ -1915,6 +1939,7 @@ export const addProfilePost = async (
     url: post.url,
     mediaType: post.mediaType,
     createdAt: post.createdAt,
+    likesCount: post.likesCount ?? 0,
     storagePath: post.storagePath ?? null,
     mimeType: post.mimeType ?? null,
   };
@@ -1939,6 +1964,7 @@ export const removeProfilePost = async (
     url: post.url,
     mediaType: post.mediaType,
     createdAt: post.createdAt,
+    likesCount: post.likesCount ?? 0,
     storagePath: post.storagePath ?? null,
     mimeType: post.mimeType ?? null,
   };
@@ -1972,6 +1998,13 @@ export interface Product {
   priorityScore?: number;
   /** True while seller has an active promotion */
   isPromoted?: boolean;
+  /** Aggregate product likes, maintained transactionally by likeProduct/unlikeProduct. */
+  likesCount?: number;
+  commentsCount?: number;
+  sharesCount?: number;
+  /** Optional scores supplied by future affinity/interest tracking. */
+  affinityScore?: number;
+  interestScore?: number;
   status: "available" | "sold";
   soldAt?: string | null;
   colors?: string[];
@@ -2093,6 +2126,7 @@ export const createProduct = async (data: {
     sellerId: data.sellerId,
     sellerName: data.sellerName,
     sellerPhone: data.sellerPhone,
+    likesCount: 0,
     sellerFeaturedUntil,
     colors: (data.colors ?? []).filter((c) => c.trim()),
     sizes: (data.sizes ?? []).filter((s) => s.trim()),
@@ -2215,6 +2249,73 @@ export const subscribeToProducts = (
     }
   );
 };
+
+/**
+ * Smart marketplace ordering. The sponsored slot is deliberately selected
+ * from a different seller on each refresh seed. The remaining products use a
+ * rotating emphasis so refreshes do not freeze the feed on one criterion.
+ *
+ * Missing affinity/interest fields safely contribute zero until those signals
+ * are collected; existing products therefore remain fully compatible.
+ */
+export function rankProductsForFeed(
+  products: Product[],
+  refreshSeed = 0,
+): Product[] {
+  const now = Date.now();
+  const sponsored = products.filter(
+    (product) =>
+      product.isPromoted === true ||
+      (product.priorityScore ?? 0) > 0 ||
+      isFeaturedActive({ featuredUntil: product.sellerFeaturedUntil }),
+  );
+
+  const sponsoredSellers = Array.from(
+    new Set(sponsored.map((product) => product.sellerId).filter(Boolean)),
+  );
+  const selectedSeller =
+    sponsoredSellers.length > 0
+      ? sponsoredSellers[refreshSeed % sponsoredSellers.length]
+      : null;
+  const selectedSponsored =
+    (selectedSeller
+      ? sponsored.find((product) => product.sellerId === selectedSeller)
+      : null) ??
+    sponsored[refreshSeed % Math.max(1, sponsored.length)] ??
+    null;
+
+  const rest = products.filter((product) => product.id !== selectedSponsored?.id);
+  const mode = refreshSeed % 4;
+  const recency = (createdAt: string) => {
+    const ageHours = Math.max(0, (now - new Date(createdAt || 0).getTime()) / 3600000);
+    return Math.max(0, 100 - ageHours * 2);
+  };
+  const engagement = (product: Product) =>
+    Number(product.likesCount ?? 0) * 3 +
+    Number(product.commentsCount ?? 0) * 4 +
+    Number(product.sharesCount ?? 0) * 5;
+  const jitter = (product: Product) => {
+    let hash = refreshSeed + 17;
+    for (const char of product.id) hash = (hash * 31 + char.charCodeAt(0)) % 997;
+    return hash / 997;
+  };
+
+  rest.sort((a, b) => {
+    const score = (product: Product) => {
+      const popularity = engagement(product);
+      const fresh = recency(product.createdAt);
+      const affinity = Number(product.affinityScore ?? 0);
+      const interest = Number(product.interestScore ?? 0);
+      if (mode === 0) return popularity * 0.6 + fresh * 0.15 + affinity * 0.15 + interest * 0.1;
+      if (mode === 1) return fresh * 0.6 + popularity * 0.15 + affinity * 0.1 + interest * 0.15;
+      if (mode === 2) return interest * 0.55 + affinity * 0.25 + popularity * 0.1 + fresh * 0.1;
+      return affinity * 0.5 + popularity * 0.25 + fresh * 0.15 + interest * 0.1;
+    };
+    return score(b) - score(a) || jitter(b) - jitter(a);
+  });
+
+  return selectedSponsored ? [selectedSponsored, ...rest] : rest;
+}
 
 export const createProductOrder = async (
   data: Omit<ProductOrder, "id" | "createdAt" | "status">

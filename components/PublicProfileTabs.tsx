@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import ProductMediaCarousel, { normalizeProductMedia } from "./ProductMediaCarousel";
 import ProfilePostFeed from "./ProfilePostFeed";
+import ProductPurchaseButton from "./ProductPurchaseButton";
 import {
   likeProduct,
   likeProfilePost,
@@ -26,13 +27,17 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [productLikes, setProductLikes] = useState<Record<string, number>>({});
+  const [postLikes, setPostLikes] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!userId) return;
     setProductsLoading(true);
     const unsubscribe = subscribeToProducts(
       (items) => {
-        setProducts(items.filter((product) => product.sellerId === userId && product.status === "available"));
+        const owned = items.filter((product) => product.sellerId === userId && product.status === "available");
+        setProducts(owned);
+        setProductLikes(Object.fromEntries(owned.map((product) => [product.id, product.likesCount ?? 0])));
         setProductsLoading(false);
       },
       () => {
@@ -46,17 +51,37 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
   const handleLikePost = async (post: ProfilePost) => {
     const viewer = auth.currentUser;
     if (!viewer || viewer.uid === userId) return false;
-    const liked = await likeProfilePost(viewer.uid, userId, post.id);
-    if (liked) onContentLiked?.();
-    return liked;
+    setPostLikes((current) => ({ ...current, [post.id]: (current[post.id] ?? post.likesCount ?? 0) + 1 }));
+    try {
+      const liked = await likeProfilePost(viewer.uid, userId, post.id);
+      if (!liked) {
+        setPostLikes((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? 0) - 1) }));
+      } else {
+        onContentLiked?.();
+      }
+      return liked;
+    } catch (error) {
+      setPostLikes((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? 0) - 1) }));
+      throw error;
+    }
   };
 
   const handleLikeProduct = async (product: Product) => {
     const viewer = auth.currentUser;
     if (!viewer || viewer.uid === product.sellerId) return false;
-    const liked = await likeProduct(viewer.uid, product.id);
-    if (liked && product.sellerId === userId) onContentLiked?.();
-    return liked;
+    setProductLikes((current) => ({ ...current, [product.id]: (current[product.id] ?? product.likesCount ?? 0) + 1 }));
+    try {
+      const liked = await likeProduct(viewer.uid, product.id);
+      if (!liked) {
+        setProductLikes((current) => ({ ...current, [product.id]: Math.max(0, (current[product.id] ?? 0) - 1) }));
+      } else if (product.sellerId === userId) {
+        onContentLiked?.();
+      }
+      return liked;
+    } catch (error) {
+      setProductLikes((current) => ({ ...current, [product.id]: Math.max(0, (current[product.id] ?? 0) - 1) }));
+      throw error;
+    }
   };
 
   return (
@@ -87,7 +112,7 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
       {activeTab === "posts" ? (
         <View style={styles.card}>
           <ProfilePostFeed
-            posts={posts}
+            posts={posts.map((post) => ({ ...post, likesCount: postLikes[post.id] ?? post.likesCount ?? 0 }))}
             showEmptyState
             title="معرض الأعمال"
             onDoubleTapLike={handleLikePost}
@@ -124,7 +149,18 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
                     {product.description ? (
                       <Text style={styles.description} numberOfLines={2}>{product.description}</Text>
                     ) : null}
+                    <View style={styles.likesRow}>
+                      <Feather name="heart" size={15} color="#EF4444" />
+                      <Text style={styles.likesText}>{productLikes[product.id] ?? product.likesCount ?? 0}</Text>
+                      <Text style={styles.likesLabel}>إعجاب</Text>
+                    </View>
                   </View>
+                  {auth.currentUser?.uid !== product.sellerId && (
+                    <ProductPurchaseButton
+                      product={product}
+                      userId={auth.currentUser?.uid ?? null}
+                    />
+                  )}
                 </View>
               ))}
             </View>
@@ -184,4 +220,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 15, lineHeight: 22, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   price: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent },
   description: { fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  likesRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5 },
+  likesText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+  likesLabel: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
 });
