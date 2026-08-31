@@ -18,6 +18,7 @@ import {
   createProductOrder,
   cancelProductOrder,
   getUserProfile,
+  likeProduct,
   type ArtisanProfile,
   type Product,
 } from "@/lib/db_logic";
@@ -261,6 +262,11 @@ export default function SearchScreen() {
                     height={60}
                     showIndicators={false}
                     style={styles.productThumb}
+                    onDoubleTapLike={async () => {
+                      const viewer = auth.currentUser;
+                      if (!viewer || viewer.uid === p.sellerId) return false;
+                      return likeProduct(viewer.uid, p.id);
+                    }}
                   />
                 ) : (
                   <View style={[styles.productThumb, styles.thumbFallback]}>
@@ -313,6 +319,11 @@ export default function SearchScreen() {
                         media={normalizeProductMedia(p.media, p.imageUrl)}
                         height={240}
                         showIndicators
+                        onDoubleTapLike={async () => {
+                          const viewer = auth.currentUser;
+                          if (!viewer || viewer.uid === p.sellerId) return false;
+                          return likeProduct(viewer.uid, p.id);
+                        }}
                       />
                     ) : (
                       <View style={[styles.detailImage, styles.detailImageFallback]}>

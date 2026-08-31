@@ -39,7 +39,7 @@ import {
   type GeoLocation,
   type ProfilePost,
 } from "../lib/db_logic";
-import ProfilePostFeed from "@/components/ProfilePostFeed";
+import PublicProfileTabs from "@/components/PublicProfileTabs";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -120,10 +120,10 @@ export default function ArtisanProfileScreen() {
         setLikesCount(engagement.likesCount);
       }
       const currentUser = auth.currentUser;
-      if (currentUser && artisanId && currentUser.uid !== artisanId) {
+      if (currentUser && artisanData?.userId && currentUser.uid !== artisanData.userId) {
         const [following, liked] = await Promise.all([
-          getIsFollowing(currentUser.uid, artisanId),
-          getIsLiked(currentUser.uid, artisanId),
+          getIsFollowing(currentUser.uid, artisanData.userId),
+          getIsLiked(currentUser.uid, artisanData.userId),
         ]);
         setIsFollowing(following);
         setIsLiked(liked);
@@ -208,17 +208,17 @@ export default function ArtisanProfileScreen() {
 
   const handleToggleFollow = async () => {
     const user = auth.currentUser;
-    if (!user || !artisanId) return;
+    if (!user || !artisan?.userId) return;
     setFollowLoading(true);
     try {
       if (isFollowing) {
-        await unfollowArtisan(user.uid, artisanId);
+        await unfollowArtisan(user.uid, artisan.userId);
       } else {
-        await followArtisan(user.uid, artisanId);
+        await followArtisan(user.uid, artisan.userId);
       }
       const [following, engagement] = await Promise.all([
-        getIsFollowing(user.uid, artisanId),
-        getProfileEngagementCounts(artisanId),
+        getIsFollowing(user.uid, artisan.userId),
+        getProfileEngagementCounts(artisan.userId),
       ]);
       setIsFollowing(following);
       setFollowCount(engagement.followCount);
@@ -232,17 +232,17 @@ export default function ArtisanProfileScreen() {
 
   const handleToggleLike = async () => {
     const user = auth.currentUser;
-    if (!user || !artisanId) return;
+    if (!user || !artisan?.userId) return;
     setLikeLoading(true);
     try {
       if (isLiked) {
-        await unlikeArtisan(user.uid, artisanId);
+        await unlikeArtisan(user.uid, artisan.userId);
       } else {
-        await likeArtisan(user.uid, artisanId);
+        await likeArtisan(user.uid, artisan.userId);
       }
       const [liked, engagement] = await Promise.all([
-        getIsLiked(user.uid, artisanId),
-        getProfileEngagementCounts(artisanId),
+        getIsLiked(user.uid, artisan.userId),
+        getProfileEngagementCounts(artisan.userId),
       ]);
       setIsLiked(liked);
       setLikesCount(engagement.likesCount);
@@ -279,9 +279,9 @@ export default function ArtisanProfileScreen() {
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
       {/* ─────────────── HERO (gradient) ─────────────── */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 6 }]}>
-        {/* Back button — minimal, top-left */}
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Feather name="chevron-right" size={22} color="#FFF" />
+        {/* Public profile share button — replaces the visible back button. */}
+        <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
+          <Feather name="share-2" size={19} color={C.accent} />
         </Pressable>
 
         {/* Photo — centered */}
@@ -378,11 +378,6 @@ export default function ArtisanProfileScreen() {
             <Text style={styles.mapBtnText}>الخريطة</Text>
           </Pressable>
 
-          {/* Share */}
-          <Pressable style={[styles.actionBtn, styles.shareBtn]} onPress={() => setShareVisible(true)}>
-            <Feather name="share-2" size={16} color={C.accent} />
-            <Text style={styles.mapBtnText}>مشاركة</Text>
-          </Pressable>
         </View>
       )}
 
@@ -408,12 +403,14 @@ export default function ArtisanProfileScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Persistent profile posts — separate from marketplace products */}
-        {profilePosts.length > 0 && (
-          <View style={styles.section}>
-            <ProfilePostFeed posts={profilePosts} />
-          </View>
-        )}
+        <PublicProfileTabs
+          userId={artisan.userId}
+          posts={profilePosts}
+          onContentLiked={async () => {
+            const engagement = await getProfileEngagementCounts(artisan.userId);
+            setLikesCount(engagement.likesCount);
+          }}
+        />
       </ScrollView>
 
       {/* ─────────────── BOOKING MODAL ─────────────── */}
@@ -485,10 +482,11 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     alignItems: "center",
   },
-  backBtn: {
+  topShareBtn: {
     alignSelf: "flex-start",
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    width: 38, height: 38, borderRadius: 11,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
     alignItems: "center", justifyContent: "center",
     marginBottom: 12,
   },

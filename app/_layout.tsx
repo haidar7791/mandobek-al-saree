@@ -176,13 +176,22 @@ export default function RootLayout() {
       if (!id) return;
 
       if (type === "profile") {
-        router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
+        // A deep link is a new navigation root: keep exactly one Home screen
+        // underneath the public profile instead of accumulating profile/profile/profile.
+        router.replace("/dashboard" as any);
+        setTimeout(() => {
+          router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
+        }, 0);
       } else if (type === "user") {
-        router.push({ pathname: "/user-profile", params: { userId: id } } as any);
+        router.replace("/dashboard" as any);
+        setTimeout(() => {
+          router.push({ pathname: "/user-profile", params: { userId: id } } as any);
+        }, 0);
       } else if (type === "product") {
-        // Product shares always land in the live marketplace feed. The
-        // dashboard then scrolls to this product's current sorted position.
-        router.push({ pathname: "/dashboard", params: { productId: id } } as any);
+        // Product shares always land in the live marketplace feed. Replacing
+        // the current route prevents repeated deep-link opens from building
+        // an endless dashboard stack; Home remains the final screen on Back.
+        router.replace({ pathname: "/dashboard", params: { productId: id } } as any);
       }
     };
 

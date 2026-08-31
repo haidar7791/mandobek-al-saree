@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -9,6 +9,8 @@ import {
   View,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { ResizeMode, Video } from "expo-av";
 import type { ProfilePost } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
@@ -26,6 +28,8 @@ type Props = {
   actionLabel?: string;
   onAction?: () => void;
   actionDisabled?: boolean;
+  /** Called by a double-tap on a post. Return true when the like was recorded. */
+  onDoubleTapLike?: (post: ProfilePost) => Promise<boolean> | boolean;
 };
 
 export default function ProfilePostFeed({
@@ -39,8 +43,52 @@ export default function ProfilePostFeed({
   actionLabel,
   onAction,
   actionDisabled = false,
+  onDoubleTapLike,
 }: Props) {
   const [fullscreenPost, setFullscreenPost] = useState<ProfilePost | null>(null);
+  const [heartPostId, setHeartPostId] = useState<string | null>(null);
+  const lastTapRef = useRef<Record<string, number>>({});
+  const heartScale = useSharedValue(0.35);
+  const heartOpacity = useSharedValue(0);
+  const heartStyle = useAnimatedStyle(() => ({
+    opacity: heartOpacity.value,
+    transform: [{ scale: heartScale.value }],
+  }));
+
+  const showLikeEffect = (postId: string) => {
+    setHeartPostId(postId);
+    heartScale.value = 0.35;
+    heartOpacity.value = 0;
+    heartOpacity.value = withTiming(1, { duration: 90 });
+    heartScale.value = withSpring(1.15, { damping: 7, stiffness: 260 });
+    setTimeout(() => {
+      heartOpacity.value = withTiming(0, { duration: 240 });
+      heartScale.value = withTiming(0.9, { duration: 240 });
+      setTimeout(() => setHeartPostId((current) => current === postId ? null : current), 250);
+    }, 280);
+  };
+
+  const handleMediaTap = (post: ProfilePost) => {
+    const now = Date.now();
+    const last = lastTapRef.current[post.id] || 0;
+    lastTapRef.current[post.id] = now;
+    if (now - last < 300) {
+      if (onDoubleTapLike) {
+        Promise.resolve(onDoubleTapLike(post)).then((liked) => {
+          if (liked) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            showLikeEffect(post.id);
+          }
+        }).catch(() => {});
+      }
+      return;
+    }
+    setTimeout(() => {
+      if (lastTapRef.current[post.id] === now) {
+        setFullscreenPost(post);
+      }
+    }, 310);
+  };
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
 
   const markFailed = (postId: string) => {
@@ -98,7 +146,7 @@ export default function ProfilePostFeed({
             <View key={post.id} style={styles.card}>
               <Pressable
                 style={styles.mediaPressable}
-                onPress={() => !failed && setFullscreenPost(post)}
+                onPress={() => !failed && handleMediaTap(post)}
                 accessibilityRole="button"
                 accessibilityLabel={
                   post.mediaType === "video"
@@ -133,6 +181,11 @@ export default function ProfilePostFeed({
                     resizeMode="cover"
                     onError={() => markFailed(post.id)}
                   />
+                )}
+                {heartPostId === post.id && (
+                  <Animated.View pointerEvents="none" style={[styles.heartOverlay, heartStyle]}>
+                    <Ionicons name="heart" size={82} color="#EF4444" />
+                  </Animated.View>
                 )}
               </Pressable>
 
@@ -215,7 +268,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#111",
     position: "relative",
   },
-  mediaPressable: { flex: 1 },
+  mediaPressable: { flex: 1, position: "relative" },
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
   media: { width: "100%", height: "100%" },
   playBadge: {
     position: "absolute",

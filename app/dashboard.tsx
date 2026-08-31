@@ -50,6 +50,7 @@ import {
   createProductOrder,
   deleteProduct,
   cancelProductOrder,
+  likeProduct,
   subscribeToBuyerProductOrders,
   type ProductOrder,
 } from "../lib/db_logic";
@@ -379,6 +380,11 @@ function ProductCard({
           height={380}
           isVisible={isVisible}
           onMediaPress={onMediaPress}
+          onDoubleTapLike={async () => {
+            const viewer = auth.currentUser;
+            if (!viewer || isMine) return false;
+            return likeProduct(viewer.uid, product.id);
+          }}
         />
       </View>
       <View style={styles.productBody}>

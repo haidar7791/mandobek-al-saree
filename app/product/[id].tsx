@@ -9,7 +9,8 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { subscribeToProducts, type Product } from "@/lib/db_logic";
+import { auth } from "@/lib/firebase";
+import { likeProduct, subscribeToProducts, type Product } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
 
@@ -53,6 +54,11 @@ export default function ProductScreen() {
            <ProductMediaCarousel
              media={normalizeProductMedia(product.media, product.imageUrl)}
              height={320}
+             onDoubleTapLike={async () => {
+               const viewer = auth.currentUser;
+               if (!viewer || viewer.uid === product.sellerId) return false;
+               return likeProduct(viewer.uid, product.id);
+             }}
            />
           <View style={styles.details}>
             <View style={styles.titleRow}>

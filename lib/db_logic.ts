@@ -101,6 +101,7 @@ export interface ArtisanProfile {
   createdAt: string;
   followCount?: number;
   likesCount?: number;
+  contentLikesCount?: number;
 }
 
 export function isFeaturedActive(a: { featuredUntil?: string | null }): boolean {
@@ -719,10 +720,10 @@ export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
 
 // ─── Follow / Like reactions ──────────────────────────────────────────────────
 //
-// The subcollection documents are the source of truth. We never display the
-// legacy followCount/likesCount fields because they can drift after older,
-// interrupted writes. Transactions make each actor's reaction idempotent even
-// when taps or devices race each other.
+// Reaction subcollections are the source of truth for profile/follow state.
+// The visible profile like total is composed of direct profile likes plus the
+// transactional contentLikesCount aggregate for products and portfolio posts.
+// Transactions make each actor's reaction idempotent even when taps/devices race.
 
 export type ProfileEngagementCounts = {
   followCount: number;
@@ -732,13 +733,20 @@ export type ProfileEngagementCounts = {
 export const getProfileEngagementCounts = async (
   userId: string
 ): Promise<ProfileEngagementCounts> => {
-  const [followers, likes] = await Promise.all([
+  const [followers, likes, profileSnap] = await Promise.all([
     getCountFromServer(collection(db, "users", userId, "followers")),
     getCountFromServer(collection(db, "users", userId, "likes")),
+    getDoc(doc(db, "users", userId)),
   ]);
+
+  const contentLikes = profileSnap.exists()
+    ? Number((profileSnap.data() as any).contentLikesCount ?? 0)
+    : 0;
+
   return {
     followCount: followers.data().count,
-    likesCount: likes.data().count,
+    // Profile likes + likes received by products/posts owned by this user.
+    likesCount: likes.data().count + contentLikes,
   };
 };
 
@@ -776,7 +784,7 @@ export const unfollowArtisan = async (followerId: string, artisanId: string): Pr
   });
 };
 
-// ─── Like / Unlike ────────────────────────────────────────────────────────────
+// ─── Like / Unlike────────────────────────────────────────────────────────────
 
 export const getIsLiked = async (likerId: string, artisanId: string): Promise<boolean> => {
   const snap = await getDoc(doc(db, "users", artisanId, "likes", likerId));
@@ -808,6 +816,102 @@ export const unlikeArtisan = async (likerId: string, artisanId: string): Promise
     if (!likeSnap.exists()) return false;
 
     transaction.delete(likeRef);
+    return true;
+  });
+};
+
+// ─── Content likes (products + profile posts) ────────────────────────────────
+// Every reaction is idempotent and also contributes to the owner's aggregate
+// profile likes counter. This keeps the profile statistics fast to render.
+
+export const getIsProductLiked = async (likerId: string, productId: string): Promise<boolean> => {
+  const snap = await getDoc(doc(db, "products", productId, "likes", likerId));
+  return snap.exists();
+};
+
+export const likeProduct = async (likerId: string, productId: string): Promise<boolean> => {
+  const productRef = doc(db, "products", productId);
+  const likeRef = doc(db, "products", productId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const [productSnap, likeSnap] = await Promise.all([
+      transaction.get(productRef),
+      transaction.get(likeRef),
+    ]);
+    if (!productSnap.exists()) throw new Error("Product does not exist");
+    const ownerId = String((productSnap.data() as any).sellerId || "");
+    if (!ownerId || ownerId === likerId) return false;
+    if (likeSnap.exists()) return false;
+
+    const ownerRef = doc(db, "users", ownerId);
+    const ownerSnap = await transaction.get(ownerRef);
+    if (!ownerSnap.exists()) throw new Error("Product owner does not exist");
+    transaction.set(likeRef, { likedAt: serverTimestamp(), likerId });
+    transaction.update(ownerRef, { contentLikesCount: increment(1) });
+    return true;
+  });
+};
+
+export const unlikeProduct = async (likerId: string, productId: string): Promise<boolean> => {
+  const productRef = doc(db, "products", productId);
+  const likeRef = doc(db, "products", productId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const [productSnap, likeSnap] = await Promise.all([
+      transaction.get(productRef),
+      transaction.get(likeRef),
+    ]);
+    if (!productSnap.exists() || !likeSnap.exists()) return false;
+    const ownerId = String((productSnap.data() as any).sellerId || "");
+    let ownerRef: any = null;
+    let ownerSnap: any = null;
+    if (ownerId) {
+      ownerRef = doc(db, "users", ownerId);
+      ownerSnap = await transaction.get(ownerRef);
+    }
+    transaction.delete(likeRef);
+    if (ownerRef && ownerSnap?.exists()) {
+      const current = Number((ownerSnap.data() as any).contentLikesCount ?? 0);
+      transaction.update(ownerRef, { contentLikesCount: Math.max(0, current - 1) });
+    }
+    return true;
+  });
+};
+
+export const getIsProfilePostLiked = async (likerId: string, userId: string, postId: string): Promise<boolean> => {
+  const snap = await getDoc(doc(db, "users", userId, "profilePosts", postId, "likes", likerId));
+  return snap.exists();
+};
+
+export const likeProfilePost = async (likerId: string, userId: string, postId: string): Promise<boolean> => {
+  if (likerId === userId) return false;
+  const userRef = doc(db, "users", userId);
+  const likeRef = doc(db, "users", userId, "profilePosts", postId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const [userSnap, likeSnap] = await Promise.all([
+      transaction.get(userRef),
+      transaction.get(likeRef),
+    ]);
+    if (!userSnap.exists()) throw new Error("Profile does not exist");
+    const posts = ((userSnap.data() as any).profilePosts ?? []) as ProfilePost[];
+    if (!posts.some((post) => post?.id === postId)) return false;
+    if (likeSnap.exists()) return false;
+    transaction.set(likeRef, { likedAt: serverTimestamp(), likerId });
+    transaction.update(userRef, { contentLikesCount: increment(1) });
+    return true;
+  });
+};
+
+export const unlikeProfilePost = async (likerId: string, userId: string, postId: string): Promise<boolean> => {
+  const userRef = doc(db, "users", userId);
+  const likeRef = doc(db, "users", userId, "profilePosts", postId, "likes", likerId);
+  return runTransaction(db, async (transaction) => {
+    const [userSnap, likeSnap] = await Promise.all([
+      transaction.get(userRef),
+      transaction.get(likeRef),
+    ]);
+    if (!userSnap.exists() || !likeSnap.exists()) return false;
+    const current = Number((userSnap.data() as any).contentLikesCount ?? 0);
+    transaction.delete(likeRef);
+    transaction.update(userRef, { contentLikesCount: Math.max(0, current - 1) });
     return true;
   });
 };

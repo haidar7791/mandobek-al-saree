@@ -48,6 +48,15 @@ service cloud.firestore {
       match /reviews/{reviewId} {
         allow read, write: if isSignedIn();
       }
+
+      match /profilePosts/{postId}/likes/{likerId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly(["likedAt", "likerId"]);
+        allow delete: if isSignedIn() && request.auth.uid == likerId;
+        allow update: if false;
+      }
     }
 
     // Public phone-existence check only. The actual user document is never
@@ -91,6 +100,15 @@ service cloud.firestore {
     // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث priorityScore بالجملة)
     match /products/{productId} {
       allow read, write: if isSignedIn();
+
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly(["likedAt", "likerId"]);
+        allow delete: if isSignedIn() && request.auth.uid == likerId;
+        allow update: if false;
+      }
     }
 
     // ── القصص (Stories) ──────────────────────────────────────────────────────

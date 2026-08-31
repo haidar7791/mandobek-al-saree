@@ -4,7 +4,7 @@
  *
  * Instagram-style audio behaviour:
  *  - Only the focused card (isVisible=true) plays its video.
- *  - Mute state is global: toggling the 🔊/🔇 button on any card
+ *  - Mute state is global: toggling the ðŸ”Š/ðŸ”‡ button on any card
  *    instantly affects all other cards too.
  *  - Fullscreen video always plays with sound regardless of global mute.
  */
@@ -24,6 +24,7 @@ import {
 } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import type { ProductMedia } from "@/lib/db_logic";
 import { useVideoAudio } from "@/lib/video-audio-context";
@@ -48,7 +49,9 @@ type ProductMediaCarouselProps = {
   style?: StyleProp<ViewStyle>;
   showIndicators?: boolean;
   onMediaPress?: (item: ProductMedia) => void;
-  /** True when this card is the focused one in the viewport — videos play only when true */
+  /** Called by a double-tap on media. */
+  onDoubleTapLike?: (item: ProductMedia) => Promise<boolean> | boolean;
+  /** True when this card is the focused one in the viewport â€” videos play only when true */
   isVisible?: boolean;
 };
 
@@ -58,6 +61,7 @@ export default function ProductMediaCarousel({
   style,
   showIndicators = true,
   onMediaPress,
+  onDoubleTapLike,
   isVisible = true,
 }: ProductMediaCarouselProps) {
   const { isAudioMuted, toggleMute } = useVideoAudio();
@@ -66,6 +70,14 @@ export default function ProductMediaCarousel({
   const [slideWidth, setSlideWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
+  const [heartIndex, setHeartIndex] = useState<number | null>(null);
+  const lastTapRef = useRef<Record<number, number>>({});
+  const heartScale = useSharedValue(0.35);
+  const heartOpacity = useSharedValue(0);
+  const heartStyle = useAnimatedStyle(() => ({
+    opacity: heartOpacity.value,
+    transform: [{ scale: heartScale.value }],
+  }));
   const itemWidth = slideWidth || 1;
 
   // Explicitly play/pause the active-slide video when visibility changes.
@@ -86,14 +98,41 @@ export default function ProductMediaCarousel({
     }
   }, [isVisible, activeIndex]);
 
+  const showLikeEffect = (index: number) => {
+    setHeartIndex(index);
+    heartScale.value = 0.35;
+    heartOpacity.value = 0;
+    heartOpacity.value = withTiming(1, { duration: 90 });
+    heartScale.value = withSpring(1.15, { damping: 7, stiffness: 260 });
+    setTimeout(() => {
+      heartOpacity.value = withTiming(0, { duration: 240 });
+      heartScale.value = withTiming(0.9, { duration: 240 });
+      setTimeout(() => setHeartIndex((current) => current === index ? null : current), 250);
+    }, 280);
+  };
+
   const handleMediaPress = (item: ProductMedia, index: number) => {
-    if (!item?.url) return; // guard: ignore taps on malformed media entries
-    if (onMediaPress) {
-      onMediaPress(item);
+    if (!item?.url) return;
+    const now = Date.now();
+    const last = lastTapRef.current[index] || 0;
+    lastTapRef.current[index] = now;
+    if (now - last < 300) {
+      if (onDoubleTapLike) {
+        Promise.resolve(onDoubleTapLike(item)).then((liked) => {
+          if (liked) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            showLikeEffect(index);
+          }
+        }).catch(() => {});
+      }
       return;
     }
-    // Open fullscreen viewer (videos auto-unmute, images display full-res)
-    setFullscreenMedia(item);
+    setTimeout(() => {
+      if (lastTapRef.current[index] === now) {
+        if (onMediaPress) onMediaPress(item);
+        else setFullscreenMedia(item);
+      }
+    }, 310);
   };
 
   const handleToggleMute = () => {
@@ -145,27 +184,32 @@ export default function ProductMediaCarousel({
           onPress={() => handleMediaPress(item, index)}
           accessibilityRole="button"
           accessibilityLabel={
-            isVideoItem ? "فتح الفيديو بملء الشاشة" : "فتح الصورة بملء الشاشة"
+            isVideoItem ? "ÙØªØ­ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø©" : "ÙØªØ­ Ø§Ù„ØµÙˆØ±Ø© Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø©"
           }
         >
           {content}
+          {heartIndex === index && (
+            <Animated.View pointerEvents="none" style={[styles.heartOverlay, heartStyle]}>
+              <Ionicons name="heart" size={92} color="#EF4444" />
+            </Animated.View>
+          )}
         </Pressable>
 
-        {/* Video indicator badge — top-left */}
+        {/* Video indicator badge â€” top-left */}
         {isVideoItem && (
           <View pointerEvents="none" style={styles.videoBadge}>
             <Ionicons name="play-circle" size={13} color="#FFF" />
           </View>
         )}
 
-        {/* Global mute toggle — bottom-right, only on the active video slide */}
+        {/* Global mute toggle â€” bottom-right, only on the active video slide */}
         {isVideoItem && isActiveSlide && (
           <TouchableOpacity
             style={styles.muteBtn}
             onPress={handleToggleMute}
             activeOpacity={0.75}
             accessibilityRole="button"
-            accessibilityLabel={isAudioMuted ? "تفعيل الصوت" : "كتم الصوت"}
+            accessibilityLabel={isAudioMuted ? "ØªÙØ¹ÙŠÙ„ Ø§Ù„ØµÙˆØª" : "ÙƒØªÙ… Ø§Ù„ØµÙˆØª"}
           >
             <Ionicons
               name={isAudioMuted ? "volume-mute" : "volume-high"}
@@ -218,7 +262,7 @@ export default function ProductMediaCarousel({
         </>
       )}
 
-      {/* ── Fullscreen viewer (images + videos) ── */}
+      {/* â”€â”€ Fullscreen viewer (images + videos) â”€â”€ */}
       <Modal
         visible={!!fullscreenMedia}
         transparent
@@ -249,7 +293,7 @@ export default function ProductMediaCarousel({
             style={styles.fullscreenClose}
             onPress={() => setFullscreenMedia(null)}
             accessibilityRole="button"
-            accessibilityLabel="إغلاق العرض بملء الشاشة"
+            accessibilityLabel="Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„Ø¹Ø±Ø¶ Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø©"
           >
             <Ionicons name="close" size={24} color="#FFF" />
           </TouchableOpacity>
@@ -260,6 +304,14 @@ export default function ProductMediaCarousel({
 }
 
 const styles = StyleSheet.create({
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
   container: { width: "100%", backgroundColor: "#111", overflow: "hidden" },
   empty: { alignItems: "center", justifyContent: "center", backgroundColor: C.inputBg },
   counter: {
@@ -285,7 +337,7 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.55)" },
   activeDot: { width: 18, backgroundColor: "#FFF" },
 
-  // Video play badge — top-left indicator
+  // Video play badge â€” top-left indicator
   videoBadge: {
     position: "absolute",
     top: 10,
@@ -298,7 +350,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Global mute toggle button — bottom-right
+  // Global mute toggle button â€” bottom-right
   muteBtn: {
     position: "absolute",
     bottom: 10,

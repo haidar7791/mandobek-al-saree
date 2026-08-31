@@ -635,6 +635,7 @@ export default function ProfileScreen() {
                 actionLabel="إضافة منشور"
                 onAction={handleAddProfilePost}
                 actionDisabled={uploadingPost}
+                onDoubleTapLike={async () => false}
               />
             </View>
           ) : (
@@ -670,6 +671,7 @@ export default function ProfileScreen() {
                         height={220}
                         isVisible={false}
                         showIndicators
+                        onDoubleTapLike={async () => false}
                       />
                       <View style={styles.profileProductInfo}>
                         <View style={styles.profileProductTitleRow}>
@@ -686,7 +688,7 @@ export default function ProfileScreen() {
                             style={styles.profileProductViewBtn}
                             onPress={() => {
                               Haptics.selectionAsync();
-                              router.push({ pathname: "/dashboard", params: { productId: product.id } } as any);
+                              router.replace({ pathname: "/dashboard", params: { productId: product.id } } as any);
                             }}
                           >
                             <Feather name="eye" size={15} color={C.primary} />

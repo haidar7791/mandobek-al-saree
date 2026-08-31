@@ -33,7 +33,7 @@ import {
   type GeoLocation,
   type ProfilePost,
 } from "../lib/db_logic";
-import ProfilePostFeed from "@/components/ProfilePostFeed";
+import PublicProfileTabs from "@/components/PublicProfileTabs";
 import { ShareModal } from "@/components/ShareModal";
 import Colors from "@/constants/colors";
 
@@ -236,8 +236,8 @@ export default function UserProfileScreen() {
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 8 }]}>
         <View style={styles.nav}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()}>
-            <Feather name="chevron-right" size={22} color="#FFF" />
+          <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
+            <Feather name="share-2" size={19} color={C.accent} />
           </Pressable>
         </View>
         <View style={styles.heroContent}>
@@ -329,19 +329,17 @@ export default function UserProfileScreen() {
                 <Feather name="message-circle" size={16} color="#FFF" />
                 <Text style={styles.actionBtnText}>دردشة</Text>
               </Pressable>
-              <Pressable style={[styles.actionBtn, styles.shareBtn]} onPress={() => setShareVisible(true)}>
-                <Feather name="share-2" size={16} color={C.accent} />
-                <Text style={[styles.actionBtnText, { color: C.accent }]}>مشاركة</Text>
-              </Pressable>
             </View>
           )}
 
-          {/* ── Persistent profile posts ── */}
-          {profilePosts.length > 0 && (
-            <View style={styles.postsSection}>
-              <ProfilePostFeed posts={profilePosts} />
-            </View>
-          )}
+          <PublicProfileTabs
+            userId={userId}
+            posts={profilePosts}
+            onContentLiked={async () => {
+              const engagement = await getProfileEngagementCounts(userId);
+              setLikesCount(engagement.likesCount);
+            }}
+          />
         </ScrollView>
       )}
       <ShareModal
@@ -364,9 +362,10 @@ const styles = StyleSheet.create({
   bodyScroll: { flex: 1 },
   hero: { paddingHorizontal: 16, paddingBottom: 20 },
   nav: { alignSelf: "flex-start", marginBottom: 12 },
-  backBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.12)",
+  topShareBtn: {
+    width: 38, height: 38, borderRadius: 11,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
     alignItems: "center", justifyContent: "center",
   },
   heroContent: { alignItems: "center" },
