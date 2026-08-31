@@ -35,9 +35,6 @@ export const HOME_SERVICES = [
   { key: "tiler", label: "سيراميك", icon: "grid" },
   { key: "ironsmith", label: "حداد", icon: "settings" },
   { key: "ac_tech", label: "صيانة مكيفات", icon: "wind" },
-  { key: "shovel", label: "شفل", icon: "layers" },
-  { key: "roller", label: "حادلة", icon: "minus-square" },
-  { key: "backhoe", label: "بوكلن", icon: "minimize-2" },
   { key: "crane", label: "ونج", icon: "anchor" },
 ];
 
@@ -64,6 +61,8 @@ export type ServiceCategory = "home" | "car" | "general" | "delivery";
 
 export const ALL_SPECIALTIES = [...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
 
+const REMOVED_SPECIALTY_KEYS = new Set(["shovel", "roller", "backhoe"]);
+
 export function getCategoryForSpecialty(key: string): ServiceCategory {
   if (HOME_SERVICES.find((s) => s.key === key)) return "home";
   if (CAR_SERVICES.find((s) => s.key === key)) return "car";
@@ -73,6 +72,7 @@ export function getCategoryForSpecialty(key: string): ServiceCategory {
 
 export function getSpecialtyLabel(key: string): string {
   if (key === "client") return "زبون";
+  if (REMOVED_SPECIALTY_KEYS.has(key)) return "";
   return ALL_SPECIALTIES.find((s) => s.key === key)?.label ?? key;
 }
 
@@ -258,6 +258,7 @@ export const getArtisans = async (category?: ServiceCategory): Promise<ArtisanPr
     const snap = await getDocs(q);
     const list = snap.docs
       .filter((d) => (d.data() as UserProfile).role !== "admin")
+      .filter((d) => !REMOVED_SPECIALTY_KEYS.has((d.data() as UserProfile).specialty || ""))
       .map((d) => userDocToArtisanProfile(d.id, d.data() as UserProfile));
     return list.sort((a, b) => {
       const fa = isFeaturedActive(a) ? 1 : 0;
@@ -301,7 +302,7 @@ export const promoteArtisan = async (
 export const getArtisanByUserId = async (userId: string): Promise<ArtisanProfile | null> => {
   try {
     const profile = await getUserProfile(userId);
-    if (!profile) return null;
+    if (!profile || REMOVED_SPECIALTY_KEYS.has(profile.specialty || "")) return null;
     return userDocToArtisanProfile(userId, profile);
   } catch (err) {
     console.error("getArtisanByUserId error:", err);
@@ -921,6 +922,7 @@ export interface ChatMessage {
   cardImage?: string;   // image URL for the card thumbnail
   cardTitle?: string;   // display title inside the card bubble
   cardRoute?: string;   // internal Expo Router path to push on tap
+  cardDetails?: string[]; // structured product details shown inside the card
   /** Story reply — thumbnail of the story that was replied to */
   storyImageUrl?: string;
   orderCard?: OrderSharePayload;
@@ -1042,7 +1044,8 @@ export const sendCardMessage = async (
   cardImage: string,
   cardTitle: string,
   cardRoute: string,
-  previewText: string
+  previewText: string,
+  cardDetails?: string[],
 ): Promise<void> => {
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
@@ -1053,6 +1056,7 @@ export const sendCardMessage = async (
     cardImage,
     cardTitle,
     cardRoute,
+    ...(cardDetails?.length ? { cardDetails } : {}),
     createdAt: new Date().toISOString(),
   });
   await setDoc(
@@ -2167,7 +2171,7 @@ export const cancelProductOrder = async (orderId: string): Promise<void> => {
 };
 
 /**
- * Soft-delete productOrder documents by hiding them for the given user.
+* Soft-delete productOrder documents by hiding them for the given user.
  *
  * Hard deletion is blocked by Firestore rules for sellers (and for buyers on
  * non-pending orders). Instead we set hiddenForSeller / hiddenForBuyer so the

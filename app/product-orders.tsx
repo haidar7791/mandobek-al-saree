@@ -669,7 +669,21 @@ export default function ProductOrdersScreen() {
               <PurchaseCard order={item} />
             );
 
-            if (!selectMode) return cardNode;
+            if (!selectMode) {
+              return (
+                <Pressable
+                  onLongPress={() => {
+                    if (!canDelete) return;
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setSelectMode(true);
+                    setSelectedIds(new Set([item.id]));
+                  }}
+                  delayLongPress={500}
+                >
+                  {cardNode}
+                </Pressable>
+              );
+            }
 
             return (
               <Pressable

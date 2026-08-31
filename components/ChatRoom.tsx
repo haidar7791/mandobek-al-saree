@@ -653,6 +653,19 @@ export default function ChatRoom({
             >
               {item.cardTitle || item.text}
             </Text>
+            {item.cardDetails?.length ? (
+              <View style={styles.cardBubbleDetails}>
+                {item.cardDetails.map((detail, index) => (
+                  <Text
+                    key={`${detail}-${index}`}
+                    style={[styles.cardBubbleDetail, isMine ? { color: "rgba(255,255,255,0.88)" } : { color: C.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {detail}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <Pressable
               style={[
                 styles.cardBubbleBtn,
@@ -1112,6 +1125,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cardBubbleDetails: { gap: 2, marginTop: 5, marginBottom: 5 },
+  cardBubbleDetail: { fontSize: 11, fontFamily: "Cairo_400Regular", textAlign: "right" },
   cardBubbleBody: { gap: 7 },
   cardBubbleTitle: {
     fontSize: 14,

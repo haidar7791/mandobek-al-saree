@@ -16,7 +16,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -568,6 +568,7 @@ function ProductCard({
 }
 
 export default function DashboardScreen() {
+  const { productId: sharedProductId } = useLocalSearchParams<{ productId?: string }>();
   // Screen-level focus — drives video start/stop & viewability guard
 const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -598,6 +599,7 @@ const isFocused = useIsFocused();
 
   // ── Video focus tracking (Instagram-style: only the centred card plays) ──
   const [focusedProductId, setFocusedProductId] = useState<string | null>(null);
+  const productsListRef = useRef<FlatList<Product>>(null);
 
   // ── Screen-focus guard ──────────────────────────────────────────────────────
   // Mirror isFocused into a ref so the handler below stays reference-stable
@@ -948,6 +950,28 @@ try {
     );
   }, [sortedProducts, searchQuery]);
 
+  // Shared products must open in the real marketplace feed, not a separate
+  // details screen. Clear filters and scroll to the product's current live
+  // position after the realtime list has arrived.
+  useEffect(() => {
+    if (!sharedProductId || !products.length) return;
+    setActiveCategory("all");
+    if (searchQuery) setSearchQuery("");
+
+    const index = sortedProducts.findIndex((product) => product.id === sharedProductId);
+    if (index < 0) return;
+
+    const scrollToProduct = (attempt = 0) => {
+      try {
+        productsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.08 });
+      } catch {
+        if (attempt < 3) setTimeout(() => scrollToProduct(attempt + 1), 250);
+      }
+    };
+    const timer = setTimeout(() => scrollToProduct(), 150);
+    return () => clearTimeout(timer);
+  }, [sharedProductId, products, sortedProducts, searchQuery, activeCategory]);
+
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
@@ -1260,6 +1284,7 @@ try {
             ) : activeCategory === "all" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
+                ref={productsListRef}
                 key={`feed-list-${activeCategory}`}
                 data={filteredProducts}
                 keyExtractor={(p) => p.id}
@@ -1269,6 +1294,11 @@ try {
                 // Instagram-style: only the centred card is "active" → its video plays
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
+                onScrollToIndexFailed={({ index }) => {
+                  setTimeout(() => {
+                    productsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.08 });
+                  }, 300);
+                }}
                 renderItem={({ item: product }) => (
                   <ProductCard
                     product={product}
@@ -1365,8 +1395,16 @@ try {
         title={shareProduct?.title || "منتج"}
         cardImage={shareProduct?.imageUrl}
         cardTitle={shareProduct?.title}
-        cardRoute={shareProduct ? `/product/${shareProduct.id}` : undefined}
+        cardRoute={shareProduct ? `/dashboard?productId=${encodeURIComponent(shareProduct.id)}` : undefined}
         deepLinkPath={shareProduct ? `product/${shareProduct.id}` : undefined}
+        cardDetails={
+          shareProduct
+            ? [
+                `💰 ${shareProduct.price.toLocaleString("ar-IQ")} د.ع`,
+                `👤 ${shareProduct.sellerName}`,
+              ]
+            : undefined
+        }
         shareText={
           shareProduct
             ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`

@@ -180,7 +180,9 @@ export default function RootLayout() {
       } else if (type === "user") {
         router.push({ pathname: "/user-profile", params: { userId: id } } as any);
       } else if (type === "product") {
-        router.push({ pathname: "/product/[id]", params: { id } } as any);
+        // Product shares always land in the live marketplace feed. The
+        // dashboard then scrolls to this product's current sorted position.
+        router.push({ pathname: "/dashboard", params: { productId: id } } as any);
       }
     };
 

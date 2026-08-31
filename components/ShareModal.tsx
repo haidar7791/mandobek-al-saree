@@ -1,5 +1,5 @@
 /**
- * ShareModal â€” external sharing plus internal sharing.
+ * ShareModal — external sharing plus internal sharing.
  * Internal sharing keeps recent chats and also provides a global user search.
  */
 import React, { useEffect, useState } from "react";
@@ -38,13 +38,15 @@ export interface ShareModalProps {
   cardRoute?: string;
   /** Path without scheme, e.g. product/ABC or profile/UID. */
   deepLinkPath?: string;
+  /** Optional structured details shown on a shared product card. */
+  cardDetails?: string[];
   /** One or more accepted seller orders to send as rich order cards. */
   orderCards?: OrderSharePayload[];
 }
 
 export function ShareModal({
   visible, onClose, shareText, shareMessage, title, cardImage, cardTitle, cardRoute,
-  deepLinkPath, orderCards,
+  deepLinkPath, cardDetails, orderCards,
 }: ShareModalProps) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [searchResults, setSearchResults] = useState<ShareUserResult[]>([]);
@@ -83,10 +85,10 @@ export function ShareModal({
       let links = "";
       if (deepLinkPath) {
         const httpsLink = `${PUBLIC_SHARE_BASE_URL}/${deepLinkPath.replace(/^\//, "")}`;
-        links = `\n\nðŸ”— ${httpsLink}`;
+        links = `\n\n🔗 ${httpsLink}`;
       }
       if (orderCards?.length) {
-        links = orderCards.map((o) => `\n\nðŸ“¦ ${o.productTitle}\nðŸ”— ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
+        links = orderCards.map((o) => `\n\n📦 ${o.productTitle}\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
       }
       await Share.share({ message: shareText + links, title });
     } catch {}
@@ -101,11 +103,20 @@ export function ShareModal({
     setSendingId(recipientId);
     try {
       const myProfile = await getUserProfile(user.uid);
-      const senderName = myProfile?.name || "Ù…Ø³ØªØ®Ø¯Ù…";
+      const senderName = myProfile?.name || "مستخدم";
       if (orderCards?.length) {
         for (const order of orderCards) await sendOrderCardMessage(chatId, user.uid, senderName, order);
       } else if (cardRoute) {
-        await sendCardMessage(chatId, user.uid, senderName, cardImage || "", cardTitle || title || shareMessage, cardRoute, `ðŸ“Ž ${cardTitle || title || shareMessage}`);
+        await sendCardMessage(
+          chatId,
+          user.uid,
+          senderName,
+          cardImage || "",
+          cardTitle || title || shareMessage,
+          cardRoute,
+          `📌 ${cardTitle || title || shareMessage}`,
+          cardDetails,
+        );
       } else {
         await sendMessage(chatId, user.uid, senderName, shareMessage);
       }
@@ -113,7 +124,7 @@ export function ShareModal({
       onClose();
       router.push({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
     } catch {
-      Alert.alert("Ø®Ø·Ø£", "ØªØ¹Ø°Ù‘Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ©ØŒ Ø­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ø§Ù‹");
+      Alert.alert("خطأ", "تعذّر إرسال المشاركة، حاول مجدداً");
     } finally { setSendingId(null); }
   };
 
@@ -124,7 +135,7 @@ export function ShareModal({
       <Pressable style={({ pressed }) => [styles.chatRow, pressed && { opacity: .7 }]} onPress={() => { Haptics.selectionAsync(); sendToRecipient(item); }} disabled={!!sendingId}>
         {item.otherPhotoUri ? <Image source={{ uri: item.otherPhotoUri }} style={styles.chatAvatarImg} /> : <View style={styles.chatAvatar}><Text style={styles.chatInitial}>{(item.otherName || "?")[0]}</Text></View>}
         <View style={styles.recipientMeta}>
-          <Text style={styles.chatName} numberOfLines={1}>{item.otherName || "Ù…Ø³ØªØ®Ø¯Ù…"}</Text>
+          <Text style={styles.chatName} numberOfLines={1}>{item.otherName || "مستخدم"}</Text>
           {item.roleLabel ? <Text style={styles.roleLabel}>{item.roleLabel}</Text> : null}
         </View>
         {isSending ? <ActivityIndicator size="small" color={C.accent} /> : <Feather name="send" size={15} color={C.accent} />}
@@ -138,28 +149,33 @@ export function ShareModal({
         <Pressable style={styles.overlay} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Ù…Ø´Ø§Ø±ÙƒØ©</Text>
+          <Text style={styles.sheetTitle}>مشاركة</Text>
 
           {(cardImage || cardTitle || orderCards?.length) && (
             <View style={styles.cardPreview}>
               {orderCards?.length ? <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="package" size={18} color={C.textMuted} /></View> : cardImage ? <Image source={{ uri: cardImage }} style={styles.cardPreviewImg} /> : <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="user" size={18} color={C.textMuted} /></View>}
-              <Text style={styles.cardPreviewTitle} numberOfLines={2}>{orderCards?.length ? `Ù…Ø´Ø§Ø±ÙƒØ© ${orderCards.length} Ø·Ù„Ø¨${orderCards.length > 1 ? "Ø§Øª" : ""}` : cardTitle || title}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardPreviewTitle} numberOfLines={2}>{orderCards?.length ? `مشاركة ${orderCards.length} طلب${orderCards.length > 1 ? "ات" : ""}` : cardTitle || title}</Text>
+                {cardDetails?.slice(0, 2).map((detail, index) => (
+                  <Text key={`${detail}-${index}`} style={styles.cardPreviewDetail} numberOfLines={1}>{detail}</Text>
+                ))}
+              </View>
             </View>
           )}
 
           <Pressable style={styles.externalBtn} onPress={handleExternalShare} accessibilityRole="button">
             <Feather name="share-2" size={17} color="#FFF" />
-            <Text style={styles.externalBtnText}>Ù…Ø´Ø§Ø±ÙƒØ© Ø®Ø§Ø±Ø¬ÙŠØ© (ÙˆØ§ØªØ³Ø§Ø¨ØŒ ØªÙŠÙ„ÙŠØºØ±Ø§Ù…â€¦)</Text>
+            <Text style={styles.externalBtnText}>مشاركة خارجية (واتساب، تيليغرام…)</Text>
           </Pressable>
 
           <View style={styles.divider} />
-          <Text style={styles.sectionLabel}>Ø¥Ø±Ø³Ø§Ù„ Ù„ØµØ¯ÙŠÙ‚ Ø¹Ø¨Ø± Ø§Ù„Ø±Ø³Ø§Ø¦Ù„</Text>
+          <Text style={styles.sectionLabel}>إرسال لصديق عبر الرسائل</Text>
           <View style={styles.searchBox}>
             <Feather name="search" size={18} color={C.textMuted} />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
-              placeholder="Ø§Ø¨Ø­Ø« Ø¹Ù† Ø§Ø³Ù… Ø£ÙŠ Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ ÙÙˆØ±Ø³"
+              placeholder="ابحث عن اسم أي مستخدم في فورس"
               placeholderTextColor={C.textMuted}
               style={styles.searchInput}
               textAlign="right"
@@ -172,11 +188,11 @@ export function ShareModal({
           {searchText.trim() ? (
             searching ? <ActivityIndicator color={C.accent} style={{ marginVertical: 16 }} /> : searchResults.length ? (
               <FlatList data={searchResults} keyExtractor={(u) => u.userId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ otherUserId: item.userId, otherName: item.name, otherPhotoUri: item.photoUri, roleLabel: item.roleLabel })} />
-            ) : <Text style={styles.emptyText}>Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø§Ø³Ù…</Text>
+            ) : <Text style={styles.emptyText}>لا يوجد مستخدم بهذا الاسم</Text>
           ) : loadingChats ? (
             <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
           ) : chats.length === 0 ? (
-            <Text style={styles.emptyText}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ø¨Ø¹Ø¯ â€” Ø§Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø¨Ø­Ø« Ø£Ø¹Ù„Ø§Ù‡</Text>
+            <Text style={styles.emptyText}>لا توجد محادثات بعد — استخدم البحث أعلاه</Text>
           ) : (
             <FlatList data={chats} keyExtractor={(c) => c.chatId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ ...item, otherUserId: item.otherUserId, otherName: item.otherName, otherPhotoUri: item.otherPhotoUri })} />
           )}
@@ -195,7 +211,8 @@ const styles = StyleSheet.create({
   cardPreview: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.inputBg, borderRadius: 12, padding: 10, marginBottom: 14 },
   cardPreviewImg: { width: 48, height: 48, borderRadius: 10 },
   cardPreviewImgFallback: { backgroundColor: C.border, alignItems: "center", justifyContent: "center" },
-  cardPreviewTitle: { flex: 1, fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  cardPreviewTitle: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  cardPreviewDetail: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 2 },
   externalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 13, marginBottom: 16 },
   externalBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
   divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 12 },
@@ -212,3 +229,4 @@ const styles = StyleSheet.create({
   chatName: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
   roleLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right", marginTop: 1 },
 });
+

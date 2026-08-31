@@ -22,6 +22,10 @@ type Props = {
   deletingPostId?: string | null;
   onDelete?: (post: ProfilePost) => void;
   showEmptyState?: boolean;
+  title?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  actionDisabled?: boolean;
 };
 
 export default function ProfilePostFeed({
@@ -31,6 +35,10 @@ export default function ProfilePostFeed({
   deletingPostId,
   onDelete,
   showEmptyState = false,
+  title = "المنشورات",
+  actionLabel,
+  onAction,
+  actionDisabled = false,
 }: Props) {
   const [fullscreenPost, setFullscreenPost] = useState<ProfilePost | null>(null);
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
@@ -47,10 +55,32 @@ export default function ProfilePostFeed({
     );
   }
 
+  const header = (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.title}>{title}</Text>
+      {actionLabel && onAction ? (
+        <Pressable
+          style={[styles.actionButton, actionDisabled && styles.actionButtonDisabled]}
+          onPress={onAction}
+          disabled={actionDisabled}
+          accessibilityRole="button"
+        >
+          {actionDisabled ? (
+            <ActivityIndicator size="small" color={C.accent} />
+          ) : (
+            <Feather name="plus" size={15} color={C.accent} />
+          )}
+          <Text style={styles.actionButtonText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
   if (posts.length === 0) {
     if (!showEmptyState) return null;
     return (
-      <View style={styles.empty}>
+      <View>
+        {header}
         <Ionicons name="images-outline" size={42} color={C.textMuted} />
         <Text style={styles.emptyTitle}>لا توجد منشورات بعد</Text>
         <Text style={styles.emptyHint}>اضغط "إضافة منشور" لاختيار صورة أو فيديو</Text>
@@ -60,7 +90,7 @@ export default function ProfilePostFeed({
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>المنشورات</Text>
+      {header}
       <View style={styles.list}>
         {posts.map((post) => {
           const failed = failedIds.has(post.id);
@@ -171,12 +201,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   root: { gap: 10 },
-  title: {
-    color: C.text,
-    fontSize: 16,
-    fontFamily: "Cairo_700Bold",
-    textAlign: "right",
-  },
+  sectionHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  title: { color: C.text, fontSize: 16, fontFamily: "Cairo_700Bold", textAlign: "right" },
+  actionButton: { flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.accent, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#FFF8EC" },
+  actionButtonDisabled: { opacity: 0.55 },
+  actionButtonText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
   list: { gap: 14 },
   card: {
     width: "100%",

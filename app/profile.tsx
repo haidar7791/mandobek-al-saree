@@ -43,8 +43,12 @@ import {
   updateArtisanPhotoIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
+  subscribeToProducts,
+  deleteProduct,
   type ProfilePost,
+  type Product,
 } from "@/lib/db_logic";
+import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProfilePostFeed from "@/components/ProfilePostFeed";
 import Colors from "@/constants/colors";
 
@@ -81,7 +85,11 @@ export default function ProfileScreen() {
   const [postsLoading, setPostsLoading] = useState(true);
   const [uploadingPost, setUploadingPost] = useState(false);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
 
   // ── Edit modal state ───────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -114,11 +122,24 @@ export default function ProfileScreen() {
   // ── Load profile on screen focus ───────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
+      const user = auth.currentUser;
+      if (!user) { router.replace("/"); return; }
+
+      setUid(user.uid);
+      setPostsLoading(true);
+      setProductsLoading(true);
+      const unsubscribeProducts = subscribeToProducts(
+        (allProducts) => {
+          setProducts(allProducts.filter((product) => product.sellerId === user.uid));
+          setProductsLoading(false);
+        },
+        () => {
+          setProducts([]);
+          setProductsLoading(false);
+        },
+      );
+
       const load = async () => {
-        const user = auth.currentUser;
-        if (!user) { router.replace("/"); return; }
-        setUid(user.uid);
-        setPostsLoading(true);
         const [profile, engagement] = await Promise.all([
           getUserProfile(user.uid),
           getProfileEngagementCounts(user.uid),
@@ -129,17 +150,19 @@ export default function ProfileScreen() {
           setIsPhoneVerified(profile.isPhoneVerified ?? false);
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
-          setSpecialty(profile.specialty || "");
+          setSpecialty(["shovel", "roller", "backhoe"].includes(profile.specialty || "") ? "client" : (profile.specialty || ""));
           setBio(profile.bio || "");
-           setFollowCount(engagement.followCount);
-           setLikesCount(engagement.likesCount);
+          setFollowCount(engagement.followCount);
+          setLikesCount(engagement.likesCount);
           setProfilePosts(normalizeProfilePosts(profile));
         }
         setPostsLoading(false);
         const bal = await getBalance(user.uid);
         setBalance(bal);
       };
-      load();
+      load().catch(() => { setPostsLoading(false); });
+
+      return () => unsubscribeProducts();
     }, [])
   );
 
@@ -288,12 +311,35 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // ── My marketplace products ────────────────────────────────────────────────
+  const handleDeleteProduct = (product: Product) => {
+    Alert.alert("حذف المنتج", `هل تريد حذف "${product.title}" من السوق؟`, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          setDeletingProductId(product.id);
+          try {
+            await deleteProduct(product.id);
+            setProducts((current) => current.filter((item) => item.id !== product.id));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch {
+            Alert.alert("خطأ", "تعذّر حذف المنتج، حاول مجدداً.");
+          } finally {
+            setDeletingProductId(null);
+          }
+        },
+      },
+    ]);
+  };
+
   // ── Edit Modal logic ───────────────────────────────────────────────────────
   const openEditModal = () => {
     setEditName(name);
     setEditBio(bio);
     setEditPhone(phone);
-    setEditSpecialty(specialty || "client");
+    setEditSpecialty(["shovel", "roller", "backhoe"].includes(specialty) ? "client" : (specialty || "client"));
     setOtpModalVisible(false);
     setOtpCode("");
     setPhoneVerifiedInSession(false);
@@ -368,9 +414,10 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
+      const safeSpecialty = ["shovel", "roller", "backhoe"].includes(editSpecialty) ? "client" : editSpecialty;
       // Two explicit branches — no undefined values (Firestore/merge ignores undefined,
       // leaving stale artisan fields behind).
-      if (editSpecialty === "client") {
+      if (safeSpecialty === "client") {
         await setUserProfile(uid, {
           name: editName.trim(),
           bio: editBio.trim(),
@@ -383,19 +430,19 @@ export default function ProfileScreen() {
         await setUserProfile(uid, {
           name: editName.trim(),
           bio: editBio.trim(),
-          specialty: editSpecialty,
+          specialty: safeSpecialty,
           role: "artisan",
-          category: getCategoryForSpecialty(editSpecialty),
+          category: getCategoryForSpecialty(safeSpecialty),
           isAvailable: true,
         });
       }
       const newRole: "client" | "artisan" =
-        editSpecialty === "client" ? "client" : "artisan";
+        safeSpecialty === "client" ? "client" : "artisan";
 
       // Reflect changes locally
       setName(editName.trim());
       setBio(editBio.trim());
-      setSpecialty(editSpecialty);
+      setSpecialty(safeSpecialty);
       setRole(newRole);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditModalVisible(false);
@@ -498,7 +545,7 @@ export default function ProfileScreen() {
         </View>
       </LinearGradient>
 
-      {/* Three equal controls: wallet · promote · add image */}
+      {/* Account controls */}
       <View style={styles.controlRow}>
         <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => router.push("/wallet" as any)}>
           <MaterialCommunityIcons name="wallet-outline" size={17} color={C.accent} />
@@ -519,18 +566,46 @@ export default function ProfileScreen() {
           <Text style={styles.controlBtnText} numberOfLines={1}>روّج حسابك</Text>
         </Pressable>
 
+      </View>
+
+      {/* ══════════════════════════════════════════
+          HORIZONTAL PROFILE TABS
+      ══════════════════════════════════════════ */}
+      <View style={styles.tabsBar} accessibilityRole="tablist">
         <Pressable
-          style={[styles.controlBtn, styles.addImageControlBtn, uploadingPost && { opacity: 0.55 }]}
-          onPress={handleAddProfilePost}
-          disabled={uploadingPost}
-          accessibilityLabel="إضافة منشور"
+          style={styles.tabItem}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setActiveTab("posts");
+          }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === "posts" }}
         >
-          {uploadingPost ? (
-            <ActivityIndicator size="small" color={C.accent} />
-          ) : (
-            <Feather name="plus" size={18} color={C.accent} />
-          )}
-          <Text style={styles.addImageControlText} numberOfLines={1}>إضافة منشور</Text>
+          <Feather
+            name="image"
+            size={17}
+            color={activeTab === "posts" ? C.accent : C.textMuted}
+          />
+          <Text style={[styles.tabText, activeTab === "posts" && styles.tabTextActive]}>معرض أعمالي</Text>
+          <View style={[styles.tabIndicator, activeTab === "posts" && styles.tabIndicatorActive]} />
+        </Pressable>
+
+        <Pressable
+          style={styles.tabItem}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setActiveTab("products");
+          }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === "products" }}
+        >
+          <Feather
+            name="shopping-bag"
+            size={17}
+            color={activeTab === "products" ? C.accent : C.textMuted}
+          />
+          <Text style={[styles.tabText, activeTab === "products" && styles.tabTextActive]}>منتجاتي</Text>
+          <View style={[styles.tabIndicator, activeTab === "products" && styles.tabIndicatorActive]} />
         </Pressable>
       </View>
 
@@ -547,17 +622,96 @@ export default function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* ── Profile posts (kept separate from marketplace products) ── */}
-          <View style={styles.card}>
-            <ProfilePostFeed
-              posts={profilePosts}
-              loading={postsLoading}
-              canDelete
-              deletingPostId={deletingPostId}
-              onDelete={handleDeleteProfilePost}
-              showEmptyState
-            />
-          </View>
+          {activeTab === "posts" ? (
+            <View style={styles.card}>
+              <ProfilePostFeed
+                posts={profilePosts}
+                loading={postsLoading}
+                canDelete
+                deletingPostId={deletingPostId}
+                onDelete={handleDeleteProfilePost}
+                showEmptyState
+                title="معرض أعمالي"
+                actionLabel="إضافة منشور"
+                onAction={handleAddProfilePost}
+                actionDisabled={uploadingPost}
+              />
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>منتجاتي</Text>
+                <Pressable
+                  style={[styles.sectionAction, productsLoading && { opacity: 0.55 }]}
+                  onPress={() => router.push("/add-product" as any)}
+                  accessibilityRole="button"
+                >
+                  <Feather name="plus" size={15} color={C.accent} />
+                  <Text style={styles.sectionActionText}>إضافة منتج</Text>
+                </Pressable>
+              </View>
+
+              {productsLoading ? (
+                <View style={styles.productsLoading}>
+                  <ActivityIndicator size="small" color={C.accent} />
+                </View>
+              ) : products.length === 0 ? (
+                <View style={styles.productsEmpty}>
+                  <Feather name="shopping-bag" size={34} color={C.textMuted} />
+                  <Text style={styles.productsEmptyTitle}>لا توجد منتجات منشورة</Text>
+                  <Text style={styles.productsEmptyHint}>أضف منتجاً ليظهر في الرئيسية وفي ملفك الشخصي.</Text>
+                </View>
+              ) : (
+                <View style={styles.productsList}>
+                  {products.map((product) => (
+                    <View key={product.id} style={styles.profileProductCard}>
+                      <ProductMediaCarousel
+                        media={normalizeProductMedia(product.media, product.imageUrl)}
+                        height={220}
+                        isVisible={false}
+                        showIndicators
+                      />
+                      <View style={styles.profileProductInfo}>
+                        <View style={styles.profileProductTitleRow}>
+                          <View style={styles.profileProductPrice}>
+                            <Text style={styles.profileProductPriceText}>{product.price.toLocaleString("ar-IQ")} د.ع</Text>
+                          </View>
+                          <Text style={styles.profileProductTitle} numberOfLines={2}>{product.title}</Text>
+                        </View>
+                        {product.description ? (
+                          <Text style={styles.profileProductDescription} numberOfLines={2}>{product.description}</Text>
+                        ) : null}
+                        <View style={styles.profileProductActions}>
+                          <Pressable
+                            style={styles.profileProductViewBtn}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              router.push({ pathname: "/dashboard", params: { productId: product.id } } as any);
+                            }}
+                          >
+                            <Feather name="eye" size={15} color={C.primary} />
+                            <Text style={styles.profileProductViewText}>عرض في الرئيسية</Text>
+                          </Pressable>
+                          <Pressable
+                            style={styles.profileProductDeleteBtn}
+                            onPress={() => handleDeleteProduct(product)}
+                            disabled={deletingProductId === product.id}
+                          >
+                            {deletingProductId === product.id ? (
+                              <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                              <Feather name="trash-2" size={15} color="#FFF" />
+                            )}
+                            <Text style={styles.profileProductDeleteText}>حذف</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Admin button */}
           {uid === ADMIN_UID && (
@@ -816,7 +970,7 @@ export default function ProfileScreen() {
                 </Pressable>
               ))}
 
-              {/* ── Home services ── */}
+              {/* ── Home  services ── */}
               <Text style={styles.spCategoryHeader}>خدمات المنزل</Text>
               {[
                 { key: "plumber", label: "سباك" },
@@ -827,9 +981,6 @@ export default function ProfileScreen() {
                 { key: "tiler", label: "سيراميك" },
                 { key: "ironsmith", label: "حداد" },
                 { key: "ac_tech", label: "صيانة مكيفات" },
-                { key: "shovel", label: "شفل" },
-                { key: "roller", label: "حادلة" },
-                { key: "backhoe", label: "بوكلن" },
                 { key: "crane", label: "ونج" },
               ].map((item) => (
                 <Pressable
@@ -1225,6 +1376,52 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  // ── Horizontal profile tabs ──
+  tabsBar: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: "hidden",
+    shadowColor: C.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 7,
+    elevation: 2,
+  },
+  tabItem: {
+    flex: 1,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    position: "relative",
+  },
+  tabText: {
+    fontSize: 13,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.textMuted,
+  },
+  tabTextActive: {
+    color: C.primary,
+    fontFamily: "Cairo_700Bold",
+  },
+  tabIndicator: {
+    position: "absolute",
+    bottom: 0,
+    left: 18,
+    right: 18,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: "transparent",
+  },
+  tabIndicatorActive: {
+    backgroundColor: C.accent,
+  },
+
   // ── Body ──
   body: {
     paddingHorizontal: 18,
@@ -1273,6 +1470,28 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
 
   // ── Admin / Logout ──
+  sectionHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  sectionTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  sectionAction: { flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.accent, backgroundColor: "#FFF8EC", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
+  sectionActionText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
+  productsLoading: { paddingVertical: 30, alignItems: "center" },
+  productsEmpty: { alignItems: "center", paddingVertical: 28, gap: 7 },
+  productsEmptyTitle: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  productsEmptyHint: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center" },
+  productsList: { gap: 14 },
+  profileProductCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.border },
+  profileProductInfo: { padding: 12, gap: 9 },
+  profileProductTitleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  profileProductTitle: { flex: 1, fontSize: 16, lineHeight: 24, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  profileProductPrice: { backgroundColor: "#FFF8EC", borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
+  profileProductPriceText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
+  profileProductDescription: { fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  profileProductActions: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  profileProductViewBtn: { flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 10 },
+  profileProductViewText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.primary },
+  profileProductDeleteBtn: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#EF4444", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  profileProductDeleteText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#FFF" },
+
   adminBtn: {
     flexDirection: "row",
     alignItems: "center",
