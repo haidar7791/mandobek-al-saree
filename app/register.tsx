@@ -1,4 +1,4 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
+import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import {
   View,
   Text,
@@ -22,18 +22,9 @@ import { Feather, Ionicons, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import {
-  EmailAuthProvider,
-  linkWithCredential,
-  signInWithPhoneNumber,
   signInWithCustomToken,
-  type ConfirmationResult,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import FirebaseRecaptcha, {
-  type FirebaseRecaptchaHandle,
-  getPhoneAuthErrorMessage,
-} from "@/components/FirebaseRecaptcha";
+import { auth } from "@/lib/firebase";
 import {
   ensureUserDocument,
   type GeoLocation,
@@ -130,94 +121,11 @@ function getServerUrl(): string {
   return CLOUD_RUN_BASE;
 }
 
-/** Returns true if the input looks like a phone number (starts with digit or +, no @) */
-function isPhoneInput(s: string): boolean {
-  const t = s.trim();
-  return /^[\d\+]/.test(t) && !t.includes("@");
-}
-
-/** Removes punctuation/+ and keeps phone input in Iraqi international digits. */
-function sanitizePhoneInput(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("00964")) return digits.slice(2);
-  if (digits.startsWith("964")) return digits;
-  if (digits.startsWith("0")) return `964${digits.slice(1)}`;
-  return digits;
-}
-
-/** Validates that the contact is either a non-empty email or a phone (min 7 digits) */
-function isValidContact(s: string): boolean {
-  const t = s.trim();
-  if (!t) return false;
-  if (isPhoneInput(t)) return /[\d]{7,}/.test(t); // at least 7 digits
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t); // classic email regex
-}
-
-function toFirebaseEmail(contact: string): string {
-  const trimmed = contact.trim().toLowerCase();
-  return trimmed.includes("@") ? trimmed : `${trimmed}@sanad.app`;
-}
-
-/**
- * Converts any Iraqi phone input to E.164 (+9647xxxxxxxx).
- * Strips spaces, dashes, parens, and plus signs, then normalises:
- *   00964/+964/964 + optional leading zero → +964 7xxxxxxx
- *   07xxxxxxxx                             → +9647xxxxxxxx
- *   7xxxxxxxx                              → +9647xxxxxxxx
- */
-function toE164(phone: string): string {
-  const t = sanitizePhoneInput(phone);
-
-  if (t.startsWith("00964")) {
-    const rest = t.slice(5);
-    return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
-  }
-  if (t.startsWith("964")) {
-    const rest = t.slice(3);
-    return "+964" + (rest.startsWith("0") ? rest.slice(1) : rest);
-  }
-  if (t.startsWith("07")) return "+964" + t.slice(1);
-  if (t.startsWith("0"))  return "+964" + t.slice(1);
-  if (t.startsWith("7"))  return "+964" + t;
-  return "+964" + t;
-}
-
-function requireIraqiMobileE164(phone: string): string {
-  const normalized = toE164(phone);
-  if (!/^\+9647\d{9}$/.test(normalized)) {
-    throw new Error("يرجى إدخال رقم هاتف عراقي محمول صحيح بصيغة +9647xxxxxxxxx");
-  }
-  return normalized;
-}
-
-async function phoneIsRegistered(phone: string): Promise<boolean> {
-  const normalized = requireIraqiMobileE164(phone);
-  const internationalDigits = normalized.slice(1);
-  const local = `0${internationalDigits.slice(3)}`;
-  const candidates = [local, normalized, internationalDigits];
-  const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
-  console.log("[PhoneLookup][register]", {
-    input: phone,
-    candidates,
-    userDocument: snapshot.exists() ? snapshot.data() : null,
-  });
-  return snapshot.exists();
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => {
-      const error: any = new Error("انتهت مهلة الاتصال");
-      error.code = "timeout";
-      reject(error);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
 const C = Colors.light;
-const PHONE_OTP_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ─── InputField ───────────────────────────────────────────────────────────────
 
@@ -336,32 +244,21 @@ const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: strin
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [fullName, setFullName] = useState("");
-  const [contact, setContact] = useState(""); // phone or email
+  const [contact, setContact] = useState(""); // email only
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-
-  // ── Firebase Phone Auth registration flow ──
-  const [regOtpStep, setRegOtpStep] = useState<"form" | "otp">("form");
-  const [regOtpCode, setRegOtpCode] = useState("");
-  const [regOtpSending, setRegOtpSending] = useState(false);
-  const [regOtpVerifying, setRegOtpVerifying] = useState(false);
-  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
-  const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
-  const recaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   // ── Email OTP flow ──
   const [emailOtpStep, setEmailOtpStep] = useState<"form" | "otp">("form");
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [emailOtpSending, setEmailOtpSending] = useState(false);
   const [emailOtpVerifying, setEmailOtpVerifying] = useState(false);
+  const [savedLocation, setSavedLocation] = useState<GeoLocation | null>(null);
 
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
-
-  // ── Explicit auth method toggle ──
-  const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -369,8 +266,6 @@ export default function RegisterScreen() {
   // Every new account starts as a client. The user can choose/change their
   // professional specialty later from the profile screen.
   const role: "client" = "client";
-  const isPhone = authMethod === "phone";
-  const contactKeyboardType: "phone-pad" | "email-address" = isPhone ? "phone-pad" : "email-address";
 
   const requestLocation = async (): Promise<GeoLocation | null> => {
     try {
@@ -383,9 +278,8 @@ export default function RegisterScreen() {
     }
   };
 
-  // Google is used only to choose an email from the device. It switches the
-  // registration method to email and fills the existing email field; the
-  // current email OTP flow remains unchanged.
+  // Google is used only to choose an email from the device and fills the email field.
+  // The existing email OTP registration flow remains unchanged.
   const handleGoogleEmailPick = async () => {
     if (googleLoading) return;
     setGoogleLoading(true);
@@ -393,7 +287,6 @@ export default function RegisterScreen() {
       const email = await pickGoogleEmail();
       if (!email) return;
 
-      setAuthMethod("email");
       setContact(email);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTimeout(() => passwordRef.current?.focus(), 150);
@@ -406,158 +299,60 @@ export default function RegisterScreen() {
     }
   };
 
-  // ─── Register handler ──────────────────────────────────────────────────────
-
+  // ─── Register handler — email only ─────────────────────────────────────────
   const handleRegister = async () => {
     const trimmedName = fullName.trim();
+    const rawEmail = contact.trim().toLowerCase();
+
     if (!trimmedName) {
       Alert.alert("خطأ", "يرجى إدخال الاسم الكامل");
       return;
     }
-    const rawContact = contact.trim();
-    if (isPhone && !/^\+?[\d\s()-]+$/.test(rawContact)) {
-      Alert.alert("صيغة الرقم غير صحيحة", "أدخل رقم الهاتف العراقي بصيغة 07XXXXXXXX ثم أعد المحاولة.");
+    if (!isValidEmail(rawEmail)) {
+      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح");
       return;
     }
-    if (!isValidContact(rawContact)) {
-      Alert.alert("خطأ", isPhone
-        ? "يرجى إدخال رقم هاتف عراقي صحيح بصيغة 07XXXXXXXX"
-        : "يرجى إدخال بريد إلكتروني صحيح");
+    if (password.length < 6) {
+      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
       return;
     }
+
     btnScale.value = withSpring(0.96, { damping: 12 }, () => {
       btnScale.value = withSpring(1);
     });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEmailOtpSending(true);
 
-    if (authMethod === "phone") {
-      // ── Phone registration: Firebase Phone Auth ──
-      setRegOtpSending(true);
-      setLoading(true);
-      try {
-        const registered = await withTimeout(
-          phoneIsRegistered(rawContact),
-          PHONE_OTP_TIMEOUT_MS,
-        );
-        if (registered) {
-          Alert.alert("لديك حساب بالفعل", "لديك حساب بالفعل، يرجى تسجيل الدخول");
-          return;
-        }
-
-        const location = await requestLocation();
-        setSavedLocation(location);
-        const phone = requireIraqiMobileE164(rawContact);
-        recaptchaRef.current?.reset();
-        const verifier = recaptchaRef.current?.verifier;
-        if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
-        const confirmation = await withTimeout(
-          signInWithPhoneNumber(auth, phone, verifier),
-          PHONE_OTP_TIMEOUT_MS,
-        );
-        setPhoneConfirmation(confirmation);
-        setRegOtpCode("");
-        setRegOtpStep("otp");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch (err: any) {
-        console.error("[OTP-Register] send error:", err?.message ?? err);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const message = err?.code === "timeout"
-          ? "استغرق الاتصال أكثر من 5 دقائق. تحقق من الإنترنت واضغط إعادة المحاولة."
-          : getPhoneAuthErrorMessage(err);
-        Alert.alert("تعذّر إرسال رمز التحقق", message, [
-          { text: "إغلاق", style: "cancel" },
-          { text: "إعادة المحاولة", onPress: () => void handleRegister() },
-        ]);
-      } finally {
-        setRegOtpSending(false);
-        setLoading(false);
-      }
-    } else {
-      // ── Email registration: send OTP to email ──
-      setEmailOtpSending(true);
-      try {
-        const location = await requestLocation();
-        setSavedLocation(location);
-
-        const endpoint = `${getServerUrl()}api/send-email-otp`;
-        console.log("[OTP-Register] sending Email OTP to:", rawContact, "→", endpoint);
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: rawContact, forRegistration: true }),
-        });
-        const ct = res.headers.get("content-type") ?? "";
-        if (!ct.includes("application/json")) {
-          const text = await res.text();
-          console.error("[OTP-Register] non-JSON email response:", text.slice(0, 300));
-          throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
-        }
-        const data = await res.json() as { ok?: boolean; error?: string };
-        if (!res.ok || !data.ok) throw new Error(data.error ?? "فشل إرسال رمز التحقق");
-
-        console.log("[OTP-Register] Email OTP sent ✓");
-        setEmailOtpCode("");
-        setEmailOtpStep("otp");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch (err: any) {
-        console.error("[OTP-Register] email send error:", err?.message ?? err);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
-      } finally {
-        setEmailOtpSending(false);
-      }
-    }
-  };
-
-  // ─── Verify Firebase Phone OTP and complete registration ────────────────
-
-  const handleVerifyRegisterOtp = async () => {
-    if (regOtpCode.length !== 6) return;
-
-    const trimmedName = fullName.trim();
-    const rawContact  = contact.trim();
-    const e164        = toE164(rawContact);
-
-    setRegOtpVerifying(true);
     try {
-      if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
-      const credential = await withTimeout(
-        phoneConfirmation.confirm(regOtpCode),
-        PHONE_OTP_TIMEOUT_MS,
-      );
-      const uid = credential.user.uid;
+      const location = await requestLocation();
+      setSavedLocation(location);
 
-      try {
-        await linkWithCredential(
-          credential.user,
-          EmailAuthProvider.credential(toFirebaseEmail(rawContact), password),
-        );
-      } catch (linkErr: any) {
-        if (linkErr?.code !== "auth/provider-already-linked") throw linkErr;
-      }
-
-      // Create Firestore user document after the phone identity is confirmed.
-      await ensureUserDocument(uid, e164, role, {
-        name: trimmedName,
-        location: savedLocation,
-        phone: rawContact,
+      const endpoint = `${getServerUrl()}api/send-email-otp`;
+      console.log("[OTP-Register] sending Email OTP to:", rawEmail, "→", endpoint);
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: rawEmail, forRegistration: true }),
       });
+      const ct = res.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        const text = await res.text();
+        console.error("[OTP-Register] non-JSON email response:", text.slice(0, 300));
+        throw new Error(`الخادم أعاد استجابة غير متوقعة (${res.status})`);
+      }
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "فشل إرسال رمز التحقق");
 
+      setContact(rawEmail);
+      setEmailOtpCode("");
+      setEmailOtpStep("otp");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/dashboard" as any);
     } catch (err: any) {
-      console.error("[OTP-Register] verify error:", err?.message ?? err);
+      console.error("[OTP-Register] email send error:", err?.message ?? err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const message = err?.code === "timeout"
-        ? "استغرق التحقق أكثر من 5 دقائق. تحقق من الإنترنت واضغط إعادة المحاولة."
-        : getPhoneAuthErrorMessage(err);
-      Alert.alert("تعذّر التحقق من الرمز", message, [
-        { text: "إغلاق", style: "cancel" },
-        { text: "إعادة المحاولة", onPress: () => void handleVerifyRegisterOtp() },
-      ]);
+      Alert.alert("خطأ", err?.message ?? "تعذّر إرسال رمز التحقق");
     } finally {
-      setRegOtpVerifying(false);
-      setLoading(false);
+      setEmailOtpSending(false);
     }
   };
 
@@ -611,7 +406,7 @@ export default function RegisterScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
-  const anyLoading = loading || regOtpSending || emailOtpSending || googleLoading;
+  const anyLoading = loading || emailOtpSending || googleLoading;
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -650,52 +445,33 @@ export default function RegisterScreen() {
               onSubmitEditing={() => contactRef.current?.focus()}
             />
 
-            {/* 2 ── رقم الهاتف أو البريد — مع زر تبديل صريح */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>
-                {isPhone ? "رقم الهاتف" : "البريد الإلكتروني"}
+            {/* 2 ── البريد الإلكتروني فقط */}
+            <InputField
+              label="البريد الإلكتروني"
+              placeholder="example@email.com"
+              value={contact}
+              onChangeText={setContact}
+              icon={<Feather name="mail" size={18} color={C.textSecondary} />}
+              keyboardType="email-address"
+              innerRef={contactRef}
+              onSubmitEditing={() => passwordRef.current?.focus()}
+            />
+
+            {/* اختيار البريد بواسطة Google مباشرة أسفل حقل البريد */}
+            <Pressable
+              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+              onPress={handleGoogleEmailPick}
+              disabled={anyLoading}
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#4285F4" />
+              ) : (
+                <FontAwesome name="google" size={20} color="#4285F4" />
+              )}
+              <Text style={styles.googleBtnText}>
+                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
               </Text>
-              <View style={[styles.inputRow, styles.inputRowFull]}>
-                <View style={styles.inputIcon}>
-                  <Feather
-                    name={isPhone ? "phone" : "mail"}
-                    size={18}
-                    color={C.textSecondary}
-                  />
-                </View>
-                <TextInput
-                  ref={contactRef}
-                  style={[styles.input, isPhone && styles.phoneInput]}
-                  placeholder={isPhone ? "07xxxxxxxxxx" : "example@email.com"}
-                  placeholderTextColor={C.textMuted}
-                  value={contact}
-                   onChangeText={(value) => setContact(isPhone ? sanitizePhoneInput(value) : value)}
-                  keyboardType={contactKeyboardType}
-                  textAlign="right"
-                  textAlignVertical="center"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onSubmitEditing={() => passwordRef.current?.focus()}
-                  returnKeyType="next"
-                />
-              </View>
-              {/* Toggle link */}
-              <Pressable
-                onPress={() => {
-                  setAuthMethod(isPhone ? "email" : "phone");
-                  setContact("");
-                  setTimeout(() => contactRef.current?.focus(), 100);
-                }}
-                style={styles.toggleMethodBtn}
-                hitSlop={6}
-              >
-                <Text style={styles.toggleMethodText}>
-                  {isPhone
-                    ? "استخدام البريد الإلكتروني بدلاً من ذلك"
-                    : "استخدام رقم الهاتف بدلاً من ذلك"}
-                </Text>
-              </Pressable>
-            </View>
+            </Pressable>
 
             {/* 4 ── كلمة المرور (دائماً ظاهرة) ── */}
             <InputField
@@ -710,17 +486,11 @@ export default function RegisterScreen() {
               onSubmitEditing={handleRegister}
             />
 
-            {/* Firebase SMS OTP for phone, Email OTP for email */}
+            {/* Email OTP note */}
             <View style={styles.phoneNote}>
-              <Ionicons
-                name={isPhone ? "phone-portrait-outline" : "mail-outline"}
-                size={16}
-                color={C.accent}
-              />
+              <Ionicons name="mail-outline" size={16} color={C.accent} />
               <Text style={styles.phoneNoteText}>
-                {isPhone
-                  ? "سيتم إرسال رمز تحقق SMS إلى رقمك عبر Firebase"
-                  : "سيتم إرسال رمز تحقق إلى بريدك الإلكتروني"}
+                سيتم إرسال رمز تحقق إلى بريدك الإلكتروني
               </Text>
             </View>
 
@@ -750,20 +520,6 @@ export default function RegisterScreen() {
                 </LinearGradient>
               </Pressable>
             </Animated.View>
-            <Pressable
-              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
-              onPress={handleGoogleEmailPick}
-              disabled={anyLoading}
-            >
-              {googleLoading ? (
-                <ActivityIndicator size="small" color="#4285F4" />
-              ) : (
-                <FontAwesome name="google" size={20} color="#4285F4" />
-              )}
-              <Text style={styles.googleBtnText}>
-                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
-              </Text>
-            </Pressable>
           </View>
 
           <Pressable onPress={() => router.push("/login")} style={styles.loginLink}>
@@ -774,52 +530,6 @@ export default function RegisterScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      <FirebaseRecaptcha ref={recaptchaRef} />
-
-      {/* ── OTP modal: Firebase Phone Auth ── */}
-      <Modal
-        visible={regOtpStep === "otp"}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRegOtpStep("form")}
-        onShow={() => setTimeout(() => otpInputRef.current?.focus(), 300)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => {}}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIconCircle}>
-                <Ionicons name="phone-portrait-outline" size={22} color={C.accent} />
-              </View>
-              <Text style={styles.modalTitle}>رمز التحقق — SMS</Text>
-            </View>
-
-            <Text style={styles.modalDesc}>
-              أُرسل رمز مكون من 6 أرقام عبر رسالة SMS إلى{" "}
-              {"\n"}
-              <Text style={styles.modalPhoneHighlight}>{toE164(contact.trim())}</Text>
-            </Text>
-
-            <OtpInput ref={otpInputRef} value={regOtpCode} onChange={setRegOtpCode} />
-
-            <Pressable
-              style={[styles.modalSendBtn, (regOtpVerifying || regOtpCode.length < 6) && styles.btnDisabled]}
-              onPress={handleVerifyRegisterOtp}
-              disabled={regOtpVerifying || regOtpCode.length < 6}
-            >
-              <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                {regOtpVerifying ? <ActivityIndicator size="small" color={C.primary} /> : (
-                  <><Text style={styles.modalSendText}>تحقق وإنشاء الحساب</Text><Ionicons name="checkmark" size={18} color={C.primary} /></>
-                )}
-              </LinearGradient>
-            </Pressable>
-
-            <Pressable style={styles.modalCancelBtn} onPress={() => setRegOtpStep("form")}>
-              <Text style={styles.modalCancelText}>إلغاء وتعديل الرقم</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* ── OTP modal: Email ── */}
       <Modal

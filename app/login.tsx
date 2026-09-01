@@ -26,111 +26,23 @@ import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
 import {
-  EmailAuthProvider,
-  linkWithCredential,
   signInWithEmailAndPassword,
-  signInWithPhoneNumber,
   signOut,
-  updatePassword,
-  type ConfirmationResult,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { ensureUserDocument } from "@/lib/db_logic";
-import FirebaseRecaptcha, {
-  type FirebaseRecaptchaHandle,
-  getPhoneAuthErrorMessage,
-} from "@/components/FirebaseRecaptcha";
-import {
-  resumeAuthRouting,
-  suspendAuthRouting,
-} from "@/lib/auth_flow";
 import Colors from "@/constants/colors";
 import { pickGoogleEmail } from "@/lib/google-email-picker";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CREDS_KEY = "forus.biometric.creds";
-const RESEND_COUNTDOWN = 60; // seconds
-const PHONE_OTP_TIMEOUT_MS = 5 * 60 * 1000;
-
 const SECURE_OPTS: SecureStore.SecureStoreOptions = {
   keychainService: CREDS_KEY,
   requireAuthentication: false,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function isPhoneInput(s: string): boolean {
-  const t = s.trim();
-  return /^[\d\+]/.test(t) && !t.includes("@");
-}
-
-/** Removes punctuation/+ and keeps phone input in Iraqi international digits. */
-function sanitizePhoneInput(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("00964")) return digits.slice(2);
-  if (digits.startsWith("964")) return digits;
-  if (digits.startsWith("0")) return `964${digits.slice(1)}`;
-  return digits;
-}
-
-function toFirebaseEmail(contact: string): string {
-  const trimmed = contact.trim().toLowerCase();
-  if (trimmed.includes("@")) return trimmed;
-  return `${trimmed}@sanad.app`;
-}
-
-/**
- * Converts an Iraqi phone to E.164 format for Firebase Phone Auth.
- * 07xxxxxxxx → +9647xxxxxxxx
- */
-function toE164(phone: string): string {
-  const t = sanitizePhoneInput(phone);
-  if (t.startsWith("00964")) return "+" + t.slice(2);
-  if (t.startsWith("964")) return "+" + t;
-  if (t.startsWith("07")) return "+964" + t.slice(1);
-  if (t.startsWith("7")) return "+964" + t;
-  return "+964" + t;
-}
-
-function requireIraqiMobileE164(phone: string): string {
-  const normalized = toE164(phone);
-  if (!/^\+9647\d{9}$/.test(normalized)) {
-    throw new Error("يرجى إدخال رقم هاتف عراقي محمول صحيح بصيغة +9647xxxxxxxxx");
-  }
-  return normalized;
-}
-
-async function phoneIsRegistered(phone: string): Promise<boolean> {
-  const normalized = requireIraqiMobileE164(phone);
-  const internationalDigits = normalized.slice(1);
-  const local = `0${internationalDigits.slice(3)}`;
-  const candidates = [local, normalized, internationalDigits];
-  const snapshot = await getDoc(doc(db, "phoneIndex", normalized));
-  console.log("[PhoneLookup][login]", {
-    input: phone,
-    candidates,
-    userDocument: snapshot.exists() ? snapshot.data() : null,
-  });
-  return snapshot.exists();
-}
-
-/**
- * Wraps a Promise with a hard timeout so it can never hang indefinitely.
- * Throws an Error with code "timeout" if the promise doesn't settle in time.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => {
-      const err: any = new Error(`[${label}] timed out after ${ms / 1000}s`);
-      err.code = "timeout";
-      reject(err);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
 
 interface SavedCreds {
   contact: string;
@@ -211,7 +123,7 @@ function InputField({
         <View style={styles.inputIcon}>{icon}</View>
         <TextInput
           ref={innerRef}
-          style={[styles.input, isPhoneInput(value) && styles.phoneInput]}
+          style={styles.input}
           placeholder={placeholder}
           placeholderTextColor={C.textMuted}
           value={value}
@@ -236,54 +148,7 @@ function InputField({
   );
 }
 
-// ─── OTP digit boxes ──────────────────────────────────────────────────────────
-
-function OtpInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const inputRef = useRef<TextInput>(null);
-
-  return (
-    <Pressable
-      onPress={() => inputRef.current?.focus()}
-      style={styles.otpRow}
-    >
-      {Array.from({ length: 6 }).map((_, i) => {
-        const char = value[i] ?? "";
-        const active = value.length === i;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.otpBox,
-              char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
-            ]}
-          >
-            <Text style={styles.otpChar}>{char}</Text>
-          </View>
-        );
-      })}
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={(v) => onChange(v.replace(/[^0-9]/g, "").slice(0, 6))}
-        keyboardType="number-pad"
-        maxLength={6}
-        style={styles.otpHiddenInput}
-        caretHidden
-        autoFocus
-      />
-    </Pressable>
-  );
-}
-
 // ─── Backend base URL ─────────────────────────────────────────────────────────
-
-/** Cloud Run production backend — stable URL */
 const BACKEND_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app";
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -296,21 +161,10 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
-  // ── Forgot password modal ──
+  // ── Forgot password modal (email only) ──
   const [forgotModalVisible, setForgotModalVisible] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState("");
   const [forgotSending, setForgotSending] = useState(false);
-  const [forgotPhoneConfirmation, setForgotPhoneConfirmation] =
-    useState<ConfirmationResult | null>(null);
-  const [forgotOtpCode, setForgotOtpCode] = useState("");
-  const [forgotNewPassword, setForgotNewPassword] = useState("");
-  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
-  const [forgotStep, setForgotStep] = useState<"identifier" | "otp" | "password">(
-    "identifier",
-  );
-  const [forgotVerifying, setForgotVerifying] = useState(false);
-  const [forgotPasswordSaving, setForgotPasswordSaving] = useState(false);
-  const forgotRecaptchaRef = useRef<FirebaseRecaptchaHandle>(null);
 
   // ── Biometric ──
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -322,7 +176,6 @@ export default function LoginScreen() {
     transform: [{ scale: btnScale.value }],
   }));
 
-  const contactKeyboardType = isPhoneInput(contact) ? "phone-pad" : "email-address";
 
   // ── Boot ──
   useEffect(() => {
@@ -345,7 +198,7 @@ export default function LoginScreen() {
 
   // ─── Sign-in logic ────────────────────────────────────────────────────────
   const performSignIn = useCallback(async (contactVal: string, passwordVal: string) => {
-    const email = toFirebaseEmail(contactVal);
+    const email = contactVal.trim().toLowerCase();
     const credential = await signInWithEmailAndPassword(auth, email, passwordVal);
     await ensureUserDocument(credential.user.uid, email);
     return credential;
@@ -454,57 +307,25 @@ export default function LoginScreen() {
     }
   };
 
-  // ─── Forgot password — opens modal ────────────────────────────────────────
+  // ─── Forgot password — email only ─────────────────────────────────────────
   const handleForgotPassword = () => {
     setForgotIdentifier(contact.trim());
-    setForgotStep("identifier");
-    setForgotOtpCode("");
-    setForgotNewPassword("");
-    setForgotConfirmPassword("");
     setForgotModalVisible(true);
   };
 
-  // ─── Forgot password — Firebase Phone Auth or existing email flow ─────────
   const handleForgotPasswordSubmit = async () => {
-    const id = forgotIdentifier.trim();
-    if (!id) {
-      Alert.alert("خطأ", "يرجى إدخال رقم الهاتف أو البريد الإلكتروني");
+    const email = forgotIdentifier.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      Alert.alert("خطأ", "يرجى إدخال بريد إلكتروني صحيح");
       return;
     }
+
     setForgotSending(true);
     try {
-      if (isPhoneInput(id)) {
-        setLoading(true);
-        let registered = false;
-        try {
-          registered = await withTimeout(phoneIsRegistered(id), PHONE_OTP_TIMEOUT_MS, "phone lookup");
-        } catch {
-          throw new Error("تعذّر التحقق من الرقم حالياً، تحقق من الاتصال وأعد المحاولة");
-        }
-        if (!registered) {
-          Alert.alert("الرقم غير مسجل", "هذا الرقم غير مسجل لدينا، يرجى إنشاء حساب جديد");
-          return;
-        }
-        forgotRecaptchaRef.current?.reset();
-        const verifier = forgotRecaptchaRef.current?.verifier;
-        if (!verifier) throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
-        suspendAuthRouting();
-        const confirmation = await withTimeout(
-          signInWithPhoneNumber(auth, requireIraqiMobileE164(id), verifier),
-          PHONE_OTP_TIMEOUT_MS,
-          "send phone OTP",
-        );
-        setForgotPhoneConfirmation(confirmation);
-        setForgotOtpCode("");
-        setForgotStep("otp");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        return;
-      }
-
       const res = await fetch(`${BACKEND_BASE}/api/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: id }),
+        body: JSON.stringify({ identifier: email }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
@@ -512,108 +333,22 @@ export default function LoginScreen() {
         Alert.alert("خطأ", data.error ?? "تعذّر إرسال رابط إعادة التعيين");
         return;
       }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setForgotModalVisible(false);
-      const via = "البريد الإلكتروني";
       Alert.alert(
         "تم الإرسال ✓",
-        `تم إرسال رابط إعادة التعيين إلى ${via} — تحقق من الوارد وافتح الرابط خلال 15 دقيقة`
+        `تم إرسال رابط إعادة التعيين إلى ${email} — تحقق من الوارد وافتح الرابط خلال 15 دقيقة`
       );
-    } catch (err: any) {
-      resumeAuthRouting();
+    } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", isPhoneInput(id)
-        ? getPhoneAuthErrorMessage(err)
-        : "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
+      Alert.alert("خطأ", "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
     } finally {
       setForgotSending(false);
-      setLoading(false);
     }
   };
 
-  const handleForgotPhoneOtp = async () => {
-    if (!forgotPhoneConfirmation || forgotOtpCode.length !== 6) return;
-    setForgotVerifying(true);
-    try {
-      await withTimeout(
-        forgotPhoneConfirmation.confirm(forgotOtpCode),
-        PHONE_OTP_TIMEOUT_MS,
-        "verify phone OTP",
-      );
-      setForgotStep("password");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const message = err?.code === "timeout"
-        ? "استغرق التحقق أكثر من 5 دقائق. تحقق من الاتصال وأعد المحاولة."
-        : getPhoneAuthErrorMessage(err);
-      Alert.alert("خطأ", message);
-    } finally {
-      setForgotVerifying(false);
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPasswordSave = async () => {
-    if (forgotNewPassword.length < 6) {
-      Alert.alert("خطأ", "كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-      return;
-    }
-    if (forgotNewPassword !== forgotConfirmPassword) {
-      Alert.alert("خطأ", "كلمتا المرور غير متطابقتين");
-      return;
-    }
-
-    const user = auth.currentUser;
-    if (!user) {
-      Alert.alert("خطأ", "انتهت جلسة التحقق، أعد المحاولة");
-      return;
-    }
-
-    setForgotPasswordSaving(true);
-    try {
-      const hasPasswordProvider = user.providerData.some(
-        (provider) => provider.providerId === "password",
-      );
-      if (hasPasswordProvider) {
-        await updatePassword(user, forgotNewPassword);
-      } else {
-        await linkWithCredential(
-          user,
-          EmailAuthProvider.credential(toFirebaseEmail(forgotIdentifier), forgotNewPassword),
-        );
-      }
-
-      await signOut(auth);
-      resumeAuthRouting();
-      setForgotModalVisible(false);
-      setForgotStep("identifier");
-      setForgotPhoneConfirmation(null);
-      setForgotOtpCode("");
-      setForgotNewPassword("");
-      setForgotConfirmPassword("");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("تم التحديث ✓", "تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.");
-    } catch (err: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", err?.message ?? "تعذّر تحديث كلمة المرور");
-    } finally {
-      setForgotPasswordSaving(false);
-    }
-  };
-
-  const closeForgotModal = async () => {
-    if (forgotStep !== "identifier" && auth.currentUser) {
-      await signOut(auth).catch(() => {});
-    }
-    resumeAuthRouting();
-    setForgotModalVisible(false);
-    setForgotStep("identifier");
-    setForgotPhoneConfirmation(null);
-    setForgotOtpCode("");
-    setForgotNewPassword("");
-    setForgotConfirmPassword("");
-  };
+  const closeForgotModal = () => setForgotModalVisible(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -660,14 +395,30 @@ export default function LoginScreen() {
             </View>
 
             <InputField
-              label="البريد الإلكتروني أو رقم الهاتف"
-              placeholder="example@email.com أو 07xxxxxxxx"
+              label="البريد الإلكتروني"
+              placeholder="example@email.com"
               value={contact}
-              onChangeText={(value) => setContact(isPhoneInput(value) ? sanitizePhoneInput(value) : value)}
+              onChangeText={setContact}
               icon={<Feather name="user" size={18} color={C.textSecondary} />}
-              keyboardType={contactKeyboardType}
+              keyboardType="email-address"
               onSubmitEditing={() => passwordRef.current?.focus()}
             />
+
+            <TouchableOpacity
+              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+              onPress={handleGoogleEmailPick}
+              disabled={googleLoading || loading}
+              activeOpacity={0.8}
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#4285F4" />
+              ) : (
+                <FontAwesome name="google" size={20} color="#4285F4" />
+              )}
+              <Text style={styles.googleBtnText}>
+                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
+              </Text>
+            </TouchableOpacity>
 
             <InputField
               label="كلمة المرور"
@@ -716,22 +467,6 @@ export default function LoginScreen() {
               </Pressable>
             </Animated.View>
 
-            <TouchableOpacity
-              style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
-              onPress={handleGoogleEmailPick}
-              disabled={googleLoading || loading}
-              activeOpacity={0.8}
-            >
-              {googleLoading ? (
-                <ActivityIndicator size="small" color="#4285F4" />
-              ) : (
-                <FontAwesome name="google" size={20} color="#4285F4" />
-              )}
-              <Text style={styles.googleBtnText}>
-                {googleLoading ? "جارٍ اختيار البريد..." : "اختيار البريد بواسطة Google"}
-              </Text>
-            </TouchableOpacity>
-
             {showBiometricBtn && (
               <TouchableOpacity
                 style={[styles.biometricBtn, biometricLoading && styles.btnDisabled]}
@@ -760,9 +495,7 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <FirebaseRecaptcha ref={forgotRecaptchaRef} />
-
-      {/* ── Forgot password modal ── */}
+      {/* ── Forgot password modal — email only ── */}
       <Modal
         visible={forgotModalVisible}
         transparent
@@ -775,138 +508,60 @@ export default function LoginScreen() {
               <View style={styles.modalIconCircle}>
                 <Feather name="lock" size={22} color={C.accent} />
               </View>
-              <Text style={styles.modalTitle}>
-                {forgotStep === "identifier"
-                  ? "نسيت كلمة المرور؟"
-                  : forgotStep === "otp"
-                    ? "رمز التحقق — SMS"
-                    : "كلمة مرور جديدة"}
-              </Text>
+              <Text style={styles.modalTitle}>نسيت كلمة المرور؟</Text>
             </View>
 
-            {forgotStep === "identifier" && (
-              <>
-                <Text style={styles.modalDesc}>
-                  أدخل رقم هاتفك لإرسال رمز SMS عبر Firebase، أو بريدك الإلكتروني لإرسال رابط التعيين
-                </Text>
-                <View style={[styles.inputRow, { marginTop: 4 }]}>
-                  <View style={styles.inputIcon}>
-                    <Feather name="user" size={18} color={C.textSecondary} />
-                  </View>
-                  <TextInput
-                     style={[styles.input, isPhoneInput(forgotIdentifier) && styles.phoneInput]}
-                    placeholder="07xxxxxxxxxx أو example@email.com"
-                    placeholderTextColor={C.textMuted}
-                    value={forgotIdentifier}
-                     onChangeText={(value) => setForgotIdentifier(
-                       isPhoneInput(value) ? sanitizePhoneInput(value) : value,
-                     )}
-                    keyboardType="default"
-                    textAlign="right"
-                    autoCapitalize="none"
-                    autoFocus
-                    returnKeyType="send"
-                    onSubmitEditing={handleForgotPasswordSubmit}
-                  />
-                </View>
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={styles.modalCancelBtn}
-                    onPress={closeForgotModal}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.modalCancelText}>إلغاء</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalSendBtn, forgotSending && styles.btnDisabled]}
-                    onPress={handleForgotPasswordSubmit}
-                    activeOpacity={0.8}
-                    disabled={forgotSending}
-                  >
-                    <LinearGradient
-                      colors={[C.accent, C.accentLight]}
-                      style={styles.modalSendGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    >
-                      {forgotSending ? (
-                        <ActivityIndicator size="small" color={C.primary} />
-                      ) : (
-                        <>
-                          <Text style={styles.modalSendText}>إرسال رمز التحقق</Text>
-                          <Feather name="send" size={15} color={C.primary} />
-                        </>
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+            <Text style={styles.modalDesc}>
+              أدخل بريدك الإلكتروني لإرسال رابط إعادة تعيين كلمة المرور
+            </Text>
 
-            {forgotStep === "otp" && (
-              <>
-                <Text style={styles.modalDesc}>
-                  أُرسل رمز مكوّن من 6 أرقام عبر SMS إلى{"\n"}
-                  <Text style={styles.modalPhoneHighlight}>{toE164(forgotIdentifier)}</Text>
-                </Text>
-                <OtpInput value={forgotOtpCode} onChange={setForgotOtpCode} />
-                <TouchableOpacity
-                  style={[styles.modalSendBtn, (forgotVerifying || forgotOtpCode.length !== 6) && styles.btnDisabled]}
-                  onPress={handleForgotPhoneOtp}
-                  disabled={forgotVerifying || forgotOtpCode.length !== 6}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient}>
-                    {forgotVerifying ? (
-                      <ActivityIndicator size="small" color={C.primary} />
-                    ) : (
-                      <Text style={styles.modalSendText}>تأكيد الرمز</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalCancelBtn} onPress={closeForgotModal}>
-                  <Text style={styles.modalCancelText}>إلغاء</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <View style={[styles.inputRow, { marginTop: 4 }]}>
+              <View style={styles.inputIcon}>
+                <Feather name="mail" size={18} color={C.textSecondary} />
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="example@email.com"
+                placeholderTextColor={C.textMuted}
+                value={forgotIdentifier}
+                onChangeText={setForgotIdentifier}
+                keyboardType="email-address"
+                textAlign="right"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="send"
+                onSubmitEditing={handleForgotPasswordSubmit}
+              />
+            </View>
 
-            {forgotStep === "password" && (
-              <>
-                <Text style={styles.modalDesc}>اكتب كلمة المرور الجديدة لحسابك</Text>
-                <InputField
-                  label="كلمة المرور الجديدة"
-                  placeholder="6 أحرف على الأقل"
-                  value={forgotNewPassword}
-                  onChangeText={setForgotNewPassword}
-                  icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                  secureTextEntry
-                />
-                <InputField
-                  label="تأكيد كلمة المرور"
-                  placeholder="أعد إدخال كلمة المرور"
-                  value={forgotConfirmPassword}
-                  onChangeText={setForgotConfirmPassword}
-                  icon={<Feather name="check-circle" size={18} color={C.textSecondary} />}
-                  secureTextEntry
-                  returnKeyType="done"
-                  onSubmitEditing={handleForgotPasswordSave}
-                />
-                <TouchableOpacity
-                  style={[styles.modalSendBtn, forgotPasswordSaving && styles.btnDisabled]}
-                  onPress={handleForgotPasswordSave}
-                  disabled={forgotPasswordSaving}
-                  activeOpacity={0.8}
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={closeForgotModal} activeOpacity={0.7}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSendBtn, forgotSending && styles.btnDisabled]}
+                onPress={handleForgotPasswordSubmit}
+                activeOpacity={0.8}
+                disabled={forgotSending}
+              >
+                <LinearGradient
+                  colors={[C.accent, C.accentLight]}
+                  style={styles.modalSendGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
-                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.modalSendGradient}>
-                    {forgotPasswordSaving ? (
-                      <ActivityIndicator size="small" color={C.primary} />
-                    ) : (
-                      <Text style={styles.modalSendText}>حفظ كلمة المرور</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </>
-            )}
+                  {forgotSending ? (
+                    <ActivityIndicator size="small" color={C.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.modalSendText}>إرسال رابط التعيين</Text>
+                      <Feather name="send" size={15} color={C.primary} />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

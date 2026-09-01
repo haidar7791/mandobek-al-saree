@@ -25,10 +25,6 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { auth } from "@/lib/firebase";
-import { linkWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
-import FirebaseRecaptcha, {
-  type FirebaseRecaptchaHandle,
-} from "@/components/FirebaseRecaptcha";
 import { performSignOut } from "@/lib/push_notifications";
 import {
   getBalance,
@@ -56,15 +52,6 @@ const C = Colors.light;
 
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 
-function toE164(phone: string): string {
-  const digits = phone.trim().replace(/\D/g, "");
-  if (digits.startsWith("00964")) return `+${digits.slice(2)}`;
-  if (digits.startsWith("964")) return `+${digits}`;
-  if (digits.startsWith("07")) return `+964${digits.slice(1)}`;
-  if (digits.startsWith("7")) return `+964${digits}`;
-  return `+964${digits}`;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -73,7 +60,6 @@ export default function ProfileScreen() {
   const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
@@ -98,16 +84,7 @@ export default function ProfileScreen() {
   const [editPhone, setEditPhone] = useState("");
   const [editSpecialty, setEditSpecialty] = useState("");
   const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
-  // OTP sub-modal (opens after Firebase Phone Auth sends the code)
-  const [otpModalVisible, setOtpModalVisible] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [phoneVerifiedInSession, setPhoneVerifiedInSession] = useState(false);
-  const [phoneConfirmation, setPhoneConfirmation] =
-    useState<ConfirmationResult | null>(null);
   const [saving, setSaving] = useState(false);
-  const recaptchaRef = React.useRef<FirebaseRecaptchaHandle>(null);
 
   const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -147,7 +124,6 @@ export default function ProfileScreen() {
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
-          setIsPhoneVerified(profile.isPhoneVerified ?? false);
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
           setSpecialty(["shovel", "roller", "backhoe"].includes(profile.specialty || "") ? "client" : (profile.specialty || ""));
@@ -340,78 +316,27 @@ export default function ProfileScreen() {
     setEditBio(bio);
     setEditPhone(phone);
     setEditSpecialty(["shovel", "roller", "backhoe"].includes(specialty) ? "client" : (specialty || "client"));
-    setOtpModalVisible(false);
-    setOtpCode("");
-    setPhoneVerifiedInSession(false);
-    setPhoneConfirmation(null);
     setEditModalVisible(true);
   };
 
-  const handleSendOtp = async () => {
-    const trimmed = editPhone.trim();
-    if (!IRAQI_PHONE_REGEX.test(trimmed)) {
-      Alert.alert(
-        "رقم غير صحيح",
-        "أدخل رقم هاتف عراقي صحيح (11 رقماً يبدأ بـ 07)\nمثال: 07812345678"
-      );
-      return;
-    }
-    setSendingOtp(true);
-    try {
-      const currentUser = auth.currentUser;
-      const verifier = recaptchaRef.current?.verifier;
-      if (!currentUser || !verifier) {
-        throw new Error("تعذّر تجهيز التحقق الآمن، أعد فتح الشاشة");
-      }
-      const confirmation = await linkWithPhoneNumber(
-        currentUser,
-        toE164(trimmed),
-        verifier,
-      );
-      setPhoneConfirmation(confirmation);
-      setOtpCode("");
-      setOtpModalVisible(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      Alert.alert("خطأ", err.message || "تعذّر إرسال رمز التحقق عبر SMS");
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim() || otpCode.trim().length < 4) {
-      Alert.alert("خطأ", "أدخل رمز التحقق المرسل إليك");
-      return;
-    }
-    setVerifyingOtp(true);
-    try {
-      if (!phoneConfirmation) throw new Error("انتهت جلسة التحقق، أرسل رمزاً جديداً");
-      await phoneConfirmation.confirm(otpCode.trim());
-      // Persist new phone + verified flag to Firestore immediately
-      await setUserProfile(uid, {
-        phone: editPhone.trim(),
-        isPhoneVerified: true,
-      });
-      setPhone(editPhone.trim());
-      setIsPhoneVerified(true);
-      setPhoneVerifiedInSession(true);
-      setOtpModalVisible(false);
-      setOtpCode("");
-      setPhoneConfirmation(null);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      Alert.alert("خطأ", err.message || "رمز التحقق غير صحيح");
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
+  // ── Phone number is a manual profile field (no OTP / SMS verification) ──
+  const validateIraqiPhone = (value: string): boolean => IRAQI_PHONE_REGEX.test(value.trim());
 
   const handleSaveEdit = async () => {
     if (!editName.trim()) {
       Alert.alert("خطأ", "يرجى إدخال الاسم الكامل");
       return;
     }
+
+    const trimmedPhone = editPhone.trim();
+    if (trimmedPhone && !validateIraqiPhone(trimmedPhone)) {
+      Alert.alert(
+        "رقم غير صحيح",
+        "يرجى إدخال رقم هاتف عراقي مكوّن من 11 رقماً ويبدأ بـ 07، مثل 07812345678."
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       const safeSpecialty = ["shovel", "roller", "backhoe"].includes(editSpecialty) ? "client" : editSpecialty;
@@ -421,6 +346,7 @@ export default function ProfileScreen() {
         await setUserProfile(uid, {
           name: editName.trim(),
           bio: editBio.trim(),
+          phone: trimmedPhone,
           specialty: "client",
           role: "client",
           category: "client" as any,   // explicit overwrite so old artisan category is cleared
@@ -430,6 +356,7 @@ export default function ProfileScreen() {
         await setUserProfile(uid, {
           name: editName.trim(),
           bio: editBio.trim(),
+          phone: trimmedPhone,
           specialty: safeSpecialty,
           role: "artisan",
           category: getCategoryForSpecialty(safeSpecialty),
@@ -739,7 +666,6 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <FirebaseRecaptcha ref={recaptchaRef} />
 
       {/* ══════════════════════════════════════════
           EDIT PROFILE MODAL
@@ -832,60 +758,29 @@ export default function ProfileScreen() {
                   </Pressable>
                 </View>
 
-                {/* ── Phone + inline verify button ── */}
+                {/* ── Phone number — manual, no verification ── */}
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>رقم الهاتف</Text>
-
-                  {/* Input row with embedded verify / verified badge */}
-                  <View style={[
-                    styles.inputRow,
-                    phoneVerifiedInSession && { borderColor: C.success, borderWidth: 1.5 },
-                  ]}>
-                    {/* Left side: verified badge OR verify button */}
-                    {phoneVerifiedInSession ? (
-                      <View style={styles.inlineVerifiedBadge}>
-                        <Feather name="check-circle" size={14} color={C.success} />
-                        <Text style={styles.inlineVerifiedText}>موثق</Text>
-                      </View>
-                    ) : (
-                      <Pressable
-                        style={[styles.inlineVerifyBtn, sendingOtp && { opacity: 0.55 }]}
-                        onPress={handleSendOtp}
-                        disabled={sendingOtp}
-                      >
-                        {sendingOtp ? (
-                          <ActivityIndicator size="small" color="#fff" style={{ width: 42 }} />
-                        ) : (
-                          <Text style={styles.inlineVerifyBtnText}>تحقق</Text>
-                        )}
-                      </Pressable>
-                    )}
-
-                    {/* Divider */}
-                    <View style={styles.inputDivider} />
-
-                    {/* Phone TextInput */}
+                  <View style={styles.inputRow}>
                     <TextInput
                       style={styles.input}
-                      placeholder="07xxxxxxxx"
+                      placeholder="07812345678"
                       placeholderTextColor={C.textMuted}
                       value={editPhone}
-                      onChangeText={(v) => {
-                        setEditPhone(v);
-                        setOtpModalVisible(false);
-                        setPhoneVerifiedInSession(false);
-                        setOtpCode("");
-                      }}
+                      onChangeText={(value) =>
+                        setEditPhone(value.replace(/[^0-9]/g, "").slice(0, 11))
+                      }
                       textAlign="right"
                       keyboardType="phone-pad"
                       maxLength={11}
                     />
-
-                    {/* Phone icon on far right */}
                     <View style={styles.inputIconWrap}>
                       <Feather name="phone" size={17} color={C.textSecondary} />
                     </View>
                   </View>
+                  <Text style={styles.phoneValidationHint}>
+                    اختياري — يجب أن يتكون من 11 رقماً ويبدأ بـ 07
+                  </Text>
                 </View>
 
                 {/* ── Save button ── */}
@@ -1113,77 +1008,7 @@ export default function ProfileScreen() {
         </Pressable>
       </Modal>
 
-      {/* ══════════════════════════════════════════
-          OTP SUB-MODAL — opens on top of edit modal
-      ══════════════════════════════════════════ */}
-      <Modal
-        visible={otpModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOtpModalVisible(false)}
-      >
-        <View style={styles.otpModalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={{ width: "100%", paddingHorizontal: 24 }}
-          >
-            <View style={styles.otpModalCard}>
-              {/* Header */}
-              <View style={styles.otpModalHeader}>
-                <MaterialCommunityIcons
-                  name="message-text-outline"
-                  size={28}
-                  color={C.accent}
-                />
-                <Text style={styles.otpModalTitle}>أدخل رمز التحقق</Text>
-              </View>
-              <Text style={styles.otpModalSub}>
-                أُرسل إليك رمز مكوّن من 6 أرقام عبر SMS إلى{"\n"}
-                <Text style={styles.otpPhoneHighlight}>{editPhone}</Text>
-              </Text>
 
-              {/* OTP input */}
-              <View style={[styles.inputRow, { marginTop: 16 }]}>
-                <View style={styles.inputIconWrap}>
-                  <Feather name="key" size={17} color={C.textSecondary} />
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="• • • • • •"
-                  placeholderTextColor={C.textMuted}
-                  value={otpCode}
-                  onChangeText={setOtpCode}
-                  textAlign="center"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  autoFocus
-                />
-              </View>
-
-              {/* Confirm button */}
-              <Pressable
-                style={[styles.verifyBtn, { marginTop: 14 }, verifyingOtp && { opacity: 0.55 }]}
-                onPress={handleVerifyOtp}
-                disabled={verifyingOtp}
-              >
-                {verifyingOtp ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.verifyBtnText}>تأكيد الرمز</Text>
-                )}
-              </Pressable>
-
-              {/* Cancel */}
-              <Pressable
-                style={styles.otpCancelBtn}
-                onPress={() => { setOtpModalVisible(false); setOtpCode(""); }}
-              >
-                <Text style={styles.otpCancelText}>إلغاء</Text>
-              </Pressable>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1816,6 +1641,13 @@ const styles = StyleSheet.create({
   },
 
   // ── Save button ──
+  phoneValidationHint: {
+    fontSize: 11,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "right",
+    marginTop: 2,
+  },
   saveBtn: { borderRadius: 13, overflow: "hidden" },
   saveBtnGrad: {
     flexDirection: "row",
