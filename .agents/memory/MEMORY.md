@@ -13,3 +13,4 @@
 - [Firestore phone lookup privacy](firestore-phone-lookup-privacy.md) — field-level masking is unavailable; use a public get-only phone index instead of users queries
 - [Firebase module type exports](firebase-module-types.md) — Firebase subpath runtime imports can lack top-level declarations; re-export @firebase types locally
 - [EAS Node and Metro watcher constraints](eas-node-and-metro-watchers.md) — EAS needs an exact Node version; keep global EAS CLI outside the project tree to avoid Metro ENOSPC
+- [Gmail SMTP authentication](gmail-smtp-authentication.md) — use Gmail App Password SMTP auth with EMAIL_PASSWORD; invalid_grant and 535 indicate different credential failures
