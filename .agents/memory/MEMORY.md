@@ -12,3 +12,4 @@
 - [Firebase phone registration](phone-auth-registration.md) — phone signup must stay on the direct Firebase JS Phone Auth flow, including test numbers
 - [Firestore phone lookup privacy](firestore-phone-lookup-privacy.md) — field-level masking is unavailable; use a public get-only phone index instead of users queries
 - [Firebase module type exports](firebase-module-types.md) — Firebase subpath runtime imports can lack top-level declarations; re-export @firebase types locally
+- [EAS Node and Metro watcher constraints](eas-node-and-metro-watchers.md) — EAS needs an exact Node version; keep global EAS CLI outside the project tree to avoid Metro ENOSPC

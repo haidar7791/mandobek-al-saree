@@ -1,9 +1,9 @@
 entrypoint = "README.md"
-modules = ["nodejs-20", "web", "bash", "python-base-3.13"]
+modules = ["web", "bash", "python-base-3.13", "nodejs-22"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["gh", "eas-cli", "nano", "psmisc"]
+packages = ["gh", "nano", "psmisc"]
 
 [deployment]
 deploymentTarget = "cloudrun"
