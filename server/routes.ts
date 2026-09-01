@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { getEmailErrorMessage, sendEmail } from "./email-service";
 
 const execFileAsync = promisify(execFile);
 const productThumbnailJobs = new Map<string, Promise<string>>();
@@ -402,7 +403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *  3. Look up the Firestore `users` collection for a user with that phone.
    *  4. Update the user's Firebase Auth password via Admin SDK.
    */
-  app.post("/api/reset-password", async (req: Request, res: Response) => {
+  app.post(["/api/reset-password", "/api/auth/reset-password"], async (req: Request, res: Response) => {
     try {
       const { idToken, newPassword } = req.body as {
         idToken?: string;
@@ -504,11 +505,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/send-email-otp
+   * POST /api/auth/send-otp (compatibility alias)
    * Body: { email: string }
    * Generates a 6-digit OTP and sends it via Gmail (nodemailer).
-   * Requires EMAIL_USER and EMAIL_PASS environment variables.
+   * Requires EMAIL_USER and EMAIL_PASSWORD environment variables.
    */
-  app.post("/api/send-email-otp", async (req: Request, res: Response) => {
+  app.post(["/api/send-email-otp", "/api/auth/send-otp"], async (req: Request, res: Response) => {
     const { email, forRegistration } = req.body as { email?: string; forRegistration?: boolean };
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       res.status(400).json({ error: "بريد إلكتروني غير صحيح" });
@@ -533,10 +535,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
-    const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASS;
-    if (!emailUser || !emailPass) {
-      console.error("[Email OTP] EMAIL_USER / EMAIL_PASS not set");
+    if (!process.env.EMAIL_USER || !(process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS)) {
+      console.error("[Email OTP] EMAIL_USER / EMAIL_PASSWORD not set");
       res.status(503).json({ error: "خدمة البريد غير مهيأة — يرجى التواصل مع الدعم" });
       return;
     }
@@ -551,14 +551,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     console.log(`[Email OTP] sending to ${key}`);
     try {
-      const nodemailer = await import("nodemailer");
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: emailUser, pass: emailPass },
-      });
-
-      await transporter.sendMail({
-        from: `"فورس - ForUs" <${emailUser}>`,
+      await sendEmail({
         to: email,
         subject: "رمز التحقق - فورس",
         html: `
@@ -576,8 +569,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ ok: true });
     } catch (err: any) {
       emailOtpStore.delete(key);
-      console.error("[Email OTP] send error:", err);
-      res.status(500).json({ error: "فشل إرسال رمز التحقق — تحقق من البريد وأعد المحاولة" });
+      console.error("[Email OTP] send error:", err?.message ?? err);
+      res.status(502).json({ error: getEmailErrorMessage(err) });
     }
   });
 
@@ -803,13 +796,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/forgot-password
+   * POST /api/auth/forgot-password (compatibility alias)
    * Body: { identifier: string }  — email address
    *
    * 1. Checks that the account exists in Firebase Auth.
    * 2. Generates a 40-char secure token (15-min TTL).
    * 3. Sends the reset link via email.
    */
-  app.post("/api/forgot-password", async (req: Request, res: Response) => {
+  app.post(["/api/forgot-password", "/api/auth/forgot-password"], async (req: Request, res: Response) => {
     const { identifier } = req.body as { identifier?: string };
     if (!identifier) {
       res.status(400).json({ error: "identifier is required" });
@@ -859,20 +853,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[ForgotPassword] token for uid=${uid} link=${resetLink}`);
 
       {
-        // ── Send via Email ──
-        const emailUser = process.env.EMAIL_USER;
-        const emailPass = process.env.EMAIL_PASS;
-        if (!emailUser || !emailPass) {
+        // ── Send via SMTP/App Password ──
+        if (!process.env.EMAIL_USER || !(process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS)) {
           res.status(503).json({ error: "خدمة البريد غير مهيأة — يرجى التواصل مع الدعم" });
           return;
         }
-        const nodemailer = await import("nodemailer");
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: { user: emailUser, pass: emailPass },
-        });
-        await transporter.sendMail({
-          from: `"فورس - ForUs" <${emailUser}>`,
+        await sendEmail({
           to: trimmed,
           subject: "إعادة تعيين كلمة المرور - فورس",
           html: `
@@ -896,8 +882,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ ok: true });
     } catch (err: any) {
-      console.error("[ForgotPassword] error:", err);
-      res.status(500).json({ error: err.message ?? "تعذّر إرسال رابط إعادة التعيين" });
+      console.error("[ForgotPassword] error:", err?.message ?? err);
+      res.status(502).json({ error: getEmailErrorMessage(err) });
     }
   });
 

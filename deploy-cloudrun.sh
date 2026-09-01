@@ -57,7 +57,7 @@ lines = [
     "FIREBASE_SERVICE_ACCOUNT: " + q(os.environ["FIREBASE_SERVICE_ACCOUNT"]),
     "SESSION_SECRET: "           + q(os.environ["SESSION_SECRET"]),
     "EMAIL_USER: "               + q(os.environ["EMAIL_USER"]),
-    "EMAIL_PASS: "               + q(os.environ["EMAIL_PASS"]),
+    "EMAIL_PASSWORD: "           + q(os.environ.get("EMAIL_PASSWORD") or os.environ.get("EMAIL_PASS", "")),
 ]
 
 with open("/tmp/cr-env.yaml", "w") as f:
