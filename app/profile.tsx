@@ -691,10 +691,7 @@ export default function ProfileScreen() {
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>تعديل الملف الشخصي</Text>
 
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
+              <View style={styles.editForm}>
                 {/* ── Full Name ── */}
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>الاسم الكامل</Text>
@@ -716,23 +713,22 @@ export default function ProfileScreen() {
 
                 {/* ── Bio ── */}
                 <View style={styles.fieldWrap}>
-                  <Text style={styles.fieldLabel}>
-                    النبذة الشخصية (اختياري)
-                  </Text>
-                  <View style={styles.bioInputRow}>
+                  <Text style={styles.fieldLabel}>النبذة الشخصية (اختياري)</Text>
+                  <View style={styles.inputRow}>
                     <TextInput
-                      style={styles.bioInput}
-                      placeholder="اكتب نبذة عنك، خبراتك، شهاداتك..."
+                      style={styles.input}
+                      placeholder="اكتب نبذة مختصرة عنك..."
                       placeholderTextColor={C.textMuted}
                       value={editBio}
                       onChangeText={setEditBio}
                       textAlign="right"
-                      multiline
-                      numberOfLines={3}
-                      maxLength={500}
+                      maxLength={60}
                     />
+                    <View style={styles.inputIconWrap}>
+                      <Feather name="file-text" size={17} color={C.textSecondary} />
+                    </View>
                   </View>
-                  <Text style={styles.bioCounter}>{editBio.length}/500</Text>
+                  <Text style={styles.bioCounter}>{editBio.length}/60</Text>
                 </View>
 
                 {/* ── Specialty picker ── */}
@@ -785,7 +781,7 @@ export default function ProfileScreen() {
 
                 {/* ── Save button ── */}
                 <Animated.View
-                  style={[btnAnimStyle, { marginTop: 8, marginBottom: 28 }]}
+                  style={[btnAnimStyle, { marginTop: 3, marginBottom: 4 }]}
                 >
                   <Pressable
                     style={[styles.saveBtn, saving && { opacity: 0.6 }]}
@@ -815,7 +811,7 @@ export default function ProfileScreen() {
                     </LinearGradient>
                   </Pressable>
                 </Animated.View>
-              </ScrollView>
+              </View>
             </Pressable>
           </KeyboardAvoidingView>
         </Pressable>
@@ -840,7 +836,6 @@ export default function ProfileScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
               {/* ── Client option ── */}
-              <Text style={styles.spCategoryHeader}>عام</Text>
               {[{ key: "client", label: "عام" }].map((item) => (
                 <Pressable
                   key={item.key}
@@ -939,8 +934,8 @@ export default function ProfileScreen() {
                 </Pressable>
               ))}
 
-              {/* ── General services ── */}
-              <Text style={styles.spCategoryHeader}>خدمات عامة</Text>
+              {/* ── Medical services ── */}
+              <Text style={styles.spCategoryHeader}>خدمات طبية</Text>
               {[
                 { key: "clinic", label: "عيادات طبية" },
                 { key: "lab_center", label: "مراكز ومختبرات" },
@@ -1397,9 +1392,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    maxHeight: "88%",
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 8,
+    maxHeight: "92%",
+  },
+  editForm: {
+    width: "100%",
   },
   modalHandle: {
     width: 40,
@@ -1407,18 +1406,18 @@ const styles = StyleSheet.create({
     backgroundColor: C.border,
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: 9,
   },
   modalTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: "Cairo_700Bold",
     color: C.text,
     textAlign: "center",
-    marginBottom: 18,
+    marginBottom: 10,
   },
 
   // ── Form fields (inside modal) ──
-  fieldWrap: { gap: 7, marginBottom: 14 },
+  fieldWrap: { gap: 4, marginBottom: 8 },
   fieldLabel: {
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
@@ -1441,7 +1440,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
-    paddingVertical: 13,
+    paddingVertical: 9,
     textAlign: "right",
   },
   bioInputRow: {
@@ -1450,15 +1449,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "transparent",
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 90,
   },
   bioInput: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
-    textAlignVertical: "top",
-    minHeight: 70,
+    paddingVertical: 9,
     padding: 0,
     textAlign: "right",
   },
@@ -1580,7 +1576,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "transparent",
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 9,
     gap: 8,
   },
   specialtyPickerValue: {
@@ -1607,15 +1603,13 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   spCategoryHeader: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: "Cairo_700Bold",
     color: C.textMuted,
     textAlign: "right",
-    marginTop: 16,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    marginTop: 10,
+    marginBottom: 3,
+    paddingHorizontal: 12,
   },
   spOptionRow: {
     flexDirection: "row",
