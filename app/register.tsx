@@ -1,4 +1,4 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
+import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  AppState,
 } from "react-native";
 import { router } from "expo-router";
 import { fetch } from "expo/fetch";
@@ -197,42 +198,61 @@ const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: strin
   function OtpInput({ value, onChange }, ref) {
     const inputRef = useRef<TextInput>(null);
 
-    // Expose focus() so the parent Modal's onShow can trigger the keyboard
-    useImperativeHandle(ref, () => ({
-      focus() {
+    const focusInput = () => {
+      // Delay one frame on Android so the native TextInput is definitely mounted
+      // before requesting the keyboard.
+      requestAnimationFrame(() => {
         inputRef.current?.focus();
-      },
-    }));
+      });
+    };
+
+    useImperativeHandle(ref, () => ({
+      focus: focusInput,
+    }), []);
 
     return (
-      <Pressable onPress={() => inputRef.current?.focus()} style={styles.otpRow}>
+      <View style={styles.otpRow}>
         {Array.from({ length: 6 }).map((_, i) => {
           const char = value[i] ?? "";
           const active = value.length === i;
           return (
-            <View
+            <Pressable
               key={i}
+              onPress={focusInput}
               style={[
                 styles.otpBox,
                 char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
               ]}
+              android_ripple={{ color: "rgba(201,168,76,0.12)" }}
             >
               <Text style={styles.otpChar}>{char}</Text>
-            </View>
+            </Pressable>
           );
         })}
+
+        {/*
+         * The input intentionally covers the whole OTP row instead of being a
+         * 1x1 transparent control. On Android a tiny fully-transparent input
+         * can lose the native touch/focus/keyboard connection inside Modal.
+         * Keeping it full-size with transparent text makes every tap reliably
+         * focus the same native TextInput while the six boxes remain visual.
+         */}
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={(v) => onChange(v.replace(/[^0-9]/g, "").slice(0, 6))}
           keyboardType="number-pad"
+          inputMode="numeric"
           maxLength={6}
-          style={styles.otpHiddenInput}
-          caretHidden
+          autoFocus
           showSoftInputOnFocus
-          autoFocus={false} // controlled manually via onShow to work inside Modal
+          caretHidden
+          selectionColor="transparent"
+          placeholderTextColor="transparent"
+          style={styles.otpKeyboardInput}
+          onFocus={() => {}}
         />
-      </Pressable>
+      </View>
     );
   }
 );
@@ -259,6 +279,22 @@ export default function RegisterScreen() {
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
+  const appStateRef = useRef(AppState.currentState);
+
+  // Keep the OTP field focused when the user leaves the app to check email
+  // and then returns. Android can drop TextInput focus while the app is paused.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const wasInactive = appStateRef.current === "inactive" || appStateRef.current === "background";
+      appStateRef.current = nextState;
+
+      if (wasInactive && nextState === "active" && emailOtpStep === "otp") {
+        setTimeout(() => otpInputRef.current?.focus(), 250);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [emailOtpStep]);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -537,7 +573,7 @@ export default function RegisterScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setEmailOtpStep("form")}
-        onShow={() => setTimeout(() => otpInputRef.current?.focus(), 300)}
+        onShow={() => setTimeout(() => otpInputRef.current?.focus(), 450)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => {}}>
           <View style={styles.modalCard}>
@@ -714,7 +750,18 @@ const styles = StyleSheet.create({
   otpBoxActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.06)" },
   otpBoxFilled: { borderColor: C.accent, backgroundColor: "#FFF" },
   otpChar: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text },
-  otpHiddenInput: { position: "absolute", opacity: 0, width: 1, height: 1 },
+  otpKeyboardInput: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: 52,
+    zIndex: 20,
+    color: "transparent",
+    backgroundColor: "transparent",
+    opacity: 0.02,
+    textAlign: "center",
+  },
 });
 
 const modalStyles = StyleSheet.create({
