@@ -44,6 +44,7 @@ import {
   type Product,
   type ProductMedia,
   getSpecialtyLabel,
+  ALL_SPECIALTIES,
   isFeaturedActive,
   subscribeToUserChatLastAts,
   subscribeToProducts,
@@ -691,8 +692,15 @@ try {
     let result = [...artisans];
 
     if (activeCategory === "services") {
-      // Specialty sub-tabs: exclude clients, filter by category
-      result = result.filter((a) => a.specialty !== "client");
+      // Services must contain only a real, explicitly selected specialty.
+      // New/incomplete accounts use "client" (or no specialty) and are never
+      // eligible for any services tab.
+      result = result.filter(
+        (a) =>
+          typeof a.specialty === "string" &&
+          ALL_SPECIALTIES.some((item) => item.key === a.specialty) &&
+          a.specialty !== "client"
+      );
       result = result.filter((a) => a.category === activeServiceCategory);
     }
     // Contextual text search — name, profession, or phone number

@@ -90,7 +90,7 @@ export interface ArtisanProfile {
   phone: string;
   photoUri: string | null;
   specialty: string;
-  category: ServiceCategory;
+  category: ServiceCategory | null;
   location: GeoLocation | null;
   bio: string;
   rating: number;
@@ -216,14 +216,20 @@ export function calcDistanceKm(a: GeoLocation, b: GeoLocation): number {
 // ─── Helper: map a users/{userId} doc → ArtisanProfile shape ─────────────────
 // id === userId now that users collection is the single source of truth.
 function userDocToArtisanProfile(userId: string, data: UserProfile): ArtisanProfile {
+  const specialty = typeof data.specialty === "string" ? data.specialty.trim() : "";
+  const isRealSpecialty = ALL_SPECIALTIES.some((item) => item.key === specialty);
+  const category = isRealSpecialty
+    ? (data.category ?? getCategoryForSpecialty(specialty))
+    : null;
+
   return {
     id: userId,
     userId,
     name: data.name ?? "",
     phone: data.phone ?? "",
     photoUri: data.photoUri ?? null,
-    specialty: data.specialty ?? "",
-    category: data.category ?? getCategoryForSpecialty(data.specialty ?? ""),
+    specialty,
+    category,
     location: data.location ?? null,
     bio: data.bio ?? "",
     rating: data.rating ?? 0,
@@ -260,6 +266,15 @@ export const getArtisans = async (category?: ServiceCategory): Promise<ArtisanPr
     const list = snap.docs
       .filter((d) => (d.data() as UserProfile).role !== "admin")
       .filter((d) => !REMOVED_SPECIALTY_KEYS.has((d.data() as UserProfile).specialty || ""))
+      .filter((d) => {
+        if (!category) return true;
+        const specialty = (d.data() as UserProfile).specialty;
+        return (
+          typeof specialty === "string" &&
+          ALL_SPECIALTIES.some((item) => item.key === specialty) &&
+          getCategoryForSpecialty(specialty) === category
+        );
+      })
       .map((d) => userDocToArtisanProfile(d.id, d.data() as UserProfile));
     return list.sort((a, b) => {
       const fa = isFeaturedActive(a) ? 1 : 0;
@@ -2503,7 +2518,9 @@ export const ensureUserDocument = async (
 
       const displayName = extraData?.name?.trim() || fallbackName;
       const isPhoneAccount = isE164Phone || isOldPhoneEmail;
-      const specialty = extraData?.specialty ?? null;
+      // New accounts are always neutral clients until the user explicitly
+      // chooses a real professional specialty from Profile Settings.
+      const specialty = extraData?.specialty?.trim() || "client";
       await setDoc(
         ref,
         {
@@ -2518,7 +2535,7 @@ export const ensureUserDocument = async (
           location: extraData?.location ?? null,
           specialty,
           // Derived fields for listings/filtering (artisans only)
-          category: specialty && specialty !== "client"
+          category: ALL_SPECIALTIES.some((item) => item.key === specialty)
             ? getCategoryForSpecialty(specialty)
             : null,
           isAvailable: role === "artisan",

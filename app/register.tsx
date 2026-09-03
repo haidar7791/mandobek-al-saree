@@ -2,6 +2,7 @@ import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } f
 import {
   View,
   Text,
+  AppState,
   StyleSheet,
   Pressable,
   TextInput,
@@ -11,7 +12,6 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  AppState,
 } from "react-native";
 import { router } from "expo-router";
 import { fetch } from "expo/fetch";
@@ -197,18 +197,37 @@ interface OtpInputHandle {
 const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: string) => void }>(
   function OtpInput({ value, onChange }, ref) {
     const inputRef = useRef<TextInput>(null);
+    const appStateRef = useRef(AppState.currentState);
 
     const focusInput = () => {
-      // Delay one frame on Android so the native TextInput is definitely mounted
-      // before requesting the keyboard.
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         inputRef.current?.focus();
-      });
+      }, 120);
     };
 
-    useImperativeHandle(ref, () => ({
-      focus: focusInput,
-    }), []);
+    // Keep the OTP input focused after returning from Gmail/mail or another app.
+    useEffect(() => {
+      const subscription = AppState.addEventListener("change", (nextState) => {
+        const wasInactive =
+          appStateRef.current === "inactive" || appStateRef.current === "background";
+        appStateRef.current = nextState;
+        if (nextState === "active" && wasInactive && value.length < 6) {
+          focusInput();
+        }
+      });
+      return () => subscription.remove();
+    }, [value.length]);
+
+    // Expose focus() so the parent Modal can trigger the keyboard.
+    useImperativeHandle(
+      ref,
+      () => ({
+        focus() {
+          focusInput();
+        },
+      }),
+      []
+    );
 
     return (
       <View style={styles.otpRow}>
@@ -223,20 +242,13 @@ const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: strin
                 styles.otpBox,
                 char ? styles.otpBoxFilled : active ? styles.otpBoxActive : null,
               ]}
-              android_ripple={{ color: "rgba(201,168,76,0.12)" }}
+              accessibilityRole="button"
+              accessibilityLabel={`خانة رمز التحقق ${i + 1}`}
             >
               <Text style={styles.otpChar}>{char}</Text>
             </Pressable>
           );
         })}
-
-        {/*
-         * The input intentionally covers the whole OTP row instead of being a
-         * 1x1 transparent control. On Android a tiny fully-transparent input
-         * can lose the native touch/focus/keyboard connection inside Modal.
-         * Keeping it full-size with transparent text makes every tap reliably
-         * focus the same native TextInput while the six boxes remain visual.
-         */}
         <TextInput
           ref={inputRef}
           value={value}
@@ -244,13 +256,11 @@ const OtpInput = forwardRef<OtpInputHandle, { value: string; onChange: (v: strin
           keyboardType="number-pad"
           inputMode="numeric"
           maxLength={6}
-          autoFocus
-          showSoftInputOnFocus
+          style={styles.otpTouchInput}
           caretHidden
-          selectionColor="transparent"
-          placeholderTextColor="transparent"
-          style={styles.otpKeyboardInput}
-          onFocus={() => {}}
+          showSoftInputOnFocus={true}
+          autoFocus={true}
+          onPressIn={focusInput}
         />
       </View>
     );
@@ -279,22 +289,6 @@ export default function RegisterScreen() {
   const contactRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const otpInputRef = useRef<OtpInputHandle>(null);
-  const appStateRef = useRef(AppState.currentState);
-
-  // Keep the OTP field focused when the user leaves the app to check email
-  // and then returns. Android can drop TextInput focus while the app is paused.
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      const wasInactive = appStateRef.current === "inactive" || appStateRef.current === "background";
-      appStateRef.current = nextState;
-
-      if (wasInactive && nextState === "active" && emailOtpStep === "otp") {
-        setTimeout(() => otpInputRef.current?.focus(), 250);
-      }
-    });
-
-    return () => subscription.remove();
-  }, [emailOtpStep]);
 
   const btnScale = useSharedValue(1);
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
@@ -427,6 +421,8 @@ export default function RegisterScreen() {
       await ensureUserDocument(uid, rawContact, role, {
         name: trimmedName,
         location: savedLocation,
+        // New accounts are not service providers until a real specialty is selected.
+        specialty: "client",
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -590,7 +586,13 @@ export default function RegisterScreen() {
               {"\n"}تحقق من صندوق الوارد (أو Spam)
             </Text>
 
-            <OtpInput ref={otpInputRef} value={emailOtpCode} onChange={setEmailOtpCode} />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.otpScrollContent}
+            >
+              <OtpInput ref={otpInputRef} value={emailOtpCode} onChange={setEmailOtpCode} />
+            </ScrollView>
 
             <Pressable
               style={[styles.modalSendBtn, (emailOtpVerifying || emailOtpCode.length < 6) && styles.btnDisabled]}
@@ -750,17 +752,19 @@ const styles = StyleSheet.create({
   otpBoxActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.06)" },
   otpBoxFilled: { borderColor: C.accent, backgroundColor: "#FFF" },
   otpChar: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text },
-  otpKeyboardInput: {
+  otpScrollContent: { flexGrow: 1 },
+  // Transparent input overlays the six visual boxes so every tap lands on a real
+  // TextInput on Android and opens the numeric keyboard reliably.
+  otpTouchInput: {
     position: "absolute",
     left: 0,
     top: 0,
     width: "100%",
     height: 52,
-    zIndex: 20,
+    opacity: 0.01,
     color: "transparent",
     backgroundColor: "transparent",
-    opacity: 0.02,
-    textAlign: "center",
+    zIndex: 20,
   },
 });
 
