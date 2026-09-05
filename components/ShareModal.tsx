@@ -40,7 +40,7 @@ export interface ShareModalProps {
   deepLinkPath?: string;
   /** Optional structured details shown on a shared product card. */
   cardDetails?: string[];
-  /** One or more accepted seller orders to send as rich order cards. */
+  /** One or more accepted seller orders or my-products to send as rich cards. */
   orderCards?: OrderSharePayload[];
 }
 
@@ -90,7 +90,7 @@ export function ShareModal({
       if (orderCards?.length) {
         links = orderCards.map((o) => `\n\n📦 ${o.productTitle}\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
       }
-      await Share.share({ message: shareText + links, title });
+      await Share.share({ message: shareText + links, title: title || "مشاركة" });
     } catch {}
   };
 
@@ -149,13 +149,15 @@ export function ShareModal({
         <Pressable style={styles.overlay} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>مشاركة</Text>
+          <Text style={styles.sheetTitle}>{"مشاركة"}</Text>
 
           {(cardImage || cardTitle || orderCards?.length) && (
             <View style={styles.cardPreview}>
               {orderCards?.length ? <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="package" size={18} color={C.textMuted} /></View> : cardImage ? <Image source={{ uri: cardImage }} style={styles.cardPreviewImg} /> : <View style={[styles.cardPreviewImg, styles.cardPreviewImgFallback]}><Feather name="user" size={18} color={C.textMuted} /></View>}
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardPreviewTitle} numberOfLines={2}>{orderCards?.length ? `مشاركة ${orderCards.length} طلب${orderCards.length > 1 ? "ات" : ""}` : cardTitle || title}</Text>
+                <Text style={styles.cardPreviewTitle} numberOfLines={2}>
+                  {orderCards?.length ? `مشاركة ${orderCards.length} ${orderCards.length > 1 ? "منتجات/طلبات" : "منتج/طلب"}` : cardTitle || title}
+                </Text>
                 {cardDetails?.slice(0, 2).map((detail, index) => (
                   <Text key={`${detail}-${index}`} style={styles.cardPreviewDetail} numberOfLines={1}>{detail}</Text>
                 ))}
@@ -165,17 +167,17 @@ export function ShareModal({
 
           <Pressable style={styles.externalBtn} onPress={handleExternalShare} accessibilityRole="button">
             <Feather name="share-2" size={17} color="#FFF" />
-            <Text style={styles.externalBtnText}>مشاركة خارجية (واتساب، تيليغرام…)</Text>
+            <Text style={styles.externalBtnText}>{"مشاركة خارجية (واتساب، تيليجرام…)"}</Text>
           </Pressable>
 
           <View style={styles.divider} />
-          <Text style={styles.sectionLabel}>إرسال لصديق عبر الرسائل</Text>
+          <Text style={styles.sectionLabel}>{"إرسال لصديق عبر الرسائل"}</Text>
           <View style={styles.searchBox}>
             <Feather name="search" size={18} color={C.textMuted} />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
-              placeholder="ابحث عن اسم أي مستخدم في فورس"
+              placeholder={"ابحث عن اسم أي مستخدم في فورس"}
               placeholderTextColor={C.textMuted}
               style={styles.searchInput}
               textAlign="right"
@@ -188,11 +190,11 @@ export function ShareModal({
           {searchText.trim() ? (
             searching ? <ActivityIndicator color={C.accent} style={{ marginVertical: 16 }} /> : searchResults.length ? (
               <FlatList data={searchResults} keyExtractor={(u) => u.userId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ otherUserId: item.userId, otherName: item.name, otherPhotoUri: item.photoUri, roleLabel: item.roleLabel })} />
-            ) : <Text style={styles.emptyText}>لا يوجد مستخدم بهذا الاسم</Text>
+            ) : <Text style={styles.emptyText}>{"لا يوجد مستخدم بهذا الاسم"}</Text>
           ) : loadingChats ? (
             <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
           ) : chats.length === 0 ? (
-            <Text style={styles.emptyText}>لا توجد محادثات بعد — استخدم البحث أعلاه</Text>
+            <Text style={styles.emptyText}>{"لا توجد محادثات بعد — استخدم البحث أعلاه"}</Text>
           ) : (
             <FlatList data={chats} keyExtractor={(c) => c.chatId} style={styles.chatList} keyboardShouldPersistTaps="handled" renderItem={({ item }) => renderRecipient({ ...item, otherUserId: item.otherUserId, otherName: item.otherName, otherPhotoUri: item.otherPhotoUri })} />
           )}

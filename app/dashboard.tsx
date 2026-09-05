@@ -47,7 +47,7 @@ import {
   ALL_SPECIALTIES,
   isFeaturedActive,
   subscribeToUserChatLastAts,
-  subscribeToProducts,
+  fetchProductsOnce,
   deleteProduct,
   likeProduct,
   rankProductsForFeed,
@@ -402,7 +402,6 @@ const isFocused = useIsFocused();
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsRefreshing, setProductsRefreshing] = useState(false);
-  const [productsRefreshKey, setProductsRefreshKey] = useState(0);
   const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
@@ -615,31 +614,32 @@ try {
     return unsub;
   }, []);
 
-  // Marketplace: subscribe to products (realtime).
-  // productsRefreshKey increments on pull-to-refresh → cleanly re-subscribes.
-  useEffect(() => {
+  // Marketplace feed: deliberately one-shot. We do NOT subscribe to the
+  // products collection in Home because likes/counters can otherwise replace
+  // and reorder the FlatList while the user is scrolling.
+  const loadProducts = useCallback(async (showSpinner = false) => {
     if (!userId) return;
-    if (productsRefreshKey === 0) setProductsLoading(true);
-    const unsub = subscribeToProducts(
-      (data) => {
-        setProducts(data);
-        setProductsLoading(false);
-        setProductsRefreshing(false);
-      },
-      (_err) => {
-        setProductsLoading(false);
-        setProductsRefreshing(false);
-        setProducts([]);
-      }
-    );
-    return unsub;
-  }, [userId, productsRefreshKey]);
+    if (showSpinner) setProductsRefreshing(true);
+    try {
+      const data = await fetchProductsOnce();
+      setProducts(data);
+    } catch (error) {
+      console.error("fetchProductsOnce failed:", error);
+      if (showSpinner) Alert.alert("خطأ", "تعذّر تحديث المنتجات، حاول مجدداً.");
+    } finally {
+      setProductsLoading(false);
+      setProductsRefreshing(false);
+    }
+  }, [userId]);
 
-  const onProductsRefresh = useCallback(() => {
-    setProductsRefreshing(true);
+  useEffect(() => {
+    if (userId) loadProducts(false);
+  }, [userId, loadProducts]);
+
+  const onProductsRefresh = useCallback(async () => {
     setSmartFeedSeed((seed) => seed + 1);
-    setProductsRefreshKey((k) => k + 1);
-  }, []);
+    await loadProducts(true);
+  }, [loadProducts]);
 
   // Buyer: keep a live map of productId → orderId for MY pending orders
   useEffect(() => {
@@ -796,6 +796,19 @@ try {
               <Text style={styles.headerIconLabel}>الإدارة</Text>
             </Pressable>
           )}
+          <Pressable
+            style={styles.headerIconCol}
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/user-search" as any);
+            }}
+            accessibilityLabel="البحث عن المستخدمين"
+          >
+            <View style={styles.headerIconBtn}>
+              <Feather name="search" size={20} color="#FFF" />
+            </View>
+            <Text style={styles.headerIconLabel}>بحث</Text>
+          </Pressable>
           <Pressable style={styles.headerIconCol} onPress={handleMessagesPress}>
             <View style={styles.headerIconBtn}>
               <Feather name="message-circle" size={20} color="#FFF" />
@@ -951,10 +964,15 @@ try {
                     Haptics.selectionAsync();
                     setFocusedProductId(null); // stop any playing video immediately
                     setSearchQuery("");         // clear search when switching tabs
+                    if (tab.key === "all") {
+                      // Re-tapping Home behaves like "scroll to top + refresh".
+                      productsListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                      onProductsRefresh();
+                    }
                     setActiveCategory(tab.key);
-                      if (tab.key === "services") {
-                        setActiveServiceCategory("home");
-                      }
+                    if (tab.key === "services") {
+                      setActiveServiceCategory("home");
+                    }
                   }}
                 >
                   <Feather

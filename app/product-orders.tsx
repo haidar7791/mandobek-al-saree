@@ -365,6 +365,15 @@ function SaleCard({ order, onAccept, onReject }: {
         {/* ── Chat + Location buttons side by side ── */}
         <View style={styles.actionBtnsRow}>
           <TouchableOpacity
+            style={styles.shareBtnHalf}
+            activeOpacity={0.82}
+            onPress={handleShare}
+          >
+            <Feather name="share-2" size={15} color={C.primary} />
+            <Text style={styles.shareBtnText}>مشاركة</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.contactBtnHalf]}
             activeOpacity={0.82}
             onPress={openChat}
@@ -506,17 +515,19 @@ export default function ProductOrdersScreen() {
 
 
   const handleShareSelected = async () => {
-    if (activeTab !== "sales") return;
-    const selectedAccepted = saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted");
-    if (!selectedAccepted.length) {
-      Alert.alert("المشاركة", "يمكن مشاركة الطلبات المقبولة فقط بعد الموافقة عليها.");
-      return;
-    }
+    if (activeTab !== "sales" || selectedIds.size === 0) return;
+
+    // All selectable sales cards can be shared. Do not hide/disable the
+    // action based on the order status; selection is already restricted to
+    // the same non-pending cards used by the bulk actions.
+    const selectedSales = saleOrders.filter((o) => selectedIds.has(o.id));
+    if (!selectedSales.length) return;
+
     const me = auth.currentUser;
     if (!me) return;
     try {
       const seller = await getUserProfile(me.uid);
-      const payloads: OrderSharePayload[] = selectedAccepted.map((o) => ({
+      const payloads: OrderSharePayload[] = selectedSales.map((o) => ({
         orderId: o.id,
         productId: o.productId,
         productTitle: o.productTitle,
@@ -715,14 +726,13 @@ export default function ProductOrdersScreen() {
       {selectMode && selectedIds.size > 0 && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
           <Text style={styles.bottomBarCount}>
-            {selectedIds.size} طلب محدد
+            {selectedIds.size} {activeTab === "sales" ? "بطاقة بيع محددة" : "طلب محدد"}
           </Text>
           <View style={styles.bottomBarActions}>
-            {activeTab === "sales" && selectedIds.size > 0 && (
+            {activeTab === "sales" && (
               <TouchableOpacity
-                style={[styles.shareSelectedBtn, saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted").length === 0 && styles.btnDisabled]}
+                style={styles.shareSelectedBtn}
                 activeOpacity={0.85}
-                disabled={saleOrders.filter((o) => selectedIds.has(o.id) && o.status === "accepted").length === 0}
                 onPress={handleShareSelected}
               >
                 <Feather name="share-2" size={16} color="#FFF" />
@@ -751,9 +761,9 @@ export default function ProductOrdersScreen() {
       <ShareModal
         visible={shareOrders.length > 0}
         onClose={() => setShareOrders([])}
-        title="طلبات البيع"
+        title="بطاقات البيع"
         shareText={shareOrders.map((o) => `📦 ${o.productTitle}\n💰 ${o.productPrice != null ? Number(o.productPrice).toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}\n👤 المشتري: ${o.buyerName}\n📞 ${o.buyerPhone || "لا يوجد"}`).join("\n\n")}
-        shareMessage={`📦 تم مشاركة ${shareOrders.length} طلب${shareOrders.length > 1 ? "ات" : ""} بيع من فورس`}
+        shareMessage={`🛍️ تم مشاركة ${shareOrders.length} بطاقة بيع${shareOrders.length > 1 ? "ات" : ""} من فورس`}
         orderCards={shareOrders}
       />
     </View>
@@ -967,7 +977,15 @@ const styles = StyleSheet.create({
 
   // Side-by-side action buttons row (sale card)
   actionBtnsRow: {
-    flexDirection: "row", gap: 10, marginTop: 2,
+    flexDirection: "row", gap: 8, marginTop: 2,
+  },
+  shareBtnHalf: {
+    flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 13, borderRadius: 14,
+    backgroundColor: C.accent,
+  },
+  shareBtnText: {
+    fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary,
   },
   contactBtnHalf: { flex: 1, borderRadius: 14, overflow: "hidden" },
   locationBtnHalf: {

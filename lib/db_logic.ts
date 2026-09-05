@@ -19,6 +19,9 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
+  startAt,
+  endAt,
+  limit,
   deleteField,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -1188,6 +1191,8 @@ export const sendCardMessage = async (
   cardRoute: string,
   previewText: string,
   cardDetails?: string[],
+  cardLocation?: GeoLocation | null,
+  cardLocationLabel?: string,
 ): Promise<void> => {
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
@@ -1199,6 +1204,7 @@ export const sendCardMessage = async (
     cardTitle,
     cardRoute,
     ...(cardDetails?.length ? { cardDetails } : {}),
+    ...(cardLocation ? { cardLocation, cardLocationLabel: cardLocationLabel || "الموقع" } : {}),
     createdAt: new Date().toISOString(),
   });
   await setDoc(
@@ -1262,6 +1268,42 @@ export interface ShareUserResult {
   role: UserProfile["role"];
   roleLabel: string;
 }
+
+/**
+ * Global user search for the Home header. Prefix queries avoid downloading the
+ * entire users collection on every keystroke and therefore scale much better.
+ * The users collection is intentionally searched regardless of role.
+ */
+export const searchUsersByName = async (
+  searchText: string,
+  excludeUserId?: string | null,
+): Promise<ShareUserResult[]> => {
+  const term = searchText.trim();
+  if (!term) return [];
+  const q = query(
+    collection(db, "users"),
+    orderBy("name"),
+    startAt(term),
+    endAt(term + "\uf8ff"),
+    limit(30),
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => !excludeUserId || d.id !== excludeUserId)
+    .map((d) => {
+      const data = d.data() as UserProfile;
+      const name = String(data.name || "").trim();
+      const role = data.role || "client";
+      return {
+        userId: d.id,
+        name,
+        photoUri: data.photoUri || null,
+        role,
+        roleLabel: role === "artisan" ? (data.specialty || "صاحب اختصاص") : role === "admin" ? "إدارة" : "عام",
+      };
+    })
+    .filter((u) => !!u.name);
+};
 
 export const searchUsersForSharing = async (
   searchText: string,
@@ -2263,6 +2305,24 @@ export const subscribeToProducts = (
       onError?.(err);
     }
   );
+};
+
+/**
+ * One-shot marketplace fetch. Used by the Home feed so normal Firestore
+ * updates (likes, counters, etc.) never replace/reorder the visible list.
+ * The feed is explicitly refreshed by pull-to-refresh or a Home-tab tap.
+ */
+export const fetchProductsOnce = async (): Promise<Product[]> => {
+  const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  const products = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+  products.sort((a, b) => {
+    const pa = a.priorityScore ?? 0;
+    const pb = b.priorityScore ?? 0;
+    if (pb !== pa) return pb - pa;
+    return (b.createdAt || "").localeCompare(a.createdAt || "");
+  });
+  return products;
 };
 
 /**
