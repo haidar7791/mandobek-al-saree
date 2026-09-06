@@ -1785,11 +1785,75 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   }
 };
 
+/**
+ * Propagate a changed display name to denormalized content documents.
+ * Firestore limits a single batch to 500 writes, so large accounts are
+ * processed in safe chunks. The profile document itself is written first;
+ * content updates then bring the cached author/seller names into sync.
+ */
+export const updateUserNameAcrossContent = async (
+  userId: string,
+  newName: string
+): Promise<void> => {
+  const cleanName = newName.trim();
+  if (!userId || !cleanName) return;
+
+  const [postsSnap, productsSnap] = await Promise.all([
+    getDocs(query(collection(db, "posts"), where("userId", "==", userId))),
+    getDocs(query(collection(db, "products"), where("sellerId", "==", userId))),
+  ]);
+
+  const refsAndData: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+
+  postsSnap.docs.forEach((d) => {
+    refsAndData.push({
+      ref: d.ref,
+      data: { userName: cleanName, authorName: cleanName },
+    });
+  });
+
+  productsSnap.docs.forEach((d) => {
+    refsAndData.push({
+      ref: d.ref,
+      data: { sellerName: cleanName, userName: cleanName, authorName: cleanName },
+    });
+  });
+
+  for (let start = 0; start < refsAndData.length; start += 450) {
+    const batch = writeBatch(db);
+    refsAndData.slice(start, start + 450).forEach(({ ref, data }) => {
+      batch.update(ref, data);
+    });
+    await batch.commit();
+  }
+};
+
 export const setUserProfile = async (
   userId: string,
   profile: Partial<UserProfile>
 ): Promise<void> => {
+  let oldName: string | null = null;
+  const nextName = typeof profile.name === "string" ? profile.name.trim() : "";
+
+  if (nextName) {
+    const currentSnap = await getDoc(doc(db, "users", userId));
+    if (currentSnap.exists()) {
+      const currentName = (currentSnap.data() as any)?.name;
+      oldName = typeof currentName === "string" ? currentName.trim() : null;
+    }
+  }
+
   await setDoc(doc(db, "users", userId), profile, { merge: true });
+
+  if (nextName && nextName !== oldName) {
+    try {
+      await updateUserNameAcrossContent(userId, nextName);
+    } catch (error) {
+      // Keep the profile save successful even if a legacy content document
+      // cannot be updated because of a temporary/network/rules issue.
+      console.error("updateUserNameAcrossContent error:", error);
+    }
+  }
 };
 
 export function normalizeProfilePosts(

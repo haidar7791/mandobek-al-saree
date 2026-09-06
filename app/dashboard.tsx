@@ -65,6 +65,9 @@ import {
   addProfilePost,
   toggleProfilePostLike,
   addProfilePostComment,
+  updateProfilePostComment,
+  deleteProfilePostComment,
+  getIsFollowing,
   followArtisan,
   unfollowArtisan,
 } from "../lib/db_logic";
@@ -462,6 +465,7 @@ function HomeFeedCard({
           <ProfileAvatar photoUri={post.userPhotoUri} name={post.userName} size={42} disableNavigation />
           <View style={styles.homePostUser}>
             <Text style={styles.homePostName} numberOfLines={1}>{post.userName}</Text>
+            {!!post.description && <Text style={styles.homePostDescriptionHeader} numberOfLines={3}>{post.description}</Text>}
             <Text style={styles.homePostTime}>{post.createdAt ? new Date(post.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
           </View>
         </TouchableOpacity>
@@ -508,7 +512,6 @@ function HomeFeedCard({
         )}
       </Pressable>
 
-      {!!post.description && <Text style={styles.homePostDescription}>{post.description}</Text>}
       <View style={styles.homeActions}>
         <Pressable onPress={onLike} style={styles.homeAction}><Ionicons name={isLiked ? "heart" : "heart-outline"} size={22} color={isLiked ? "#EF4444" : C.textSecondary} /><Text style={[styles.homeActionText, isLiked && styles.likedCountText]}>{post.likesCount}</Text></Pressable>
         <Pressable onPress={onComment} style={styles.homeAction}><Ionicons name="chatbubble-outline" size={21} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.commentsCount}</Text></Pressable>
@@ -546,6 +549,7 @@ function HomeVideoViewer({
   const videos = posts.filter((p) => p.mediaType === "video");
   const [activeIndex, setActiveIndex] = useState(index);
   const [muted, setMuted] = useState(true);
+  const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const reelLastTapRef = useRef(0);
   const reelViewabilityConfig = useRef({ itemVisiblePercentThreshold: 70 }).current;
   const reelViewabilityHandler = useRef(
@@ -559,8 +563,27 @@ function HomeVideoViewer({
     if (visible) {
       setActiveIndex(Math.min(Math.max(0, index), Math.max(0, videos.length - 1)));
       setMuted(true);
+      setFollowedUserIds(new Set());
     }
   }, [visible, index, videos.length]);
+
+  useEffect(() => {
+    const viewer = auth.currentUser;
+    const current = videos[activeIndex];
+    if (!visible || !viewer || !current || viewer.uid === current.userId) return;
+    let cancelled = false;
+    getIsFollowing(viewer.uid, current.userId)
+      .then((following) => {
+        if (cancelled) return;
+        setFollowedUserIds((prev) => {
+          const next = new Set(prev);
+          if (following) next.add(current.userId); else next.delete(current.userId);
+          return next;
+        });
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [visible, activeIndex, videos]);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -574,75 +597,98 @@ function HomeVideoViewer({
           viewabilityConfig={reelViewabilityConfig}
           onViewableItemsChanged={reelViewabilityHandler}
           getItemLayout={(_, i) => ({ length: Dimensions.get("window").height, offset: Dimensions.get("window").height * i, index: i })}
-          renderItem={({ item, index: itemIndex }) => (
-            <View style={styles.reelPage}>
-              <Video
-                source={{ uri: item.url }}
-                style={StyleSheet.absoluteFill}
-                resizeMode={ResizeMode.COVER}
-                shouldPlay={visible && screenFocused && itemIndex === activeIndex}
-                isMuted={muted}
-                isLooping
-                useNativeControls={false}
-              />
-              <Pressable
-                style={StyleSheet.absoluteFill}
-                onPress={() => {
-                  const now = Date.now();
-                  if (now - reelLastTapRef.current < 320) {
-                    reelLastTapRef.current = 0;
-                    onDoubleTapLike(item);
-                  } else {
-                    reelLastTapRef.current = now;
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="الضغط مرتين للإعجاب"
-              />
-              <View style={styles.reelOverlay}>
-                <View style={styles.reelTopRow}>
-                  <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
-                  <Pressable
-                    onPress={() => setMuted((value) => !value)}
-                    style={styles.reelMuteBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={muted ? "تشغيل صوت الريلز" : "كتم صوت الريلز"}
-                  >
-                    <Ionicons name={muted ? "volume-mute" : "volume-high"} size={21} color="#FFF" />
-                  </Pressable>
-                </View>
-
-                <View style={styles.reelBottomArea}>
-                  <View style={styles.reelUser}>
-                    <TouchableOpacity activeOpacity={0.75} onPress={() => onOpenProfile(item)} style={styles.reelProfileTouchable}>
-                      <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={44} disableNavigation />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.reelName}>{item.userName}</Text>
-                        {!!item.description && <Text style={styles.reelDescription} numberOfLines={2}>{item.description}</Text>}
-                      </View>
-                    </TouchableOpacity>
+          renderItem={({ item, index: itemIndex }) => {
+            const itemLiked = isLiked(item.id);
+            const isFollowing = followedUserIds.has(item.userId);
+            return (
+              <View style={styles.reelPage}>
+                <Video
+                  source={{ uri: item.url }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode={ResizeMode.COVER}
+                  shouldPlay={visible && screenFocused && itemIndex === activeIndex}
+                  isMuted={muted}
+                  isLooping
+                  useNativeControls={false}
+                />
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => {
+                    const now = Date.now();
+                    if (now - reelLastTapRef.current < 320) {
+                      reelLastTapRef.current = 0;
+                      if (!itemLiked) onDoubleTapLike(item);
+                    } else {
+                      reelLastTapRef.current = now;
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="الضغط مرتين للإعجاب"
+                />
+                <View style={styles.reelOverlay}>
+                  <View style={styles.reelTopRow}>
+                    <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
                     <Pressable
-                      style={styles.followBtn}
-                      onPress={async () => {
-                        const viewer = auth.currentUser;
-                        if (!viewer || viewer.uid === item.userId) return;
-                        try { await followArtisan(viewer.uid, item.userId); }
-                        catch (e) { console.warn("follow failed", e); }
-                      }}
+                      onPress={() => setMuted((value) => !value)}
+                      style={styles.reelMuteBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={muted ? "تشغيل صوت الريلز" : "كتم صوت الريلز"}
                     >
-                      <Text style={styles.followText}>متابعة</Text>
+                      <Ionicons name={muted ? "volume-mute" : "volume-high"} size={21} color="#FFF" />
                     </Pressable>
                   </View>
 
-                  <View style={styles.reelActions}>
-                    <Pressable style={styles.reelAction} onPress={() => onLike(item)}><Ionicons name={isLiked(item.id) ? "heart" : "heart-outline"} size={31} color={isLiked(item.id) ? "#EF4444" : "#FFF"} /><Text style={styles.reelCount}>{item.likesCount}</Text></Pressable>
-                    <Pressable style={styles.reelAction} onPress={() => onComment(item)}><Ionicons name="chatbubble-outline" size={29} color="#FFF" /><Text style={styles.reelCount}>{item.commentsCount}</Text></Pressable>
-                    <Pressable style={styles.reelAction} onPress={() => onShare(item)}><Feather name="share-2" size={28} color="#FFF" /></Pressable>
+                  <View style={styles.reelBottomArea}>
+                    <View style={styles.reelActions}>
+                      <View style={styles.reelProfileColumn}>
+                        <View style={styles.reelAvatarWrap}>
+                          <TouchableOpacity activeOpacity={0.8} onPress={() => onOpenProfile(item)}>
+                            <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={50} disableNavigation />
+                          </TouchableOpacity>
+                          {auth.currentUser?.uid !== item.userId && (
+                            <Pressable
+                              style={[styles.reelFollowBadge, isFollowing && styles.reelFollowBadgeFollowing]}
+                              onPress={async () => {
+                                const viewer = auth.currentUser;
+                                if (!viewer || viewer.uid === item.userId) return;
+                                try {
+                                  if (isFollowing) {
+                                    await unfollowArtisan(viewer.uid, item.userId);
+                                    setFollowedUserIds((prev) => { const next = new Set(prev); next.delete(item.userId); return next; });
+                                  } else {
+                                    await followArtisan(viewer.uid, item.userId);
+                                    setFollowedUserIds((prev) => new Set(prev).add(item.userId));
+                                  }
+                                } catch (e) { console.warn("follow toggle failed", e); }
+                              }}
+                              accessibilityRole="button"
+                              accessibilityLabel={isFollowing ? "إلغاء المتابعة" : "متابعة"}
+                            >
+                              <Text style={styles.reelFollowBadgeText}>{isFollowing ? "✓" : "+"}</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                        <TouchableOpacity activeOpacity={0.75} onPress={() => onOpenProfile(item)}>
+                          <Text style={styles.reelName} numberOfLines={1}>{item.userName}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Pressable style={styles.reelAction} onPress={() => onLike(item)}>
+                        <Ionicons name={itemLiked ? "heart" : "heart-outline"} size={31} color={itemLiked ? "#EF4444" : "#FFF"} />
+                        <Text style={styles.reelCount}>{item.likesCount}</Text>
+                      </Pressable>
+                      <Pressable style={styles.reelAction} onPress={() => onComment(item)}><Ionicons name="chatbubble-outline" size={29} color="#FFF" /><Text style={styles.reelCount}>{item.commentsCount}</Text></Pressable>
+                      <Pressable style={styles.reelAction} onPress={() => onShare(item)}><Feather name="share-2" size={28} color="#FFF" /></Pressable>
+                    </View>
+
+                    {!!item.description && (
+                      <Text style={styles.reelDescriptionBottom} numberOfLines={4}>{item.description}</Text>
+                    )}
                   </View>
                 </View>
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       </View>
     </Modal>
@@ -693,7 +739,10 @@ const isFocused = useIsFocused();
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentPosting, setCommentPosting] = useState(false);
+  const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
+  const [pendingPostMedia, setPendingPostMedia] = useState<{ uri: string; mediaType: "image" | "video"; mimeType?: string | null; fileName?: string | null } | null>(null);
+  const [postCaption, setPostCaption] = useState("");
 
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
@@ -736,27 +785,38 @@ const isFocused = useIsFocused();
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     const mediaType = asset.type === "video" ? "video" : "image";
+    setPostCaption("");
+    setPendingPostMedia({ uri: asset.uri, mediaType, mimeType: asset.mimeType, fileName: asset.fileName });
+  }, []);
+
+  const publishPendingPost = useCallback(async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !pendingPostMedia) return;
     setPosting(true);
     try {
-      const uploaded = await uploadProfilePostMedia(uid, asset.uri, mediaType, {
-        mimeType: asset.mimeType,
-        fileName: asset.fileName,
+      const uploaded = await uploadProfilePostMedia(uid, pendingPostMedia.uri, pendingPostMedia.mediaType, {
+        mimeType: pendingPostMedia.mimeType,
+        fileName: pendingPostMedia.fileName,
       });
       await addProfilePost(uid, {
         id: `${uid}-${Date.now()}`,
         url: uploaded.url,
-        mediaType,
+        mediaType: pendingPostMedia.mediaType,
         createdAt: new Date().toISOString(),
+        description: postCaption.trim(),
         likesCount: 0,
+        commentsCount: 0,
         storagePath: uploaded.storagePath,
         mimeType: uploaded.mimeType,
       });
+      setPendingPostMedia(null);
+      setPostCaption("");
       await loadHomeFeed(true);
       Alert.alert("تم النشر", "تمت إضافة المنشور بنجاح.");
     } catch (e: any) {
       Alert.alert("تعذر النشر", e?.message || "حدث خطأ أثناء رفع المنشور.");
     } finally { setPosting(false); }
-  }, [loadHomeFeed]);
+  }, [pendingPostMedia, postCaption, loadHomeFeed]);
 
   useFocusEffect(useCallback(() => {
     loadHomeFeed();
@@ -1706,6 +1766,52 @@ try {
             )}
           </View>
 
+      <Modal
+        visible={!!pendingPostMedia}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => { if (!posting) { setPendingPostMedia(null); setPostCaption(""); } }}
+      >
+        <View style={styles.captionBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (!posting) { setPendingPostMedia(null); setPostCaption(""); } }} />
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.captionSheetKeyboard}>
+            <View style={styles.captionSheet}>
+              <View style={styles.commentHandle} />
+              <View style={styles.captionHeaderRow}>
+                <Text style={styles.captionTitle}>وصف المنشور</Text>
+                <Pressable disabled={posting} onPress={() => { setPendingPostMedia(null); setPostCaption(""); }} style={styles.commentCloseBtn}>
+                  <Feather name="x" size={19} color={C.textSecondary} />
+                </Pressable>
+              </View>
+              {pendingPostMedia && (
+                pendingPostMedia.mediaType === "video" ? (
+                  <View style={styles.captionPreviewVideo}><Video source={{ uri: pendingPostMedia.uri }} style={StyleSheet.absoluteFill} resizeMode={ResizeMode.COVER} shouldPlay={false} isMuted /></View>
+                ) : (
+                  <Image source={{ uri: pendingPostMedia.uri }} style={styles.captionPreviewImage} resizeMode="cover" />
+                )
+              )}
+              <TextInput
+                value={postCaption}
+                onChangeText={setPostCaption}
+                placeholder="اكتب وصفاً أو تفاصيل عن المنشور..."
+                placeholderTextColor={C.textMuted}
+                style={styles.captionInput}
+                multiline
+                maxLength={1000}
+                textAlign="right"
+                editable={!posting}
+                autoFocus
+              />
+              <Pressable style={styles.captionPublishBtn} onPress={publishPendingPost} disabled={posting}>
+                {posting ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="send" size={17} color="#FFF" />}
+                <Text style={styles.captionPublishText}>{posting ? "جارٍ النشر..." : "نشر"}</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
       <HomeVideoViewer
         posts={homeFeed}
         index={reelIndex}
@@ -1735,7 +1841,7 @@ try {
             setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
           } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
         }}
-        onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); }}
+        onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); }}
         onShare={async (item) => {
           try { await Share.share({ title: item.userName, message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}` }); }
           catch (e) { console.warn("share reel failed", e); }
@@ -1752,10 +1858,10 @@ try {
         transparent
         animationType="slide"
         statusBarTranslucent
-        onRequestClose={() => { setCommentPost(null); setCommentText(""); }}
+        onRequestClose={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }}
       >
         <View style={styles.commentBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setCommentPost(null); setCommentText(""); }} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }} />
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom + 8 : 0}
@@ -1765,7 +1871,7 @@ try {
             <View style={styles.commentHandle} />
             <View style={styles.commentHeaderRow}>
               <Text style={styles.commentTitle}>التعليقات {commentPost ? `(${commentPost.commentsCount})` : ""}</Text>
-              <Pressable onPress={() => { setCommentPost(null); setCommentText(""); }} style={styles.commentCloseBtn}>
+              <Pressable onPress={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }} style={styles.commentCloseBtn}>
                 <Feather name="x" size={19} color={C.textSecondary} />
               </Pressable>
             </View>
@@ -1792,7 +1898,26 @@ try {
                   >
                     <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={38} disableNavigation />
                   </TouchableOpacity>
-                  <View style={styles.commentBody}>
+                  <Pressable
+                    style={styles.commentBody}
+                    onLongPress={() => {
+                      if (item.userId !== auth.currentUser?.uid) return;
+                      Alert.alert("خيارات التعليق", "اختر الإجراء", [
+                        { text: "تعديل", onPress: () => { setCommentEditingId(item.id); setCommentText(item.text); } },
+                        { text: "حذف", style: "destructive", onPress: async () => {
+                          if (!commentPost) return;
+                          try {
+                            await deleteProfilePostComment(commentPost.id, item.id);
+                            setComments((prev) => prev.filter((comment) => comment.id !== item.id));
+                            setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: Math.max(0, p.commentsCount - 1) } : p));
+                          } catch (e: any) {
+                            Alert.alert("تعذر حذف التعليق", e?.message || "حدث خطأ أثناء حذف التعليق.");
+                          }
+                        } },
+                        { text: "إلغاء", style: "cancel" },
+                      ]);
+                    }}
+                  >
                     <View style={styles.commentMetaRow}>
                       <TouchableOpacity
                         activeOpacity={0.7}
@@ -1803,16 +1928,21 @@ try {
                       <Text style={styles.commentTime}>{item.createdAt ? new Date(item.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
                     </View>
                     <Text style={styles.commentText}>{item.text}</Text>
-                  </View>
+                  </Pressable>
                 </View>
               )}
             />
 
+            {commentEditingId && (
+              <Pressable style={styles.commentEditCancel} onPress={() => { setCommentEditingId(null); setCommentText(""); }}>
+                <Text style={styles.commentEditCancelText}>إلغاء التعديل</Text>
+              </Pressable>
+            )}
             <View style={styles.commentComposer}>
               <TextInput
                 value={commentText}
                 onChangeText={setCommentText}
-                placeholder="اكتب تعليقاً..."
+                placeholder={commentEditingId ? "عدّل تعليقك..." : "اكتب تعليقاً..."}
                 placeholderTextColor={C.textMuted}
                 style={styles.commentComposerInput}
                 multiline
@@ -1827,12 +1957,19 @@ try {
                   if (!commentPost || !commentText.trim() || commentPosting) return;
                   setCommentPosting(true);
                   try {
-                    const added = await addProfilePostComment(commentPost.id, commentText);
-                    setComments((prev) => [added, ...prev]);
-                    setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
-                    setCommentText("");
+                    if (commentEditingId) {
+                      await updateProfilePostComment(commentPost.id, commentEditingId, commentText);
+                      setComments((prev) => prev.map((comment) => comment.id === commentEditingId ? { ...comment, text: commentText.trim() } : comment));
+                      setCommentEditingId(null);
+                      setCommentText("");
+                    } else {
+                      const added = await addProfilePostComment(commentPost.id, commentText);
+                      setComments((prev) => [added, ...prev]);
+                      setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
+                      setCommentText("");
+                    }
                   } catch (e: any) {
-                    Alert.alert("تعذر التعليق", e?.message || "حدث خطأ أثناء إضافة التعليق.");
+                    Alert.alert(commentEditingId ? "تعذر تعديل التعليق" : "تعذر التعليق", e?.message || "حدث خطأ أثناء حفظ التعليق.");
                   } finally {
                     setCommentPosting(false);
                   }
@@ -2011,6 +2148,7 @@ const styles = StyleSheet.create({
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
   homePostUser: { flex: 1, alignItems: "flex-end" },
   homePostName: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  homePostDescriptionHeader: { fontSize: 11, lineHeight: 17, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
   homePostTime: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, marginTop: 1 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
@@ -2025,19 +2163,30 @@ const styles = StyleSheet.create({
   reelTopRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", width: "100%" },
   reelClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
   reelMuteBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
-  reelBottomArea: { position: "relative", minHeight: 145, justifyContent: "flex-end" },
-  reelUser: { flexDirection: "row-reverse", alignItems: "center", gap: 9, paddingBottom: 28 },
-  reelProfileTouchable: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
-  reelDescription: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,.86)", marginTop: 2, textAlign: "right" },
-  reelName: { color: "#FFF", fontSize: 14, fontFamily: "Cairo_700Bold" },
-  followBtn: { borderWidth: 1, borderColor: "#FFF", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-  followText: { color: "#FFF", fontSize: 11, fontFamily: "Cairo_700Bold" },
-  reelActions: { position: "absolute", right: 16, bottom: 100, gap: 22, alignItems: "center" },
+  reelBottomArea: { position: "relative", minHeight: 220, justifyContent: "flex-end", paddingBottom: 4 },
+  reelActions: { position: "absolute", right: 8, bottom: 18, gap: 20, alignItems: "center" },
+  reelProfileColumn: { width: 68, alignItems: "center", gap: 4 },
+  reelAvatarWrap: { position: "relative", width: 54, height: 54, alignItems: "center", justifyContent: "center" },
+  reelFollowBadge: { position: "absolute", right: -3, bottom: -2, width: 21, height: 21, borderRadius: 11, backgroundColor: C.accent, borderWidth: 2, borderColor: "#FFF", alignItems: "center", justifyContent: "center" },
+  reelFollowBadgeFollowing: { backgroundColor: "#22C55E" },
+  reelFollowBadgeText: { color: "#FFF", fontSize: 14, lineHeight: 17, fontFamily: "Cairo_700Bold" },
+  reelName: { color: "#FFF", fontSize: 11, fontFamily: "Cairo_700Bold", textAlign: "center", maxWidth: 68 },
+  reelDescriptionBottom: { color: "#FFF", fontSize: 12, lineHeight: 19, fontFamily: "Cairo_400Regular", textAlign: "right", marginRight: 82, marginLeft: 8, marginBottom: 18 },
   reelAction: { alignItems: "center", gap: 2 },
   reelCount: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
+  captionBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
+  captionSheetKeyboard: { width: "100%" },
+  captionSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 20, maxHeight: "88%" },
+  captionHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 10 },
+  captionTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  captionPreviewImage: { width: "100%", height: 190, borderRadius: 16, backgroundColor: "#000", marginBottom: 10 },
+  captionPreviewVideo: { width: "100%", height: 190, borderRadius: 16, overflow: "hidden", backgroundColor: "#000", marginBottom: 10 },
+  captionInput: { minHeight: 100, maxHeight: 180, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top", marginBottom: 10 },
+  captionPublishBtn: { minHeight: 46, borderRadius: 14, backgroundColor: C.accent, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
+  captionPublishText: { color: "#FFF", fontSize: 13, fontFamily: "Cairo_700Bold" },
   commentBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
   commentSheetKeyboard: { width: "100%" },
-  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 22, height: "72%" },
+  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 12, height: "78%" },
   commentHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginBottom: 9 },
   commentHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 8 },
   commentTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
@@ -2053,7 +2202,9 @@ const styles = StyleSheet.create({
   commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   commentTime: { fontSize: 9, fontFamily: "Cairo_400Regular", color: C.textMuted },
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
-  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 8 },
+  commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
+  commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 12 },
   commentComposerInput: { flex: 1, minHeight: 44, maxHeight: 90, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 9, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top" },
   commentSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   commentSendDisabled: { opacity: 0.45 },
