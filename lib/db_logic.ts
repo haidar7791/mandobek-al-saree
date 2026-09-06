@@ -2329,6 +2329,51 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
   };
 };
 
+export const updateProfilePostComment = async (
+  postId: string,
+  commentId: string,
+  text: string,
+): Promise<void> => {
+  const viewer = auth.currentUser;
+  const cleanText = text.trim();
+  if (!viewer || !cleanText) throw new Error("بيانات التعليق غير مكتملة");
+
+  const commentRef = doc(db, "posts", postId, "comments", commentId);
+  const commentSnapshot = await getDoc(commentRef);
+  if (!commentSnapshot.exists()) throw new Error("التعليق غير موجود");
+
+  const commentData = commentSnapshot.data() as { userId?: string };
+  if (commentData.userId !== viewer.uid) throw new Error("لا تملك صلاحية تعديل هذا التعليق");
+
+  await updateDoc(commentRef, {
+    text: cleanText,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const deleteProfilePostComment = async (
+  postId: string,
+  commentId: string,
+): Promise<void> => {
+  const viewer = auth.currentUser;
+  if (!viewer) throw new Error("يجب تسجيل الدخول لحذف التعليق");
+
+  const commentRef = doc(db, "posts", postId, "comments", commentId);
+  const commentSnapshot = await getDoc(commentRef);
+  if (!commentSnapshot.exists()) throw new Error("التعليق غير موجود");
+
+  const commentData = commentSnapshot.data() as { userId?: string };
+  if (commentData.userId !== viewer.uid) throw new Error("لا تملك صلاحية حذف هذا التعليق");
+
+  await deleteDoc(commentRef);
+
+  // The comment document is the source of truth. Keep the post aggregate best-effort,
+  // matching the existing add-comment behavior.
+  await updateDoc(doc(db, "posts", postId), {
+    commentsCount: increment(-1),
+  }).catch(() => undefined);
+};
+
 // ─── Products / Marketplace ───────────────────────────────────────────────────
 
 export interface Product {
