@@ -2323,7 +2323,7 @@ const styles = StyleSheet.create({
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
   homePostUser: { flex: 1, alignItems: "flex-end" },
   homePostName: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  homePostDescriptionHeader: { fontSize: 12, lineHeight: 18, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
+  homePostDescriptionHeader: { fontSize: 18, lineHeight: 27, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
   homePostTime: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, marginTop: 1 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
