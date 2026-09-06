@@ -2352,7 +2352,7 @@ const styles = StyleSheet.create({
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  commentComposer: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 0, marginTop: 0, marginBottom: 0 },
+  commentComposer: { position: "absolute", left: 0, right: 0, bottom: 8, flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 0, marginTop: 0, marginBottom: 0 },
   commentComposerFakeInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
   commentComposerSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
