@@ -29,6 +29,7 @@ import Svg, { Circle, Rect } from "react-native-svg";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import { auth } from "../lib/firebase";
 import { Video, ResizeMode } from "expo-av";
 import { ShareModal } from "@/components/ShareModal";
@@ -740,6 +741,11 @@ const isFocused = useIsFocused();
   const [commentText, setCommentText] = useState("");
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
+  const [commentInputOpen, setCommentInputOpen] = useState(false);
+  const [commentActionsComment, setCommentActionsComment] = useState<HomeFeedComment | null>(null);
+  const [commentToast, setCommentToast] = useState<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
+  const commentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [posting, setPosting] = useState(false);
   const [pendingPostMedia, setPendingPostMedia] = useState<{ uri: string; mediaType: "image" | "video"; mimeType?: string | null; fileName?: string | null } | null>(null);
   const [postCaption, setPostCaption] = useState("");
@@ -873,6 +879,85 @@ const isFocused = useIsFocused();
       .finally(() => { if (!cancelled) setCommentsLoading(false); });
     return () => { cancelled = true; };
   }, [commentPost]);
+
+  const showCommentToast = useCallback((message: string) => {
+    if (commentToastTimerRef.current) clearTimeout(commentToastTimerRef.current);
+    setCommentToast(message);
+    commentToastTimerRef.current = setTimeout(() => {
+      setCommentToast(null);
+      commentToastTimerRef.current = null;
+    }, 2200);
+  }, []);
+
+  const closeCommentSheet = useCallback(() => {
+    setCommentPost(null);
+    setCommentText("");
+    setCommentEditingId(null);
+    setCommentInputOpen(false);
+    setCommentActionsComment(null);
+  }, []);
+
+  const handleSubmitComment = useCallback(async () => {
+    const post = commentPost;
+    const text = commentText.trim();
+    const editingId = commentEditingId;
+    if (!post || !text || commentPosting) return;
+
+    setCommentPosting(true);
+    try {
+      if (editingId) {
+        await updateProfilePostComment(post.id, editingId, text);
+        setComments((prev) => prev.map((comment) => comment.id === editingId ? { ...comment, text } : comment));
+      } else {
+        const added = await addProfilePostComment(post.id, text);
+        setComments((prev) => [added, ...prev]);
+        setHomeFeed((prev) => prev.map((p) => p.id === post.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
+      }
+      setCommentEditingId(null);
+      setCommentText("");
+      setCommentInputOpen(false);
+    } catch (e: any) {
+      Alert.alert(editingId ? "تعذر تعديل التعليق" : "تعذر التعليق", e?.message || "حدث خطأ أثناء حفظ التعليق.");
+    } finally {
+      setCommentPosting(false);
+    }
+  }, [commentPost, commentText, commentEditingId, commentPosting]);
+
+  const dismissCommentInput = useCallback(async () => {
+    if (commentPosting) return;
+    if (commentText.trim()) {
+      await handleSubmitComment();
+      return;
+    }
+    setCommentInputOpen(false);
+    setCommentEditingId(null);
+    setCommentText("");
+  }, [commentPosting, commentText, handleSubmitComment]);
+
+  const handleDeleteComment = useCallback(async (comment: HomeFeedComment) => {
+    const post = commentPost;
+    if (!post) return;
+    setCommentActionsComment(null);
+    if (commentEditingId === comment.id) {
+      setCommentInputOpen(false);
+      setCommentEditingId(null);
+      setCommentText("");
+    }
+    try {
+      await deleteProfilePostComment(post.id, comment.id);
+      setComments((prev) => prev.filter((item) => item.id !== comment.id));
+      setHomeFeed((prev) => prev.map((p) => p.id === post.id ? { ...p, commentsCount: Math.max(0, p.commentsCount - 1) } : p));
+      showCommentToast("تم الحذف");
+    } catch (e: any) {
+      Alert.alert("تعذر حذف التعليق", e?.message || "حدث خطأ أثناء حذف التعليق.");
+    }
+  }, [commentPost, commentEditingId, showCommentToast]);
+
+  useEffect(() => {
+    if (!commentInputOpen) return;
+    const focusTimer = setTimeout(() => commentInputRef.current?.focus(), 120);
+    return () => clearTimeout(focusTimer);
+  }, [commentInputOpen]);
 
   // ── Viewability refs — created ONCE, never reassigned ───────────────────────
   // useRef(...).current freezes the value at mount time → perfectly stable reference
@@ -1841,7 +1926,7 @@ try {
             setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
           } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
         }}
-        onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); }}
+         onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
         onShare={async (item) => {
           try { await Share.share({ title: item.userName, message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}` }); }
           catch (e) { console.warn("share reel failed", e); }
@@ -1858,10 +1943,10 @@ try {
         transparent
         animationType="slide"
         statusBarTranslucent
-        onRequestClose={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }}
+        onRequestClose={closeCommentSheet}
       >
         <View style={styles.commentBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeCommentSheet} />
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom + 8 : 0}
@@ -1871,7 +1956,7 @@ try {
             <View style={styles.commentHandle} />
             <View style={styles.commentHeaderRow}>
               <Text style={styles.commentTitle}>التعليقات {commentPost ? `(${commentPost.commentsCount})` : ""}</Text>
-              <Pressable onPress={() => { setCommentPost(null); setCommentText(""); setCommentEditingId(null); }} style={styles.commentCloseBtn}>
+              <Pressable onPress={closeCommentSheet} style={styles.commentCloseBtn}>
                 <Feather name="x" size={19} color={C.textSecondary} />
               </Pressable>
             </View>
@@ -1902,20 +1987,7 @@ try {
                     style={styles.commentBody}
                     onLongPress={() => {
                       if (item.userId !== auth.currentUser?.uid) return;
-                      Alert.alert("خيارات التعليق", "اختر الإجراء", [
-                        { text: "تعديل", onPress: () => { setCommentEditingId(item.id); setCommentText(item.text); } },
-                        { text: "حذف", style: "destructive", onPress: async () => {
-                          if (!commentPost) return;
-                          try {
-                            await deleteProfilePostComment(commentPost.id, item.id);
-                            setComments((prev) => prev.filter((comment) => comment.id !== item.id));
-                            setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: Math.max(0, p.commentsCount - 1) } : p));
-                          } catch (e: any) {
-                            Alert.alert("تعذر حذف التعليق", e?.message || "حدث خطأ أثناء حذف التعليق.");
-                          }
-                        } },
-                        { text: "إلغاء", style: "cancel" },
-                      ]);
+                        setCommentActionsComment(item);
                     }}
                   >
                     <View style={styles.commentMetaRow}>
@@ -1938,50 +2010,132 @@ try {
                 <Text style={styles.commentEditCancelText}>إلغاء التعديل</Text>
               </Pressable>
             )}
-            <View style={styles.commentComposer}>
-              <TextInput
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder={commentEditingId ? "عدّل تعليقك..." : "اكتب تعليقاً..."}
-                placeholderTextColor={C.textMuted}
-                style={styles.commentComposerInput}
-                multiline
-                maxLength={500}
-                textAlign="right"
-                editable={!commentPosting}
-              />
-              <Pressable
-                style={[styles.commentSend, (!commentText.trim() || commentPosting) && styles.commentSendDisabled]}
-                disabled={!commentText.trim() || commentPosting}
-                onPress={async () => {
-                  if (!commentPost || !commentText.trim() || commentPosting) return;
-                  setCommentPosting(true);
-                  try {
-                    if (commentEditingId) {
-                      await updateProfilePostComment(commentPost.id, commentEditingId, commentText);
-                      setComments((prev) => prev.map((comment) => comment.id === commentEditingId ? { ...comment, text: commentText.trim() } : comment));
-                      setCommentEditingId(null);
-                      setCommentText("");
-                    } else {
-                      const added = await addProfilePostComment(commentPost.id, commentText);
-                      setComments((prev) => [added, ...prev]);
-                      setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
-                      setCommentText("");
-                    }
-                  } catch (e: any) {
-                    Alert.alert(commentEditingId ? "تعذر تعديل التعليق" : "تعذر التعليق", e?.message || "حدث خطأ أثناء حفظ التعليق.");
-                  } finally {
-                    setCommentPosting(false);
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="إرسال التعليق"
-              >
-                {commentPosting ? <ActivityIndicator size="small" color={C.primary} /> : <Feather name="send" size={17} color={C.primary} />}
-              </Pressable>
-            </View>
+            <Pressable
+              style={styles.commentComposer}
+              onPress={() => setCommentInputOpen(true)}
+              disabled={commentPosting}
+              accessibilityRole="button"
+              accessibilityLabel="إضافة تعليق"
+            >
+              <View style={styles.commentComposerFakeInput}>
+                <Text style={styles.commentComposerPlaceholder}>{commentEditingId ? "اضغط لتعديل تعليقك..." : "إضافة تعليق..."}</Text>
+                <Feather name="smile" size={18} color={C.textMuted} />
+              </View>
+              <View style={styles.commentComposerSend}>
+                <Feather name="send" size={17} color={C.primary} />
+              </View>
+            </Pressable>
           </View>
           </KeyboardAvoidingView>
+
+          {commentInputOpen && (
+            <View style={styles.commentInputOverlay}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={dismissCommentInput} />
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
+                style={styles.commentInputKeyboard}
+              >
+                <View style={styles.commentInputSheet}>
+                  <View style={styles.commentHandle} />
+                  <View style={styles.commentInputHeader}>
+                    <Text style={styles.commentInputTitle}>{commentEditingId ? "تعديل التعليق" : "إضافة تعليق"}</Text>
+                    <Pressable onPress={dismissCommentInput} style={styles.commentInputClose}>
+                      <Feather name="chevron-down" size={21} color={C.textSecondary} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.commentEmojiRow}>
+                    {["❤️", "😂", "😍", "🔥"].map((emoji) => (
+                      <Pressable
+                        key={emoji}
+                        style={styles.commentEmojiButton}
+                        onPress={() => setCommentText((current) => `${current}${emoji}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`إضافة ${emoji}`}
+                      >
+                        <Text style={styles.commentEmoji}>{emoji}</Text>
+                      </Pressable>
+                    ))}
+                    <Feather name="image" size={19} color={C.textMuted} />
+                    <Feather name="at-sign" size={19} color={C.textMuted} />
+                  </View>
+                  <View style={styles.commentInputRow}>
+                    <TextInput
+                      ref={commentInputRef}
+                      value={commentText}
+                      onChangeText={setCommentText}
+                      placeholder={commentEditingId ? "عدّل تعليقك..." : "اكتب تعليقك هنا..."}
+                      placeholderTextColor={C.textMuted}
+                      style={styles.commentLargeInput}
+                      multiline
+                      maxLength={500}
+                      textAlign="right"
+                      autoFocus
+                      editable={!commentPosting}
+                      returnKeyType="default"
+                    />
+                    <Pressable
+                      style={[styles.commentInputSend, (!commentText.trim() || commentPosting) && styles.commentSendDisabled]}
+                      disabled={!commentText.trim() || commentPosting}
+                      onPress={handleSubmitComment}
+                      accessibilityRole="button"
+                      accessibilityLabel="إرسال التعليق"
+                    >
+                      {commentPosting ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="send" size={18} color="#FFF" />}
+                    </Pressable>
+                  </View>
+                </View>
+              </KeyboardAvoidingView>
+            </View>
+          )}
+
+          {commentActionsComment && (
+            <View style={styles.commentOptionsOverlay}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentActionsComment(null)} />
+              <View style={styles.commentOptionsSheet}>
+                <View style={styles.commentHandle} />
+                <Text style={styles.commentOptionsTitle}>خيارات التعليق</Text>
+                <View style={styles.commentOptionsRow}>
+                  <Pressable
+                    style={styles.commentOption}
+                    onPress={() => {
+                      const selected = commentActionsComment;
+                      setCommentActionsComment(null);
+                      setCommentEditingId(selected.id);
+                      setCommentText(selected.text);
+                      setCommentInputOpen(true);
+                    }}
+                  >
+                    <View style={styles.commentOptionIcon}><Feather name="edit-3" size={19} color={C.accent} /></View>
+                    <Text style={styles.commentOptionText}>تعديل</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.commentOption}
+                    onPress={async () => {
+                      const selected = commentActionsComment;
+                      setCommentActionsComment(null);
+                      await Clipboard.setStringAsync(selected.text);
+                      showCommentToast("تم النسخ");
+                    }}
+                  >
+                    <View style={styles.commentOptionIcon}><Feather name="copy" size={19} color={C.accent} /></View>
+                    <Text style={styles.commentOptionText}>نسخ</Text>
+                  </Pressable>
+                  <Pressable style={styles.commentOption} onPress={() => handleDeleteComment(commentActionsComment)}>
+                    <View style={[styles.commentOptionIcon, styles.commentDeleteIcon]}><Feather name="trash-2" size={19} color="#EF4444" /></View>
+                    <Text style={[styles.commentOptionText, styles.commentDeleteText]}>حذف</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {commentToast && (
+            <View pointerEvents="none" style={[styles.commentToast, { bottom: Math.max(insets.bottom, 12) }]}>
+              <Feather name="check" size={15} color="#FFF" />
+              <Text style={styles.commentToastText}>{commentToast}</Text>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -2204,10 +2358,34 @@ const styles = StyleSheet.create({
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 12 },
-  commentComposerInput: { flex: 1, minHeight: 44, maxHeight: 90, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 9, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top" },
-  commentSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  commentComposer: { flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 12 },
+  commentComposerFakeInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  commentComposerSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
   commentSendDisabled: { opacity: 0.45 },
+  commentInputOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.42)", zIndex: 20 },
+  commentInputKeyboard: { flex: 1, justifyContent: "flex-end" },
+  commentInputSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 14, minHeight: 245 },
+  commentInputHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 3, paddingBottom: 8 },
+  commentInputTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentInputClose: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.background },
+  commentEmojiRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border },
+  commentEmojiButton: { width: 34, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: C.background },
+  commentEmoji: { fontSize: 18 },
+  commentInputRow: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, paddingTop: 11 },
+  commentLargeInput: { flex: 1, minHeight: 108, maxHeight: 190, borderWidth: 1, borderColor: C.accent, backgroundColor: C.background, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: "Cairo_400Regular", fontSize: 14, lineHeight: 23, textAlignVertical: "top" },
+  commentInputSend: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  commentOptionsOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.28)", justifyContent: "flex-end", zIndex: 30 },
+  commentOptionsSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 18, paddingBottom: 20 },
+  commentOptionsTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center", paddingVertical: 8 },
+  commentOptionsRow: { flexDirection: "row-reverse", justifyContent: "space-around", paddingTop: 8 },
+  commentOption: { alignItems: "center", gap: 6, minWidth: 78 },
+  commentOptionIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
+  commentDeleteIcon: { backgroundColor: "rgba(239,68,68,.1)" },
+  commentOptionText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  commentDeleteText: { color: "#EF4444" },
+  commentToast: { position: "absolute", alignSelf: "center", flexDirection: "row-reverse", alignItems: "center", gap: 6, paddingHorizontal: 15, paddingVertical: 9, borderRadius: 20, backgroundColor: "rgba(25,25,25,.94)", zIndex: 50 },
+  commentToastText: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
 
   headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
   headerIconLabel: {
