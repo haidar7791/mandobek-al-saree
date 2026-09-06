@@ -64,6 +64,7 @@ import {
   type HomeFeedComment,
   uploadProfilePostMedia,
   addProfilePost,
+  removeHomeFeedPost,
   toggleProfilePostLike,
   addProfilePostComment,
   updateProfilePostComment,
@@ -81,6 +82,9 @@ import {
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import ProfileAvatar from "@/components/ProfileAvatar";
+import ProfilePostComposerModal, {
+  type ProfilePostDraftMedia,
+} from "@/components/ProfilePostComposerModal";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReservationsScreen from "./reservations";
@@ -415,6 +419,9 @@ function HomeFeedCard({
   onComment,
   onShare,
   onOpenProfile,
+  isOwner,
+  onDelete,
+  deleteLoading,
 }: {
   post: HomeFeedPost;
   isActive: boolean;
@@ -431,6 +438,9 @@ function HomeFeedCard({
   onComment: () => void;
   onShare: () => void;
   onOpenProfile: () => void;
+  isOwner: boolean;
+  onDelete: () => void;
+  deleteLoading: boolean;
 }) {
   const lastTapRef = useRef(0);
   const handleMediaPress = () => {
@@ -470,6 +480,22 @@ function HomeFeedCard({
             <Text style={styles.homePostTime}>{post.createdAt ? new Date(post.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
           </View>
         </TouchableOpacity>
+        {isOwner && (
+          <Pressable
+            style={styles.homePostDelete}
+            onPress={onDelete}
+            disabled={deleteLoading}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="حذف المنشور"
+          >
+            {deleteLoading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Feather name="trash-2" size={16} color="#FFF" />
+            )}
+          </Pressable>
+        )}
       </View>
 
       <Pressable onPress={post.mediaType === "video" ? handleMediaPress : post.mediaType === "image" ? handleImagePress : undefined} style={styles.homeMediaPressable}>
@@ -747,8 +773,9 @@ const isFocused = useIsFocused();
   const commentInputRef = useRef<TextInput>(null);
   const commentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [posting, setPosting] = useState(false);
-  const [pendingPostMedia, setPendingPostMedia] = useState<{ uri: string; mediaType: "image" | "video"; mimeType?: string | null; fileName?: string | null } | null>(null);
+  const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
   const [postCaption, setPostCaption] = useState("");
+  const [deletingHomePostId, setDeletingHomePostId] = useState<string | null>(null);
 
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
@@ -823,6 +850,36 @@ const isFocused = useIsFocused();
       Alert.alert("تعذر النشر", e?.message || "حدث خطأ أثناء رفع المنشور.");
     } finally { setPosting(false); }
   }, [pendingPostMedia, postCaption, loadHomeFeed]);
+
+  const handleDeleteHomePost = useCallback((post: HomeFeedPost) => {
+    const viewer = auth.currentUser;
+    if (!viewer || viewer.uid !== post.userId) return;
+
+    Alert.alert("حذف المنشور", "هل تريد حذف هذا المنشور من الرئيسية؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          setDeletingHomePostId(post.id);
+          try {
+            await removeHomeFeedPost(post.id);
+            setHomeFeed((current) => current.filter((item) => item.id !== post.id));
+            setLikedPostIds((current) => {
+              const next = new Set(current);
+              next.delete(post.id);
+              return next;
+            });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (e: any) {
+            Alert.alert("تعذر حذف المنشور", e?.message || "حدث خطأ أثناء حذف المنشور.");
+          } finally {
+            setDeletingHomePostId(null);
+          }
+        },
+      },
+    ]);
+  }, []);
 
   useFocusEffect(useCallback(() => {
     loadHomeFeed();
@@ -1727,6 +1784,9 @@ try {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
                     }}
+                    isOwner={auth.currentUser?.uid === item.userId}
+                    onDelete={() => handleDeleteHomePost(item)}
+                    deleteLoading={deletingHomePostId === item.id}
                   />
                 )}
                 ListEmptyComponent={
@@ -1851,51 +1911,17 @@ try {
             )}
           </View>
 
-      <Modal
-        visible={!!pendingPostMedia}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => { if (!posting) { setPendingPostMedia(null); setPostCaption(""); } }}
-      >
-        <View style={styles.captionBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (!posting) { setPendingPostMedia(null); setPostCaption(""); } }} />
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.captionSheetKeyboard}>
-            <View style={styles.captionSheet}>
-              <View style={styles.commentHandle} />
-              <View style={styles.captionHeaderRow}>
-                <Text style={styles.captionTitle}>وصف المنشور</Text>
-                <Pressable disabled={posting} onPress={() => { setPendingPostMedia(null); setPostCaption(""); }} style={styles.commentCloseBtn}>
-                  <Feather name="x" size={19} color={C.textSecondary} />
-                </Pressable>
-              </View>
-              {pendingPostMedia && (
-                pendingPostMedia.mediaType === "video" ? (
-                  <View style={styles.captionPreviewVideo}><Video source={{ uri: pendingPostMedia.uri }} style={StyleSheet.absoluteFill} resizeMode={ResizeMode.COVER} shouldPlay={false} isMuted /></View>
-                ) : (
-                  <Image source={{ uri: pendingPostMedia.uri }} style={styles.captionPreviewImage} resizeMode="cover" />
-                )
-              )}
-              <TextInput
-                value={postCaption}
-                onChangeText={setPostCaption}
-                placeholder="اكتب وصفاً أو تفاصيل عن المنشور..."
-                placeholderTextColor={C.textMuted}
-                style={styles.captionInput}
-                multiline
-                maxLength={1000}
-                textAlign="right"
-                editable={!posting}
-                autoFocus
-              />
-              <Pressable style={styles.captionPublishBtn} onPress={publishPendingPost} disabled={posting}>
-                {posting ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="send" size={17} color="#FFF" />}
-                <Text style={styles.captionPublishText}>{posting ? "جارٍ النشر..." : "نشر"}</Text>
-              </Pressable>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+      <ProfilePostComposerModal
+        media={pendingPostMedia}
+        caption={postCaption}
+        posting={posting}
+        onCaptionChange={setPostCaption}
+        onClose={() => {
+          setPendingPostMedia(null);
+          setPostCaption("");
+        }}
+        onPublish={publishPendingPost}
+      />
 
       <HomeVideoViewer
         posts={homeFeed}
@@ -2292,11 +2318,12 @@ const styles = StyleSheet.create({
   },
   homePostHeader: { flexDirection: "row-reverse", alignItems: "center", padding: 12, gap: 9 },
   homePostProfileTouchable: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  homePostDelete: { width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(0,0,0,.68)", alignItems: "center", justifyContent: "center" },
   homeMediaPressable: { width: "100%" },
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
   homePostUser: { flex: 1, alignItems: "flex-end" },
   homePostName: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  homePostDescriptionHeader: { fontSize: 11, lineHeight: 17, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
+  homePostDescriptionHeader: { fontSize: 12, lineHeight: 18, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
   homePostTime: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, marginTop: 1 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
@@ -2322,16 +2349,6 @@ const styles = StyleSheet.create({
   reelDescriptionBottom: { color: "#FFF", fontSize: 12, lineHeight: 19, fontFamily: "Cairo_400Regular", textAlign: "right", marginRight: 82, marginLeft: 8, marginBottom: 78 },
   reelAction: { alignItems: "center", gap: 2 },
   reelCount: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
-  captionBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
-  captionSheetKeyboard: { width: "100%" },
-  captionSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 20, maxHeight: "88%" },
-  captionHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 10 },
-  captionTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  captionPreviewImage: { width: "100%", height: 190, borderRadius: 16, backgroundColor: "#000", marginBottom: 10 },
-  captionPreviewVideo: { width: "100%", height: 190, borderRadius: 16, overflow: "hidden", backgroundColor: "#000", marginBottom: 10 },
-  captionInput: { minHeight: 100, maxHeight: 180, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top", marginBottom: 10 },
-  captionPublishBtn: { minHeight: 46, borderRadius: 14, backgroundColor: C.accent, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
-  captionPublishText: { color: "#FFF", fontSize: 13, fontFamily: "Cairo_700Bold" },
   commentBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end", paddingBottom: 0, marginBottom: 0 },
   commentSheetKeyboard: { width: "100%", paddingBottom: 0, marginBottom: 0 },
   commentSheet: { position: "relative", backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 0, marginBottom: 0, bottom: 0, height: "80%", overflow: "hidden" },

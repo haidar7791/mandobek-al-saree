@@ -46,6 +46,9 @@ import {
 } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProfilePostFeed from "@/components/ProfilePostFeed";
+import ProfilePostComposerModal, {
+  type ProfilePostDraftMedia,
+} from "@/components/ProfilePostComposerModal";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -70,6 +73,8 @@ export default function ProfileScreen() {
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [uploadingPost, setUploadingPost] = useState(false);
+  const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
+  const [postCaption, setPostCaption] = useState("");
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -230,22 +235,40 @@ export default function ProfileScreen() {
       return;
     }
 
+    setPostCaption("");
+    setPendingPostMedia({
+      uri: asset.uri,
+      mediaType,
+      mimeType: asset.mimeType,
+      fileName: asset.fileName,
+    });
+  };
+
+  const publishPendingProfilePost = async () => {
+    const userId = auth.currentUser?.uid || uid;
+    if (!userId || !pendingPostMedia) return;
+
     setUploadingPost(true);
     try {
-      const uploaded = await uploadProfilePostMedia(uid, asset.uri, mediaType, {
-        mimeType: asset.mimeType,
-        fileName: asset.fileName,
+      const uploaded = await uploadProfilePostMedia(userId, pendingPostMedia.uri, pendingPostMedia.mediaType, {
+        mimeType: pendingPostMedia.mimeType,
+        fileName: pendingPostMedia.fileName,
       });
       const post: ProfilePost = {
-        id: `${Date.now()}-${uid}`,
+        id: `${Date.now()}-${userId}`,
         url: uploaded.url,
-        mediaType,
+        mediaType: pendingPostMedia.mediaType,
         createdAt: new Date().toISOString(),
+        description: postCaption.trim(),
+        likesCount: 0,
+        commentsCount: 0,
         storagePath: uploaded.storagePath,
         mimeType: uploaded.mimeType,
       };
-      await addProfilePost(uid, post);
+      await addProfilePost(userId, post);
       setProfilePosts((prev) => [post, ...prev]);
+      setPendingPostMedia(null);
+      setPostCaption("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       const code = err?.code || "";
@@ -666,6 +689,17 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      <ProfilePostComposerModal
+        media={pendingPostMedia}
+        caption={postCaption}
+        posting={uploadingPost}
+        onCaptionChange={setPostCaption}
+        onClose={() => {
+          setPendingPostMedia(null);
+          setPostCaption("");
+        }}
+        onPublish={publishPendingProfilePost}
+      />
 
       {/* ══════════════════════════════════════════
           EDIT PROFILE MODAL

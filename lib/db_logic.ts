@@ -2162,6 +2162,45 @@ export const removeProfilePost = async (
   }
 };
 
+export const removeHomeFeedPost = async (postId: string): Promise<void> => {
+  const viewer = auth.currentUser;
+  if (!viewer) throw new Error("يجب تسجيل الدخول لحذف المنشور");
+
+  const postRef = doc(db, "posts", postId);
+  const postSnap = await getDoc(postRef);
+  if (!postSnap.exists()) throw new Error("المنشور غير موجود");
+
+  const data = postSnap.data() as any;
+  const ownerId = String(data.userId || data.ownerId || "");
+  if (!ownerId || ownerId !== viewer.uid) {
+    throw new Error("لا تملك صلاحية حذف هذا المنشور");
+  }
+
+  const mediaUrl = String(data.url || data.mediaUrl || "");
+  if (data.sourceType === "portfolio" && mediaUrl) {
+    await removePortfolioImage(ownerId, mediaUrl);
+    return;
+  }
+
+  const profile = await getUserProfile(ownerId);
+  const profilePostId = String(data.postId || data.id || "");
+  const matchingProfilePost = profile?.profilePosts?.find(
+    (post) => post.id === profilePostId || post.url === mediaUrl
+  );
+
+  if (matchingProfilePost) {
+    await removeProfilePost(ownerId, matchingProfilePost);
+    return;
+  }
+
+  await deleteDoc(postRef);
+  try {
+    await deleteObject(ref(storage, data.storagePath || mediaUrl));
+  } catch {
+    // The feed document is already removed; a missing Storage object is harmless.
+  }
+};
+
 
 
 export interface HomeFeedPost {
