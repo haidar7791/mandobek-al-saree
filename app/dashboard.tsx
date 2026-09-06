@@ -1952,7 +1952,7 @@ try {
             keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom + 8 : 0}
             style={styles.commentSheetKeyboard}
           >
-          <View style={styles.commentSheet}>
+          <View style={[styles.commentSheet, { paddingBottom: Math.min(Math.max(insets.bottom, 0), 8) }]}>
             <View style={styles.commentHandle} />
             <View style={styles.commentHeaderRow}>
               <Text style={styles.commentTitle}>التعليقات {commentPost ? `(${commentPost.commentsCount})` : ""}</Text>
@@ -2036,7 +2036,7 @@ try {
                 keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
                 style={styles.commentInputKeyboard}
               >
-                <View style={styles.commentInputSheet}>
+                <View style={[styles.commentInputSheet, { paddingBottom: Math.min(Math.max(insets.bottom, 0), 8) }]}>
                   <View style={styles.commentHandle} />
                   <View style={styles.commentInputHeader}>
                     <Text style={styles.commentInputTitle}>{commentEditingId ? "تعديل التعليق" : "إضافة تعليق"}</Text>
@@ -2092,7 +2092,7 @@ try {
           {commentActionsComment && (
             <View style={styles.commentOptionsOverlay}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentActionsComment(null)} />
-              <View style={styles.commentOptionsSheet}>
+              <View style={[styles.commentOptionsSheet, { paddingBottom: Math.min(Math.max(insets.bottom, 0), 8) }]}>
                 <View style={styles.commentHandle} />
                 <Text style={styles.commentOptionsTitle}>خيارات التعليق</Text>
                 <View style={styles.commentOptionsRow}>
@@ -2340,13 +2340,13 @@ const styles = StyleSheet.create({
   captionPublishText: { color: "#FFF", fontSize: 13, fontFamily: "Cairo_700Bold" },
   commentBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
   commentSheetKeyboard: { width: "100%" },
-  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 12, height: "78%" },
+  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 0, height: "70%", overflow: "hidden" },
   commentHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginBottom: 9 },
   commentHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 8 },
   commentTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   commentCloseBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
-  commentsList: { flex: 1 },
-  commentsListContent: { paddingVertical: 4, gap: 2 },
+  commentsList: { flex: 1, minHeight: 0 },
+  commentsListContent: { paddingTop: 4, paddingBottom: 8, gap: 2 },
   commentsEmptyContent: { flexGrow: 1, justifyContent: "center" },
   commentsState: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 30 },
   commentsStateText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
@@ -2358,14 +2358,14 @@ const styles = StyleSheet.create({
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  commentComposer: { flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 12 },
+  commentComposer: { flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 0 },
   commentComposerFakeInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
   commentComposerSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
   commentSendDisabled: { opacity: 0.45 },
   commentInputOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.42)", zIndex: 20 },
   commentInputKeyboard: { flex: 1, justifyContent: "flex-end" },
-  commentInputSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 14, minHeight: 245 },
+  commentInputSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 0, minHeight: 245 },
   commentInputHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 3, paddingBottom: 8 },
   commentInputTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   commentInputClose: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.background },
@@ -2376,7 +2376,7 @@ const styles = StyleSheet.create({
   commentLargeInput: { flex: 1, minHeight: 108, maxHeight: 190, borderWidth: 1, borderColor: C.accent, backgroundColor: C.background, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: "Cairo_400Regular", fontSize: 14, lineHeight: 23, textAlignVertical: "top" },
   commentInputSend: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   commentOptionsOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.28)", justifyContent: "flex-end", zIndex: 30 },
-  commentOptionsSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 18, paddingBottom: 20 },
+  commentOptionsSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 18, paddingBottom: 0 },
   commentOptionsTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center", paddingVertical: 8 },
   commentOptionsRow: { flexDirection: "row-reverse", justifyContent: "space-around", paddingTop: 8 },
   commentOption: { alignItems: "center", gap: 6, minWidth: 78 },
