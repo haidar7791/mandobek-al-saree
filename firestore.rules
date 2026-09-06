@@ -16,14 +16,37 @@ service cloud.firestore {
         && request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2";
     }
 
+    // ── المنشورات الرئيسية والمعرض (Posts / Reels Feed) ──────────────────────────
+    // دعم جلب وإنشاء منشورات الرئيسية مع الإعجابات والتعليقات
+    match /posts/{postId} {
+      allow read, write: if isSignedIn();
+
+      match /likes/{likerId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // ── منشورات الملف الشخصي ومعرض الأعمال (Profile Posts) ──────────────────────
+    match /profilePosts/{postId} {
+      allow read, write: if isSignedIn();
+
+      match /likes/{likerId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
     // ── المستخدمون والملف الشخصي ─────────────────────────────────────────────
-    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب للترويج وتحديث البيانات الشخصية)
     match /users/{userId} {
       allow read, write: if isSignedIn();
 
-      // Reaction documents are the source of truth for the visible counts.
-      // Each user may create or remove only their own reaction; clients cannot
-      // alter another user's membership or overwrite an existing reaction.
       match /followers/{followerId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
@@ -44,7 +67,6 @@ service cloud.firestore {
         allow update: if false;
       }
 
-      // Kept for the existing review flow.
       match /reviews/{reviewId} {
         allow read, write: if isSignedIn();
       }
@@ -59,8 +81,7 @@ service cloud.firestore {
       }
     }
 
-    // Public phone-existence check only. The actual user document is never
-    // readable before authentication; list queries are explicitly blocked.
+    // فحص وجود الهاتف
     match /phoneIndex/{phone} {
       allow get: if true;
       allow list: if false;
@@ -71,7 +92,6 @@ service cloud.firestore {
     }
 
     // ── الحرفيون والبائعون ───────────────────────────────────────────────────
-    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث isPromoted وpriorityScore)
     match /artisans/{artisanId} {
       allow read, write: if isSignedIn();
 
@@ -81,7 +101,6 @@ service cloud.firestore {
     }
 
     // ── المحفظة ──────────────────────────────────────────────────────────────
-    // مطلوب: المستخدم يخصم من رصيده أثناء الترويج
     match /wallets/{userId} {
       allow read, write: if isSignedIn();
     }
@@ -97,17 +116,15 @@ service cloud.firestore {
     }
 
     // ── المنتجات ─────────────────────────────────────────────────────────────
-    // أي مستخدم مسجّل يقرأ ويكتب (مطلوب لتحديث priorityScore بالجملة)
     match /products/{productId} {
       allow read, write: if isSignedIn();
 
       match /likes/{likerId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn()
-          && request.auth.uid == likerId
-          && request.resource.data.keys().hasOnly(["likedAt", "likerId"]);
-        allow delete: if isSignedIn() && request.auth.uid == likerId;
-        allow update: if false;
+        allow read, write: if isSignedIn();
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
       }
     }
 
@@ -150,3 +167,4 @@ service cloud.firestore {
 
   }
 }
+

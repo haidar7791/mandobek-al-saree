@@ -1,4 +1,4 @@
-import { db, storage } from "./firebase";
+import { db, storage, auth } from "./firebase";
 import {
   collection,
   addDoc,
@@ -1751,7 +1751,9 @@ export interface ProfilePost {
   url: string;
   mediaType: "image" | "video";
   createdAt: string;
+  description?: string;
   likesCount?: number;
+  commentsCount?: number;
   storagePath?: string;
   mimeType?: string | null;
   /** Added only while normalizing old portfolio URLs; never persisted. */
@@ -1886,6 +1888,24 @@ export const addPortfolioImage = async (
       throw err;
     }
   }
+
+  // Portfolio media is also content in the Home feed. Use a stable id based
+  // on the URL so repeated profile saves do not create duplicate posts.
+  const profile = await getUserProfile(userId);
+  const safeId = encodeURIComponent(imageUrl).replace(/%/g, "_").slice(0, 180);
+  await setDoc(doc(db, "posts", `${userId}_portfolio_${safeId}`), {
+    postId: `portfolio-${safeId}`,
+    userId,
+    userName: profile?.name || "مستخدم",
+    userPhotoUri: profile?.photoUri || null,
+    url: imageUrl,
+    mediaType: "image",
+    description: profile?.bio || "",
+    likesCount: 0,
+    commentsCount: 0,
+    createdAt: new Date().toISOString(),
+    sourceType: "portfolio",
+  }, { merge: true });
 };
 
 export const removePortfolioImage = async (
@@ -1895,6 +1915,18 @@ export const removePortfolioImage = async (
   await updateDoc(doc(db, "users", userId), {
     portfolio: arrayRemove(imageUrl),
   });
+  try {
+    const postsSnap = await getDocs(query(
+      collection(db, "posts"),
+      where("userId", "==", userId),
+      where("url", "==", imageUrl),
+    ));
+    await Promise.all(postsSnap.docs
+      .filter((postDoc) => postDoc.data()?.sourceType === "portfolio")
+      .map((postDoc) => deleteDoc(postDoc.ref)));
+  } catch {
+    // Feed cleanup is best-effort; profile data remains authoritative.
+  }
   try {
     const storageRef = ref(storage, imageUrl);
     await deleteObject(storageRef);
@@ -1996,13 +2028,40 @@ export const addProfilePost = async (
     url: post.url,
     mediaType: post.mediaType,
     createdAt: post.createdAt,
+    description: post.description ?? "",
     likesCount: post.likesCount ?? 0,
+    commentsCount: post.commentsCount ?? 0,
     storagePath: post.storagePath ?? null,
     mimeType: post.mimeType ?? null,
   };
+
+  // Keep the existing profile storage intact for profile screens, while also
+  // maintaining a dedicated top-level feed document. Home must query posts,
+  // not download the users collection just to reconstruct a feed.
   await setDoc(
     doc(db, "users", userId),
     { profilePosts: arrayUnion(persistedPost) },
+    { merge: true }
+  );
+
+  const profile = await getUserProfile(userId);
+  await setDoc(
+    doc(db, "posts", `${userId}_${post.id}`),
+    {
+      postId: post.id,
+      userId,
+      userName: profile?.name || "مستخدم",
+      userPhotoUri: profile?.photoUri || null,
+      url: post.url,
+      mediaType: post.mediaType,
+      description: post.description ?? "",
+      likesCount: post.likesCount ?? 0,
+      commentsCount: post.commentsCount ?? 0,
+      createdAt: post.createdAt || new Date().toISOString(),
+      sourceType: "profilePost",
+      storagePath: post.storagePath ?? null,
+      mimeType: post.mimeType ?? null,
+    },
     { merge: true }
   );
 };
@@ -2021,19 +2080,162 @@ export const removeProfilePost = async (
     url: post.url,
     mediaType: post.mediaType,
     createdAt: post.createdAt,
+    description: post.description ?? "",
     likesCount: post.likesCount ?? 0,
+    commentsCount: post.commentsCount ?? 0,
     storagePath: post.storagePath ?? null,
     mimeType: post.mimeType ?? null,
   };
   await updateDoc(doc(db, "users", userId), {
     profilePosts: arrayRemove(persistedPost),
   });
+  await deleteDoc(doc(db, "posts", `${userId}_${post.id}`)).catch(() => undefined);
 
   try {
     await deleteObject(ref(storage, post.storagePath || post.url));
   } catch {
     // The database entry is already removed; a missing Storage object is harmless.
   }
+};
+
+
+
+export interface HomeFeedPost {
+  /** Top-level /posts document id. Subcollections live at /posts/{id}/likes|comments. */
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUri: string | null;
+  createdAt: string;
+  url: string;
+  mediaType: "image" | "video";
+  description?: string;
+  likesCount: number;
+  commentsCount: number;
+}
+
+export interface HomeFeedComment {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhotoUri: string | null;
+  text: string;
+  createdAt: string;
+}
+
+function toIsoString(value: any): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value?.toDate) {
+    try { return value.toDate().toISOString(); } catch { return ""; }
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value?.seconds === "number") return new Date(value.seconds * 1000).toISOString();
+  return "";
+}
+
+export const getHomeFeedPosts = async (): Promise<HomeFeedPost[]> => {
+  // Dedicated feed source: do not read the users collection here.
+  // New profile posts and portfolio items are mirrored into /posts so the
+  // Home tab can load only content documents.
+  const snap = await getDocs(collection(db, "posts"));
+  const posts: HomeFeedPost[] = [];
+
+  snap.forEach((postDoc) => {
+    const data = postDoc.data() as any;
+    const userId = String(data.userId || data.ownerId || "");
+    const postId = String(data.postId || data.id || postDoc.id);
+    const url = String(data.url || data.mediaUrl || data.media?.url || "");
+    const rawType = data.mediaType || data.type || data.media?.type;
+    const mediaType: "image" | "video" = rawType === "video" ? "video" : "image";
+    if (!userId || !url) return;
+
+    posts.push({
+      // Use the actual /posts document id so likes/comments resolve to
+      // /posts/{postId}/likes and /posts/{postId}/comments exactly.
+      id: postDoc.id,
+      userId,
+      userName: String(data.userName || data.ownerName || data.authorName || "مستخدم"),
+      userPhotoUri: data.userPhotoUri || data.ownerPhotoUri || data.authorPhotoUri || data.photoUri || null,
+      createdAt: toIsoString(data.createdAt),
+      url,
+      mediaType,
+      description: String(data.description || data.caption || data.text || ""),
+      likesCount: Number(data.likesCount ?? data.likes ?? 0),
+      commentsCount: Number(data.commentsCount ?? data.comments ?? 0),
+    });
+  });
+
+  return posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+};
+
+export const toggleProfilePostLike = async (postId: string): Promise<boolean> => {
+  const viewer = auth.currentUser?.uid;
+  if (!viewer) throw new Error("يجب تسجيل الدخول");
+
+  // Correct social graph path: /posts/{postId}/likes/{viewerId}.
+  // Do not write through users/{userId}/profilePosts anymore.
+  const likeRef = doc(db, "posts", postId, "likes", viewer);
+  const snap = await getDoc(likeRef);
+  if (snap.exists()) {
+    await deleteDoc(likeRef);
+    // Aggregate counters are best-effort so a restrictive parent-document rule
+    // can never turn a successful like into a visible permission error.
+    await updateDoc(doc(db, "posts", postId), { likesCount: increment(-1) }).catch(() => undefined);
+    return false;
+  }
+
+  await setDoc(likeRef, {
+    userId: viewer,
+    createdAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, "posts", postId), { likesCount: increment(1) }).catch(() => undefined);
+  return true;
+};
+
+export const getPostComments = async (postId: string): Promise<HomeFeedComment[]> => {
+  const snap = await getDocs(collection(db, "posts", postId, "comments"));
+  const comments = snap.docs.map((commentDoc) => {
+    const data = commentDoc.data() as any;
+    return {
+      id: commentDoc.id,
+      userId: String(data.userId || ""),
+      userName: String(data.userName || "مستخدم"),
+      userPhotoUri: data.userPhotoUri || null,
+      text: String(data.text || ""),
+      createdAt: toIsoString(data.createdAt),
+    };
+  });
+  return comments.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+};
+
+export const addProfilePostComment = async (postId: string, text: string): Promise<HomeFeedComment> => {
+  const viewer = auth.currentUser;
+  const cleanText = text.trim();
+  if (!viewer || !cleanText) throw new Error("بيانات التعليق غير مكتملة");
+
+  const profile = await getUserProfile(viewer.uid);
+  const comment = {
+    userId: viewer.uid,
+    userName: profile?.name || viewer.displayName || "مستخدم",
+    userPhotoUri: profile?.photoUri || null,
+    text: cleanText,
+    createdAt: serverTimestamp(),
+  };
+  const commentRef = await addDoc(collection(db, "posts", postId, "comments"), comment);
+
+  // Best-effort aggregate update; the actual comment write above is the source
+  // of truth and must not be rolled back by parent permission rules.
+  await updateDoc(doc(db, "posts", postId), { commentsCount: increment(1) }).catch(() => undefined);
+
+  return {
+    id: commentRef.id,
+    userId: comment.userId,
+    userName: comment.userName,
+    userPhotoUri: comment.userPhotoUri,
+    text: comment.text,
+    createdAt: new Date().toISOString(),
+  };
 };
 
 // ─── Products / Marketplace ───────────────────────────────────────────────────

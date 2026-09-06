@@ -15,6 +15,8 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
+  Dimensions,
+  Share,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -25,6 +27,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Circle, Rect } from "react-native-svg";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { auth } from "../lib/firebase";
 import { Video, ResizeMode } from "expo-av";
 import { ShareModal } from "@/components/ShareModal";
@@ -53,6 +56,16 @@ import {
   rankProductsForFeed,
   subscribeToBuyerProductOrders,
   type ProductOrder,
+  type HomeFeedPost,
+  getHomeFeedPosts,
+  getPostComments,
+  type HomeFeedComment,
+  uploadProfilePostMedia,
+  addProfilePost,
+  toggleProfilePostLike,
+  addProfilePostComment,
+  followArtisan,
+  unfollowArtisan,
 } from "../lib/db_logic";
 // Note: getPromotedArtisans removed — promoted artisans now bubble to top of main list
 import Colors from "@/constants/colors";
@@ -72,12 +85,13 @@ const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgr
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
 
-type CategoryTab = "all" | "services" | "orders";
+type CategoryTab = "home" | "products" | "services" | "orders";
 
-const CATEGORY_TABS: { key: CategoryTab; label: string; icon: string }[] = [
-  { key: "all", label: "الرئيسية", icon: "home" },
-  { key: "services", label: "الخدمات", icon: "grid" },
-  { key: "orders", label: "الطلبات", icon: "inbox" },
+const CATEGORY_TABS: { key: CategoryTab; label: string }[] = [
+  { key: "home", label: "الرئيسية" },
+  { key: "products", label: "المنتجات" },
+  { key: "services", label: "الخدمات" },
+  { key: "orders", label: "الطلبات" },
 ];
 
 const SERVICE_CATEGORY_TABS: {
@@ -379,6 +393,202 @@ function ProductCard({
   );
 }
 
+
+function HomeFeedCard({
+  post,
+  isActive,
+  isScreenFocused,
+  isMuted,
+  onToggleMute,
+  onOpenVideo,
+  onLike,
+  onComment,
+  onShare,
+  onOpenProfile,
+}: {
+  post: HomeFeedPost;
+  isActive: boolean;
+  isScreenFocused: boolean;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onOpenVideo: () => void;
+  onLike: () => void;
+  onComment: () => void;
+  onShare: () => void;
+  onOpenProfile: () => void;
+}) {
+  return (
+    <View style={styles.homePostCard}>
+      <View style={styles.homePostHeader}>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={onOpenProfile}
+          style={styles.homePostProfileTouchable}
+          accessibilityRole="button"
+          accessibilityLabel={`فتح ملف ${post.userName}`}
+        >
+          <ProfileAvatar photoUri={post.userPhotoUri} name={post.userName} size={42} disableNavigation />
+          <View style={styles.homePostUser}>
+            <Text style={styles.homePostName} numberOfLines={1}>{post.userName}</Text>
+            <Text style={styles.homePostTime}>{post.createdAt ? new Date(post.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <Pressable onPress={post.mediaType === "video" ? onOpenVideo : undefined} style={styles.homeMediaPressable}>
+        {post.mediaType === "video" ? (
+          <View style={styles.homeMedia}>
+            <Video
+              source={{ uri: post.url }}
+              style={StyleSheet.absoluteFill}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={isScreenFocused && isActive}
+              isMuted={isMuted}
+              isLooping
+              useNativeControls={false}
+            />
+            <Pressable
+              style={styles.homeMuteBtn}
+              onPress={(event) => {
+                event.stopPropagation();
+                onToggleMute();
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={isMuted ? "تشغيل الصوت" : "كتم الصوت"}
+            >
+              <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={18} color="#FFF" />
+            </Pressable>
+            {!isActive && <View style={styles.homePlay}><Feather name="play" size={28} color="#FFF" /></View>}
+          </View>
+        ) : (
+          <Image source={{ uri: post.url }} style={styles.homeMedia} resizeMode="cover" />
+        )}
+      </Pressable>
+
+      {!!post.description && <Text style={styles.homePostDescription}>{post.description}</Text>}
+      <View style={styles.homeActions}>
+        <Pressable onPress={onLike} style={styles.homeAction}><Ionicons name="heart-outline" size={22} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.likesCount}</Text></Pressable>
+        <Pressable onPress={onComment} style={styles.homeAction}><Ionicons name="chatbubble-outline" size={21} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.commentsCount}</Text></Pressable>
+        <Pressable onPress={onShare} style={styles.homeAction}><Feather name="share-2" size={20} color={C.textSecondary} /></Pressable>
+      </View>
+    </View>
+  );
+}
+
+function HomeVideoViewer({
+  posts,
+  index,
+  visible,
+  screenFocused,
+  onClose,
+  onLike,
+  onComment,
+  onShare,
+  onOpenProfile,
+}: {
+  posts: HomeFeedPost[];
+  index: number;
+  visible: boolean;
+  screenFocused: boolean;
+  onClose: () => void;
+  onLike: (post: HomeFeedPost) => void;
+  onComment: (post: HomeFeedPost) => void;
+  onShare: (post: HomeFeedPost) => void;
+  onOpenProfile: (post: HomeFeedPost) => void;
+}) {
+  const videos = posts.filter((p) => p.mediaType === "video");
+  const [activeIndex, setActiveIndex] = useState(index);
+  const [muted, setMuted] = useState(true);
+  const reelViewabilityConfig = useRef({ itemVisiblePercentThreshold: 70 }).current;
+  const reelViewabilityHandler = useRef(
+    ({ viewableItems }: { viewableItems: Array<any> }) => {
+      const first = viewableItems?.find((entry) => entry?.isViewable && entry?.index != null);
+      if (first?.index != null) setActiveIndex(first.index);
+    }
+  ).current;
+
+  useEffect(() => {
+    if (visible) {
+      setActiveIndex(Math.min(Math.max(0, index), Math.max(0, videos.length - 1)));
+      setMuted(true);
+    }
+  }, [visible, index, videos.length]);
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.reelsRoot}>
+        <FlatList
+          data={videos}
+          initialScrollIndex={Math.min(Math.max(0, index), Math.max(0, videos.length - 1))}
+          keyExtractor={(item) => item.id}
+          pagingEnabled
+          showsVerticalScrollIndicator={false}
+          viewabilityConfig={reelViewabilityConfig}
+          onViewableItemsChanged={reelViewabilityHandler}
+          getItemLayout={(_, i) => ({ length: Dimensions.get("window").height, offset: Dimensions.get("window").height * i, index: i })}
+          renderItem={({ item, index: itemIndex }) => (
+            <View style={styles.reelPage}>
+              <Video
+                source={{ uri: item.url }}
+                style={StyleSheet.absoluteFill}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay={visible && screenFocused && itemIndex === activeIndex}
+                isMuted={muted}
+                isLooping
+                useNativeControls={false}
+              />
+              <View style={styles.reelOverlay}>
+                <View style={styles.reelTopRow}>
+                  <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
+                  <Pressable
+                    onPress={() => setMuted((value) => !value)}
+                    style={styles.reelMuteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={muted ? "تشغيل صوت الريلز" : "كتم صوت الريلز"}
+                  >
+                    <Ionicons name={muted ? "volume-mute" : "volume-high"} size={21} color="#FFF" />
+                  </Pressable>
+                </View>
+
+                <View style={styles.reelBottomArea}>
+                  <View style={styles.reelUser}>
+                    <TouchableOpacity activeOpacity={0.75} onPress={() => onOpenProfile(item)} style={styles.reelProfileTouchable}>
+                      <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={44} disableNavigation />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.reelName}>{item.userName}</Text>
+                        {!!item.description && <Text style={styles.reelDescription} numberOfLines={2}>{item.description}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                    <Pressable
+                      style={styles.followBtn}
+                      onPress={async () => {
+                        const viewer = auth.currentUser;
+                        if (!viewer || viewer.uid === item.userId) return;
+                        try { await followArtisan(viewer.uid, item.userId); }
+                        catch (e) { console.warn("follow failed", e); }
+                      }}
+                    >
+                      <Text style={styles.followText}>متابعة</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.reelActions}>
+                    <Pressable style={styles.reelAction} onPress={() => onLike(item)}><Ionicons name="heart-outline" size={31} color="#FFF" /><Text style={styles.reelCount}>{item.likesCount}</Text></Pressable>
+                    <Pressable style={styles.reelAction} onPress={() => onComment(item)}><Ionicons name="chatbubble-outline" size={29} color="#FFF" /><Text style={styles.reelCount}>{item.commentsCount}</Text></Pressable>
+                    <Pressable style={styles.reelAction} onPress={() => onShare(item)}><Feather name="share-2" size={28} color="#FFF" /></Pressable>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+
 export default function DashboardScreen() {
   const { productId: sharedProductId } = useLocalSearchParams<{ productId?: string }>();
   // Screen-level focus — drives video start/stop & viewability guard
@@ -386,7 +596,7 @@ const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CategoryTab>("all");
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>("home");
   const [activeServiceCategory, setActiveServiceCategory] =
     useState<ServiceCategory>("home");
   const [refreshing, setRefreshing] = useState(false);
@@ -405,6 +615,20 @@ const isFocused = useIsFocused();
   const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
+  const [homeFeed, setHomeFeed] = useState<HomeFeedPost[]>([]);
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [activeHomePostId, setActiveHomePostId] = useState<string | null>(null);
+  const [homeVideoMuted, setHomeVideoMuted] = useState(true);
+  const [reelIndex, setReelIndex] = useState(0);
+  const [showReels, setShowReels] = useState(false);
+  const [commentPost, setCommentPost] = useState<HomeFeedPost | null>(null);
+  const [comments, setComments] = useState<HomeFeedComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [commentPosting, setCommentPosting] = useState(false);
+  const [posting, setPosting] = useState(false);
+
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
   const [myPendingOrders, setMyPendingOrders] = useState<Map<string, string>>(new Map());
@@ -417,6 +641,61 @@ const isFocused = useIsFocused();
   // Mirror isFocused into a ref so the handler below stays reference-stable
   // (FlatList compares props by reference; recreating the callback breaks tracking)
   const isFocusedRef = useRef(false);
+
+  // Home feed video focus: exactly one visible post may play at a time.
+  const homeViewabilityConfig = useRef({ itemVisiblePercentThreshold: 65 }).current;
+  const homeViewabilityHandler = useRef(
+    ({ viewableItems }: { viewableItems: Array<any> }) => {
+      if (!isFocusedRef.current) return;
+      const first = viewableItems?.find((entry) => entry?.isViewable && entry?.item?.id);
+      if (first?.item?.id) setActiveHomePostId(first.item.id);
+    }
+  ).current;
+
+  const loadHomeFeed = useCallback(async (refresh = false) => {
+    if (refresh) setHomeRefreshing(true); else setHomeLoading(true);
+    try { setHomeFeed(await getHomeFeedPosts()); }
+    catch (e) { console.error("Home feed error", e); }
+    finally { setHomeLoading(false); setHomeRefreshing(false); }
+  }, []);
+
+  const handleAddPost = useCallback(async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return Alert.alert("تنبيه", "سجّل الدخول أولاً.");
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      allowsMultipleSelection: false,
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const mediaType = asset.type === "video" ? "video" : "image";
+    setPosting(true);
+    try {
+      const uploaded = await uploadProfilePostMedia(uid, asset.uri, mediaType, {
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
+      });
+      await addProfilePost(uid, {
+        id: `${uid}-${Date.now()}`,
+        url: uploaded.url,
+        mediaType,
+        createdAt: new Date().toISOString(),
+        likesCount: 0,
+        storagePath: uploaded.storagePath,
+        mimeType: uploaded.mimeType,
+      });
+      await loadHomeFeed(true);
+      Alert.alert("تم النشر", "تمت إضافة المنشور بنجاح.");
+    } catch (e: any) {
+      Alert.alert("تعذر النشر", e?.message || "حدث خطأ أثناء رفع المنشور.");
+    } finally { setPosting(false); }
+  }, [loadHomeFeed]);
+
+  useFocusEffect(useCallback(() => {
+    loadHomeFeed();
+  }, [loadHomeFeed]));
+
   useEffect(() => {
     isFocusedRef.current = isFocused;
     if (!isFocused) setFocusedProductId(null); // switched to another app screen
@@ -424,8 +703,35 @@ const isFocused = useIsFocused();
 
   // Clear focused video when user switches to any non-Home tab
   useEffect(() => {
-    if (activeCategory !== "all") setFocusedProductId(null);
+    if (activeCategory !== "products") setFocusedProductId(null);
+    if (activeCategory !== "home") setActiveHomePostId(null);
   }, [activeCategory]);
+
+  useEffect(() => {
+    if (!homeFeed.length) {
+      setActiveHomePostId(null);
+      return;
+    }
+    setActiveHomePostId((current) => current && homeFeed.some((post) => post.id === current) ? current : homeFeed[0].id);
+  }, [homeFeed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!commentPost) {
+      setComments([]);
+      setCommentsLoading(false);
+      return;
+    }
+    setCommentsLoading(true);
+    getPostComments(commentPost.id)
+      .then((items) => { if (!cancelled) setComments(items); })
+      .catch((error) => {
+        console.error("load post comments error:", error);
+        if (!cancelled) setComments([]);
+      })
+      .finally(() => { if (!cancelled) setCommentsLoading(false); });
+    return () => { cancelled = true; };
+  }, [commentPost]);
 
   // ── Viewability refs — created ONCE, never reassigned ───────────────────────
   // useRef(...).current freezes the value at mount time → perfectly stable reference
@@ -767,7 +1073,7 @@ try {
   // position after the realtime list has arrived.
   useEffect(() => {
     if (!sharedProductId || !products.length) return;
-    setActiveCategory("all");
+    setActiveCategory("products");
     if (searchQuery) setSearchQuery("");
 
     const index = sortedProducts.findIndex((product) => product.id === sharedProductId);
@@ -964,8 +1270,8 @@ try {
                     Haptics.selectionAsync();
                     setFocusedProductId(null); // stop any playing video immediately
                     setSearchQuery("");         // clear search when switching tabs
-                    if (tab.key === "all") {
-                      // Re-tapping Home behaves like "scroll to top + refresh".
+                    if (tab.key === "products") {
+                      // Re-tapping Products behaves like "scroll to top + refresh".
                       productsListRef.current?.scrollToOffset({ offset: 0, animated: true });
                       onProductsRefresh();
                     }
@@ -975,12 +1281,7 @@ try {
                     }
                   }}
                 >
-                  <Feather
-                    name={tab.icon as any}
-                    size={14}
-                    color={activeCategory === tab.key ? C.primary : C.textSecondary}
-                  />
-                  <Text
+                <Text
                     style={[
                       styles.mainCatTabText,
                       activeCategory === tab.key && styles.catTabTextActive,
@@ -1038,7 +1339,7 @@ try {
           </View>
 
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
-          {activeCategory === "all" && (
+          {activeCategory === "products" && (
             <View style={styles.productsSubBar}>
               <View style={[styles.inlineSearchRow, styles.productSearchRow]}>
                 <Feather name="search" size={14} color={C.textMuted} />
@@ -1111,7 +1412,91 @@ try {
           <View style={styles.listWrapper}>
             {activeCategory === "orders" ? (
               <ReservationsScreen inline />
-            ) : activeCategory === "all" ? (
+            ) : activeCategory === "home" ? (
+              /* ══ HOME SOCIAL FEED — posts/media only ══ */
+              <FlatList
+                data={homeFeed}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={[styles.listContent, styles.homeFeedContent, { paddingBottom: bottomPad + 20 }]}
+                refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={() => loadHomeFeed(true)} tintColor={C.accent} />}
+                showsVerticalScrollIndicator={false}
+                viewabilityConfig={homeViewabilityConfig}
+                onViewableItemsChanged={homeViewabilityHandler}
+                ListHeaderComponent={
+                  <View style={styles.homeFeedIntro}>
+                    <View style={styles.homeFeedHeaderRow}>
+                      <View style={styles.homeFeedIntroText}>
+                        <Text style={styles.homeFeedTitle}>الرئيسية</Text>
+                        <Text style={styles.homeFeedSubtitle}>معرض الأعمال والمنشورات والمقاطع القصيرة</Text>
+                      </View>
+                      <Pressable
+                        style={styles.addPostBtn}
+                        onPress={handleAddPost}
+                        disabled={posting}
+                      >
+                        {posting ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="plus" size={16} color="#FFF" />}
+                        <Text style={styles.addPostBtnText}>{posting ? "جارٍ النشر..." : "إضافة منشور"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                }
+                renderItem={({ item }) => (
+                  <HomeFeedCard
+                    post={item}
+                    isActive={activeHomePostId === item.id}
+                    isScreenFocused={isFocused && activeCategory === "home"}
+                    isMuted={homeVideoMuted}
+                    onToggleMute={() => setHomeVideoMuted((value) => !value)}
+                    onOpenVideo={() => {
+                      const videoIndex = homeFeed.filter((p) => p.mediaType === "video").findIndex((p) => p.id === item.id);
+                      setReelIndex(Math.max(0, videoIndex));
+                      setShowReels(true);
+                    }}
+                    onLike={async () => {
+                      try {
+                        const liked = await toggleProfilePostLike(item.id);
+                        setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
+                      } catch (e: any) {
+                        Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ.");
+                      }
+                    }}
+                    onComment={() => {
+                      setCommentPost(item);
+                      setComments([]);
+                      setCommentText("");
+                    }}
+                    onShare={async () => {
+                      try {
+                        await Share.share({
+                          title: item.userName,
+                          message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}`,
+                        });
+                      } catch (e) {
+                        console.warn("share post failed", e);
+                      }
+                    }}
+                    onOpenProfile={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
+                    }}
+                  />
+                )}
+                ListEmptyComponent={
+                  homeLoading ? (
+                    <View style={styles.emptyState}>
+                      <ActivityIndicator size="large" color={C.accent} />
+                      <Text style={styles.emptySubtitle}>جارٍ تحميل المنشورات...</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Feather name="image" size={48} color={C.textMuted} />
+                      <Text style={styles.emptyTitle}>لا توجد منشورات حالياً</Text>
+                      <Text style={styles.emptySubtitle}>أضف أول صورة أو مقطع فيديو إلى معرض الأعمال.</Text>
+                    </View>
+                  )
+                }
+              />
+            ) : activeCategory === "products" ? (
               /* ══ PRODUCTS-ONLY VIEW ══ */
               <FlatList
                 ref={productsListRef}
@@ -1217,6 +1602,115 @@ try {
               />
             )}
           </View>
+
+      <HomeVideoViewer
+        posts={homeFeed}
+        index={reelIndex}
+        visible={showReels}
+        screenFocused={isFocused && showReels}
+        onClose={() => setShowReels(false)}
+        onLike={async (item) => {
+          try {
+            const liked = await toggleProfilePostLike(item.id);
+            setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
+          } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
+        }}
+        onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); }}
+        onShare={async (item) => {
+          try { await Share.share({ title: item.userName, message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}` }); }
+          catch (e) { console.warn("share reel failed", e); }
+        }}
+        onOpenProfile={(item) => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setShowReels(false);
+          router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
+        }}
+      />
+
+      <Modal
+        visible={!!commentPost}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => { setCommentPost(null); setCommentText(""); }}
+      >
+        <View style={styles.commentBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { setCommentPost(null); setCommentText(""); }} />
+          <View style={styles.commentSheet}>
+            <View style={styles.commentHandle} />
+            <View style={styles.commentHeaderRow}>
+              <Text style={styles.commentTitle}>التعليقات {commentPost ? `(${commentPost.commentsCount})` : ""}</Text>
+              <Pressable onPress={() => { setCommentPost(null); setCommentText(""); }} style={styles.commentCloseBtn}>
+                <Feather name="x" size={19} color={C.textSecondary} />
+              </Pressable>
+            </View>
+
+            <FlatList
+              data={comments}
+              keyExtractor={(item) => item.id}
+              style={styles.commentsList}
+              contentContainerStyle={comments.length ? styles.commentsListContent : styles.commentsEmptyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                commentsLoading ? (
+                  <View style={styles.commentsState}><ActivityIndicator size="small" color={C.accent} /><Text style={styles.commentsStateText}>جارٍ تحميل التعليقات...</Text></View>
+                ) : (
+                  <View style={styles.commentsState}><Ionicons name="chatbubble-ellipses-outline" size={35} color={C.textMuted} /><Text style={styles.commentsStateText}>لا توجد تعليقات بعد</Text></View>
+                )
+              }
+              renderItem={({ item }) => (
+                <View style={styles.commentRow}>
+                  <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={38} disableNavigation />
+                  <View style={styles.commentBody}>
+                    <View style={styles.commentMetaRow}>
+                      <Text style={styles.commentUserName} numberOfLines={1}>{item.userName}</Text>
+                      <Text style={styles.commentTime}>{item.createdAt ? new Date(item.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
+                    </View>
+                    <Text style={styles.commentText}>{item.text}</Text>
+                  </View>
+                </View>
+              )}
+            />
+
+            <View style={styles.commentComposer}>
+              <TextInput
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="اكتب تعليقاً..."
+                placeholderTextColor={C.textMuted}
+                style={styles.commentComposerInput}
+                multiline
+                maxLength={500}
+                textAlign="right"
+                editable={!commentPosting}
+              />
+              <Pressable
+                style={[styles.commentSend, (!commentText.trim() || commentPosting) && styles.commentSendDisabled]}
+                disabled={!commentText.trim() || commentPosting}
+                onPress={async () => {
+                  if (!commentPost || !commentText.trim() || commentPosting) return;
+                  setCommentPosting(true);
+                  try {
+                    const added = await addProfilePostComment(commentPost.id, commentText);
+                    setComments((prev) => [added, ...prev]);
+                    setHomeFeed((prev) => prev.map((p) => p.id === commentPost.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
+                    setCommentText("");
+                  } catch (e: any) {
+                    Alert.alert("تعذر التعليق", e?.message || "حدث خطأ أثناء إضافة التعليق.");
+                  } finally {
+                    setCommentPosting(false);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="إرسال التعليق"
+              >
+                {commentPosting ? <ActivityIndicator size="small" color={C.primary} /> : <Feather name="send" size={17} color={C.primary} />}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Share product modal ── */}
       <ShareModal
@@ -1357,6 +1851,75 @@ const styles = StyleSheet.create({
     flexDirection: "row-reverse", justifyContent: "space-between",
     alignItems: "flex-start", gap: 4,
   },
+  addPostHeaderBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: C.accent, borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 8, marginTop: 2,
+  },
+  addPostHeaderText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
+  homeFeedContent: { paddingHorizontal: 8, paddingTop: 10 },
+  homeFeedIntro: { paddingHorizontal: 8, paddingBottom: 12 },
+  homeFeedHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  homeFeedIntroText: { flex: 1, alignItems: "flex-end" },
+  addPostBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, minHeight: 40 },
+  addPostBtnText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  homeFeedTitle: { fontSize: 19, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  homeFeedSubtitle: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
+  homePostCard: {
+    backgroundColor: C.card, borderRadius: 14, marginBottom: 14, overflow: "hidden",
+    borderWidth: 1, borderColor: C.border,
+  },
+  homePostHeader: { flexDirection: "row-reverse", alignItems: "center", padding: 12, gap: 9 },
+  homePostProfileTouchable: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  homeMediaPressable: { width: "100%" },
+  homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
+  homePostUser: { flex: 1, alignItems: "flex-end" },
+  homePostName: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  homePostTime: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, marginTop: 1 },
+  homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
+  homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
+  homePostDescription: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right", paddingHorizontal: 13, paddingTop: 10 },
+  homeActions: { flexDirection: "row-reverse", alignItems: "center", padding: 11, gap: 18 },
+  homeAction: { flexDirection: "row", alignItems: "center", gap: 5 },
+  homeActionText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  reelsRoot: { flex: 1, backgroundColor: "#000" },
+  reelPage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height, backgroundColor: "#000" },
+  reelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", padding: 18, paddingTop: 52 },
+  reelTopRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", width: "100%" },
+  reelClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
+  reelMuteBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
+  reelBottomArea: { position: "relative", minHeight: 145, justifyContent: "flex-end" },
+  reelUser: { flexDirection: "row-reverse", alignItems: "center", gap: 9, paddingBottom: 28 },
+  reelProfileTouchable: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  reelDescription: { fontSize: 11, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,.86)", marginTop: 2, textAlign: "right" },
+  reelName: { color: "#FFF", fontSize: 14, fontFamily: "Cairo_700Bold" },
+  followBtn: { borderWidth: 1, borderColor: "#FFF", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  followText: { color: "#FFF", fontSize: 11, fontFamily: "Cairo_700Bold" },
+  reelActions: { position: "absolute", right: 16, bottom: 100, gap: 22, alignItems: "center" },
+  reelAction: { alignItems: "center", gap: 2 },
+  reelCount: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
+  commentBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
+  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 12, height: "72%" },
+  commentHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginBottom: 9 },
+  commentHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 8 },
+  commentTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentCloseBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
+  commentsList: { flex: 1 },
+  commentsListContent: { paddingVertical: 4, gap: 2 },
+  commentsEmptyContent: { flexGrow: 1, justifyContent: "center" },
+  commentsState: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 30 },
+  commentsStateText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  commentRow: { flexDirection: "row-reverse", alignItems: "flex-start", gap: 9, paddingVertical: 8, paddingHorizontal: 2 },
+  commentBody: { flex: 1, backgroundColor: C.background, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 8 },
+  commentMetaRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentTime: { fontSize: 9, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
+  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5 },
+  commentComposerInput: { flex: 1, minHeight: 44, maxHeight: 90, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 9, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top" },
+  commentSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  commentSendDisabled: { opacity: 0.45 },
+
   headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
   headerIconLabel: {
     fontSize: 10, fontFamily: "Cairo_600SemiBold",
@@ -1444,12 +2007,10 @@ const styles = StyleSheet.create({
   mainCatTab: {
     flex: 1,
     minWidth: 0,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingHorizontal: 3,
+    paddingVertical: 9,
     borderRadius: 20,
     backgroundColor: C.background,
     borderWidth: 1.5,
