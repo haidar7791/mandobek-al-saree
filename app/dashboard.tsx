@@ -1947,11 +1947,6 @@ try {
       >
         <View style={styles.commentBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeCommentSheet} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={0}
-            style={styles.commentSheetKeyboard}
-          >
           <View style={styles.commentSheet}>
             <View style={styles.commentHandle} />
             <View style={styles.commentHeaderRow}>
@@ -2026,7 +2021,6 @@ try {
               </View>
             </Pressable>
           </View>
-          </KeyboardAvoidingView>
 
           {commentInputOpen && (
             <View style={styles.commentInputOverlay}>
