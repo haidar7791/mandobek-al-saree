@@ -2173,25 +2173,52 @@ export const toggleProfilePostLike = async (postId: string): Promise<boolean> =>
   const viewer = auth.currentUser?.uid;
   if (!viewer) throw new Error("يجب تسجيل الدخول");
 
-  // Correct social graph path: /posts/{postId}/likes/{viewerId}.
-  // Do not write through users/{userId}/profilePosts anymore.
+  // Atomic source of truth: /posts/{postId}/likes/{viewerId}.
+  // The same transaction updates the post counter and the owner's unified
+  // contentLikesCount so Home Feed likes are reflected on the profile total.
+  const postRef = doc(db, "posts", postId);
   const likeRef = doc(db, "posts", postId, "likes", viewer);
-  const snap = await getDoc(likeRef);
-  if (snap.exists()) {
-    await deleteDoc(likeRef);
-    // Aggregate counters are best-effort so a restrictive parent-document rule
-    // can never turn a successful like into a visible permission error.
-    await updateDoc(doc(db, "posts", postId), { likesCount: increment(-1) }).catch(() => undefined);
-    return false;
-  }
 
-  await setDoc(likeRef, {
-    userId: viewer,
-    createdAt: serverTimestamp(),
+  return runTransaction(db, async (transaction) => {
+    const [postSnap, likeSnap] = await Promise.all([
+      transaction.get(postRef),
+      transaction.get(likeRef),
+    ]);
+    if (!postSnap.exists()) throw new Error("المنشور غير موجود");
+
+    const postData = postSnap.data() as any;
+    const ownerId = String(postData.userId || postData.ownerId || "");
+    if (!ownerId) throw new Error("تعذر تحديد صاحب المنشور");
+    const ownerRef = doc(db, "users", ownerId);
+    const ownerSnap = await transaction.get(ownerRef);
+
+    const currentLikes = Math.max(0, Number(postData.likesCount ?? postData.likes ?? 0));
+    const currentOwnerContentLikes = ownerSnap.exists()
+      ? Math.max(0, Number((ownerSnap.data() as any).contentLikesCount ?? 0))
+      : 0;
+
+    if (likeSnap.exists()) {
+      transaction.delete(likeRef);
+      transaction.update(postRef, { likesCount: Math.max(0, currentLikes - 1) });
+      if (ownerSnap.exists()) {
+        transaction.update(ownerRef, { contentLikesCount: Math.max(0, currentOwnerContentLikes - 1) });
+      }
+      return false;
+    }
+
+    transaction.set(likeRef, {
+      userId: viewer,
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(postRef, { likesCount: currentLikes + 1 });
+    if (ownerSnap.exists()) {
+      transaction.update(ownerRef, { contentLikesCount: currentOwnerContentLikes + 1 });
+    }
+    return true;
   });
-  await updateDoc(doc(db, "posts", postId), { likesCount: increment(1) }).catch(() => undefined);
-  return true;
 };
+
+
 
 export const getPostComments = async (postId: string): Promise<HomeFeedComment[]> => {
   const snap = await getDocs(collection(db, "posts", postId, "comments"));

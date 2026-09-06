@@ -8,6 +8,7 @@ import {
   FlatList,
   Platform,
   Image,
+  KeyboardAvoidingView,
   RefreshControl,
   ScrollView,
   Alert,
@@ -398,9 +399,14 @@ function HomeFeedCard({
   post,
   isActive,
   isScreenFocused,
+  isReelsOpen,
+  isInlineVideoPlaying,
   isMuted,
   onToggleMute,
   onOpenVideo,
+  onDoubleTapLike,
+  onResumeVideo,
+  isLiked,
   onLike,
   onComment,
   onShare,
@@ -409,14 +415,40 @@ function HomeFeedCard({
   post: HomeFeedPost;
   isActive: boolean;
   isScreenFocused: boolean;
+  isReelsOpen: boolean;
+  isInlineVideoPlaying: boolean;
   isMuted: boolean;
   onToggleMute: () => void;
   onOpenVideo: () => void;
+  onDoubleTapLike: () => void;
+  onResumeVideo: () => void;
+  isLiked: boolean;
   onLike: () => void;
   onComment: () => void;
   onShare: () => void;
   onOpenProfile: () => void;
 }) {
+  const lastTapRef = useRef(0);
+  const handleMediaPress = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 320) {
+      lastTapRef.current = 0;
+      onDoubleTapLike();
+      return;
+    }
+    lastTapRef.current = now;
+    onOpenVideo();
+  };
+  const handleImagePress = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 320) {
+      lastTapRef.current = 0;
+      onDoubleTapLike();
+      return;
+    }
+    lastTapRef.current = now;
+  };
+
   return (
     <View style={styles.homePostCard}>
       <View style={styles.homePostHeader}>
@@ -435,14 +467,14 @@ function HomeFeedCard({
         </TouchableOpacity>
       </View>
 
-      <Pressable onPress={post.mediaType === "video" ? onOpenVideo : undefined} style={styles.homeMediaPressable}>
+      <Pressable onPress={post.mediaType === "video" ? handleMediaPress : post.mediaType === "image" ? handleImagePress : undefined} style={styles.homeMediaPressable}>
         {post.mediaType === "video" ? (
           <View style={styles.homeMedia}>
             <Video
               source={{ uri: post.url }}
               style={StyleSheet.absoluteFill}
               resizeMode={ResizeMode.COVER}
-              shouldPlay={isScreenFocused && isActive}
+              shouldPlay={isScreenFocused && !isReelsOpen && isInlineVideoPlaying && isActive}
               isMuted={isMuted}
               isLooping
               useNativeControls={false}
@@ -459,7 +491,17 @@ function HomeFeedCard({
             >
               <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={18} color="#FFF" />
             </Pressable>
-            {!isActive && <View style={styles.homePlay}><Feather name="play" size={28} color="#FFF" /></View>}
+            {!isActive && (
+              <Pressable
+                style={styles.homePlay}
+                onPress={(event) => { event.stopPropagation(); onResumeVideo(); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="تشغيل الفيديو"
+              >
+                <Feather name="play" size={28} color="#FFF" />
+              </Pressable>
+            )}
           </View>
         ) : (
           <Image source={{ uri: post.url }} style={styles.homeMedia} resizeMode="cover" />
@@ -468,7 +510,7 @@ function HomeFeedCard({
 
       {!!post.description && <Text style={styles.homePostDescription}>{post.description}</Text>}
       <View style={styles.homeActions}>
-        <Pressable onPress={onLike} style={styles.homeAction}><Ionicons name="heart-outline" size={22} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.likesCount}</Text></Pressable>
+        <Pressable onPress={onLike} style={styles.homeAction}><Ionicons name={isLiked ? "heart" : "heart-outline"} size={22} color={isLiked ? "#EF4444" : C.textSecondary} /><Text style={[styles.homeActionText, isLiked && styles.likedCountText]}>{post.likesCount}</Text></Pressable>
         <Pressable onPress={onComment} style={styles.homeAction}><Ionicons name="chatbubble-outline" size={21} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.commentsCount}</Text></Pressable>
         <Pressable onPress={onShare} style={styles.homeAction}><Feather name="share-2" size={20} color={C.textSecondary} /></Pressable>
       </View>
@@ -483,6 +525,8 @@ function HomeVideoViewer({
   screenFocused,
   onClose,
   onLike,
+  isLiked,
+  onDoubleTapLike,
   onComment,
   onShare,
   onOpenProfile,
@@ -493,6 +537,8 @@ function HomeVideoViewer({
   screenFocused: boolean;
   onClose: () => void;
   onLike: (post: HomeFeedPost) => void;
+  isLiked: (postId: string) => boolean;
+  onDoubleTapLike: (post: HomeFeedPost) => void;
   onComment: (post: HomeFeedPost) => void;
   onShare: (post: HomeFeedPost) => void;
   onOpenProfile: (post: HomeFeedPost) => void;
@@ -500,6 +546,7 @@ function HomeVideoViewer({
   const videos = posts.filter((p) => p.mediaType === "video");
   const [activeIndex, setActiveIndex] = useState(index);
   const [muted, setMuted] = useState(true);
+  const reelLastTapRef = useRef(0);
   const reelViewabilityConfig = useRef({ itemVisiblePercentThreshold: 70 }).current;
   const reelViewabilityHandler = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
@@ -538,6 +585,20 @@ function HomeVideoViewer({
                 isLooping
                 useNativeControls={false}
               />
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => {
+                  const now = Date.now();
+                  if (now - reelLastTapRef.current < 320) {
+                    reelLastTapRef.current = 0;
+                    onDoubleTapLike(item);
+                  } else {
+                    reelLastTapRef.current = now;
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="الضغط مرتين للإعجاب"
+              />
               <View style={styles.reelOverlay}>
                 <View style={styles.reelTopRow}>
                   <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
@@ -574,7 +635,7 @@ function HomeVideoViewer({
                   </View>
 
                   <View style={styles.reelActions}>
-                    <Pressable style={styles.reelAction} onPress={() => onLike(item)}><Ionicons name="heart-outline" size={31} color="#FFF" /><Text style={styles.reelCount}>{item.likesCount}</Text></Pressable>
+                    <Pressable style={styles.reelAction} onPress={() => onLike(item)}><Ionicons name={isLiked(item.id) ? "heart" : "heart-outline"} size={31} color={isLiked(item.id) ? "#EF4444" : "#FFF"} /><Text style={styles.reelCount}>{item.likesCount}</Text></Pressable>
                     <Pressable style={styles.reelAction} onPress={() => onComment(item)}><Ionicons name="chatbubble-outline" size={29} color="#FFF" /><Text style={styles.reelCount}>{item.commentsCount}</Text></Pressable>
                     <Pressable style={styles.reelAction} onPress={() => onShare(item)}><Feather name="share-2" size={28} color="#FFF" /></Pressable>
                   </View>
@@ -620,6 +681,11 @@ const isFocused = useIsFocused();
   const [homeRefreshing, setHomeRefreshing] = useState(false);
   const [activeHomePostId, setActiveHomePostId] = useState<string | null>(null);
   const [homeVideoMuted, setHomeVideoMuted] = useState(true);
+  const [isInlineVideoPlaying, setIsInlineVideoPlaying] = useState(true);
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const homeResumeBlockedRef = useRef(false);
+  const isReelsOpenRef = useRef(false);
+  const isInlineVideoPlayingRef = useRef(true);
   const [reelIndex, setReelIndex] = useState(0);
   const [showReels, setShowReels] = useState(false);
   const [commentPost, setCommentPost] = useState<HomeFeedPost | null>(null);
@@ -646,7 +712,7 @@ const isFocused = useIsFocused();
   const homeViewabilityConfig = useRef({ itemVisiblePercentThreshold: 65 }).current;
   const homeViewabilityHandler = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
-      if (!isFocusedRef.current) return;
+      if (!isFocusedRef.current || isReelsOpenRef.current || homeResumeBlockedRef.current || !isInlineVideoPlayingRef.current) return;
       const first = viewableItems?.find((entry) => entry?.isViewable && entry?.item?.id);
       if (first?.item?.id) setActiveHomePostId(first.item.id);
     }
@@ -701,10 +767,25 @@ const isFocused = useIsFocused();
     if (!isFocused) setFocusedProductId(null); // switched to another app screen
   }, [isFocused]);
 
+  // Hard playback guard: while Reels is open, inline Home videos are always stopped.
+  // Keep the inline video stopped after closing Reels until the user explicitly resumes it.
+  useEffect(() => {
+    isReelsOpenRef.current = showReels;
+    if (showReels) {
+      isInlineVideoPlayingRef.current = false;
+      setIsInlineVideoPlaying(false);
+      setActiveHomePostId(null);
+    }
+  }, [showReels]);
+
   // Clear focused video when user switches to any non-Home tab
   useEffect(() => {
     if (activeCategory !== "products") setFocusedProductId(null);
-    if (activeCategory !== "home") setActiveHomePostId(null);
+    if (activeCategory !== "home") {
+      setActiveHomePostId(null);
+      isInlineVideoPlayingRef.current = false;
+      setIsInlineVideoPlaying(false);
+    }
   }, [activeCategory]);
 
   useEffect(() => {
@@ -1427,7 +1508,6 @@ try {
                     <View style={styles.homeFeedHeaderRow}>
                       <View style={styles.homeFeedIntroText}>
                         <Text style={styles.homeFeedTitle}>الرئيسية</Text>
-                        <Text style={styles.homeFeedSubtitle}>معرض الأعمال والمنشورات والمقاطع القصيرة</Text>
                       </View>
                       <Pressable
                         style={styles.addPostBtn}
@@ -1445,16 +1525,39 @@ try {
                     post={item}
                     isActive={activeHomePostId === item.id}
                     isScreenFocused={isFocused && activeCategory === "home"}
+                    isReelsOpen={showReels}
+                    isInlineVideoPlaying={isInlineVideoPlaying}
                     isMuted={homeVideoMuted}
                     onToggleMute={() => setHomeVideoMuted((value) => !value)}
                     onOpenVideo={() => {
+                      isReelsOpenRef.current = true;
+                      isInlineVideoPlayingRef.current = false;
+                      homeResumeBlockedRef.current = true;
+                      setIsInlineVideoPlaying(false);
+                      setActiveHomePostId(null);
                       const videoIndex = homeFeed.filter((p) => p.mediaType === "video").findIndex((p) => p.id === item.id);
                       setReelIndex(Math.max(0, videoIndex));
                       setShowReels(true);
                     }}
+                    onDoubleTapLike={async () => {
+                      try {
+                        const liked = await toggleProfilePostLike(item.id);
+                        setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
+                        setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
+                      } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
+                    }}
+                    onResumeVideo={() => {
+                      if (showReels || isReelsOpenRef.current) return;
+                      homeResumeBlockedRef.current = false;
+                      isInlineVideoPlayingRef.current = true;
+                      setIsInlineVideoPlaying(true);
+                      setActiveHomePostId(item.id);
+                    }}
+                    isLiked={likedPostIds.has(item.id)}
                     onLike={async () => {
                       try {
                         const liked = await toggleProfilePostLike(item.id);
+                        setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
                         setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
                       } catch (e: any) {
                         Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ.");
@@ -1608,10 +1711,27 @@ try {
         index={reelIndex}
         visible={showReels}
         screenFocused={isFocused && showReels}
-        onClose={() => setShowReels(false)}
+        onClose={() => {
+          isReelsOpenRef.current = false;
+          setShowReels(false);
+          homeResumeBlockedRef.current = true;
+          isInlineVideoPlayingRef.current = false;
+          setIsInlineVideoPlaying(false);
+          setActiveHomePostId(null);
+          setHomeVideoMuted(true);
+        }}
         onLike={async (item) => {
           try {
             const liked = await toggleProfilePostLike(item.id);
+            setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
+            setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
+          } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
+        }}
+        isLiked={(postId) => likedPostIds.has(postId)}
+        onDoubleTapLike={async (item) => {
+          try {
+            const liked = await toggleProfilePostLike(item.id);
+            setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
             setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
           } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
         }}
@@ -1636,6 +1756,11 @@ try {
       >
         <View style={styles.commentBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { setCommentPost(null); setCommentText(""); }} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom + 8 : 0}
+            style={styles.commentSheetKeyboard}
+          >
           <View style={styles.commentSheet}>
             <View style={styles.commentHandle} />
             <View style={styles.commentHeaderRow}>
@@ -1661,10 +1786,20 @@ try {
               }
               renderItem={({ item }) => (
                 <View style={styles.commentRow}>
-                  <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={38} disableNavigation />
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any)}
+                  >
+                    <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={38} disableNavigation />
+                  </TouchableOpacity>
                   <View style={styles.commentBody}>
                     <View style={styles.commentMetaRow}>
-                      <Text style={styles.commentUserName} numberOfLines={1}>{item.userName}</Text>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any)}
+                      >
+                        <Text style={styles.commentUserName} numberOfLines={1}>{item.userName}</Text>
+                      </TouchableOpacity>
                       <Text style={styles.commentTime}>{item.createdAt ? new Date(item.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
                     </View>
                     <Text style={styles.commentText}>{item.text}</Text>
@@ -1709,6 +1844,7 @@ try {
               </Pressable>
             </View>
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1882,6 +2018,7 @@ const styles = StyleSheet.create({
   homeActions: { flexDirection: "row-reverse", alignItems: "center", padding: 11, gap: 18 },
   homeAction: { flexDirection: "row", alignItems: "center", gap: 5 },
   homeActionText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  likedCountText: { color: "#EF4444" },
   reelsRoot: { flex: 1, backgroundColor: "#000" },
   reelPage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height, backgroundColor: "#000" },
   reelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", padding: 18, paddingTop: 52 },
@@ -1899,7 +2036,8 @@ const styles = StyleSheet.create({
   reelAction: { alignItems: "center", gap: 2 },
   reelCount: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
   commentBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end" },
-  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 12, height: "72%" },
+  commentSheetKeyboard: { width: "100%" },
+  commentSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 22, height: "72%" },
   commentHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginBottom: 9 },
   commentHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 8 },
   commentTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
@@ -1915,7 +2053,7 @@ const styles = StyleSheet.create({
   commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   commentTime: { fontSize: 9, fontFamily: "Cairo_400Regular", color: C.textMuted },
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
-  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5 },
+  commentComposer: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, marginTop: 5, paddingBottom: 8 },
   commentComposerInput: { flex: 1, minHeight: 44, maxHeight: 90, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 9, color: C.text, fontFamily: "Cairo_400Regular", textAlignVertical: "top" },
   commentSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   commentSendDisabled: { opacity: 0.45 },
