@@ -43,6 +43,7 @@ import {
   deleteStory,
   type Story,
 } from "@/lib/stories_logic";
+import StoryViewersModal from "@/components/StoryViewersModal";
 import {
   buildChatId,
   sendStoryReply,
@@ -81,6 +82,7 @@ export default function StoryViewerScreen() {
   const [liked, setLiked] = useState(false);
   const [reply, setReply] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
+  const [viewersVisible, setViewersVisible] = useState(false);
 
   // Video-specific state
   const [videoError, setVideoError] = useState(false);
@@ -419,14 +421,17 @@ export default function StoryViewerScreen() {
         </View>
       </View>
 
-      {/* ── View count (owner only) ── */}
-      {isOwner && (
-        <View style={[styles.viewCountBar, { bottom: insets.bottom + 96 }]}>
+      {/* ── View count / viewers ── */}
+      <Pressable
+        style={[styles.viewCountBar, { bottom: insets.bottom + 96 }]}
+        onPress={() => setViewersVisible(true)}
+        accessibilityRole="button"
+        accessibilityLabel="عرض مشاهدي الاستوري"
+      >
           <Feather name="eye" size={13} color="rgba(255,255,255,0.8)" />
           <Text style={styles.viewCountText}>{story.views.length} مشاهدة</Text>
           <Text style={styles.viewLikeCount}>· {story.likes.length} إعجاب</Text>
-        </View>
-      )}
+      </Pressable>
 
       {/* ── Bottom bar ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
@@ -454,6 +459,13 @@ export default function StoryViewerScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <StoryViewersModal
+        visible={viewersVisible}
+        onClose={() => setViewersVisible(false)}
+        viewerIds={story.views}
+        storyOwnerName={story.userName}
+      />
 
       {/* ── Tap areas (prev / next / pause) ── */}
       <Pressable

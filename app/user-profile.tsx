@@ -35,6 +35,7 @@ import {
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
 import { ShareModal } from "@/components/ShareModal";
+import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "@/lib/notifications";
 
@@ -66,6 +67,7 @@ export default function UserProfileScreen() {
   // Viewer's GPS location (to compute distance + enable directions)
   const [viewerLocation, setViewerLocation] = useState<GeoLocation | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
+  const [followersVisible, setFollowersVisible] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -261,10 +263,10 @@ export default function UserProfileScreen() {
           )}
           {!loading && (
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
+              <Pressable style={styles.statItem} onPress={() => setFollowersVisible(true)} disabled={!userId}>
                 <Text style={styles.statVal}>{followCount}</Text>
                 <Text style={styles.statLabel}>متابع</Text>
-              </View>
+              </Pressable>
               <View style={styles.statDiv} />
               <Pressable
                 style={styles.statItem}
@@ -343,6 +345,12 @@ export default function UserProfileScreen() {
           />
         </ScrollView>
       )}
+      <FollowersModal
+        visible={followersVisible}
+        onClose={() => setFollowersVisible(false)}
+        profileId={userId}
+        profileName={displayName}
+      />
       <ShareModal
         visible={shareVisible}
         onClose={() => setShareVisible(false)}

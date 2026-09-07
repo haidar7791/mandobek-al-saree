@@ -49,6 +49,7 @@ import ProfilePostFeed from "@/components/ProfilePostFeed";
 import ProfilePostComposerModal, {
   type ProfilePostDraftMedia,
 } from "@/components/ProfilePostComposerModal";
+import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
+  const [followersVisible, setFollowersVisible] = useState(false);
 
   // ── Edit modal state ───────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -491,10 +493,10 @@ export default function ProfileScreen() {
 
           {/* Stats — followers and likes */}
           <View style={styles.statsRow}>
-            <View style={styles.statItem}>
+            <Pressable style={styles.statItem} onPress={() => setFollowersVisible(true)}>
               <Text style={styles.statValue}>{followCount}</Text>
               <Text style={styles.statLabel}>متابع</Text>
-            </View>
+            </Pressable>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Feather name="heart" size={16} color="rgba(255,255,255,0.8)" />
@@ -708,6 +710,13 @@ export default function ProfileScreen() {
           setPostCaption("");
         }}
         onPublish={publishPendingProfilePost}
+      />
+
+      <FollowersModal
+        visible={followersVisible}
+        onClose={() => setFollowersVisible(false)}
+        profileId={uid}
+        profileName={name}
       />
 
       {/* ══════════════════════════════════════════

@@ -40,6 +40,7 @@ import {
   type ProfilePost,
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
+import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "../lib/notifications";
 
@@ -73,6 +74,7 @@ export default function ArtisanProfileScreen() {
   const [likeLoading, setLikeLoading] = useState(false);
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [followersVisible, setFollowersVisible] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -312,10 +314,10 @@ export default function ArtisanProfileScreen() {
 
         {/* Stats row: followers | likes | distance */}
         <View style={styles.statsRow}>
-          <View style={styles.statItem}>
+          <Pressable style={styles.statItem} onPress={() => setFollowersVisible(true)}>
             <Text style={styles.statVal}>{followCount}</Text>
             <Text style={styles.statLabel}>متابع</Text>
-          </View>
+          </Pressable>
           <View style={styles.statDiv} />
           <Pressable
             style={styles.statItem}
@@ -415,6 +417,13 @@ export default function ArtisanProfileScreen() {
       </ScrollView>
 
       {/* ─────────────── BOOKING MODAL ─────────────── */}
+      <FollowersModal
+        visible={followersVisible}
+        onClose={() => setFollowersVisible(false)}
+        profileId={artisan.userId}
+        profileName={artisan.name}
+      />
+
       <Modal visible={bookingModal} transparent animationType="fade" onRequestClose={() => setBookingModal(false)}>
         <View style={modalStyles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !bookingLoading && setBookingModal(false)} />

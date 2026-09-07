@@ -21,6 +21,7 @@ import {
   onSnapshot,
   updateDoc,
   doc,
+  getDoc,
   arrayUnion,
   arrayRemove,
   getDocs,
@@ -61,6 +62,12 @@ export interface StoryGroup {
   /** True when the viewing user hasn't watched all stories in the group */
   hasUnseen: boolean;
 }
+
+export type StoryViewerProfile = {
+  id: string;
+  name: string;
+  photoUri: string | null;
+};
 
 // ─── Upload helpers ────────────────────────────────────────────────────────────
 
@@ -202,6 +209,23 @@ export async function deleteStory(storyId: string): Promise<void> {
 export async function markStoryViewed(storyId: string, userId: string): Promise<void> {
   if (!userId) return;
   await updateDoc(doc(db, "stories", storyId), { views: arrayUnion(userId) });
+}
+
+export async function getStoryViewerProfiles(viewerIds: string[]): Promise<StoryViewerProfile[]> {
+  const uniqueIds = Array.from(new Set(viewerIds.filter(Boolean)));
+  const profiles = await Promise.all(
+    uniqueIds.map(async (userId) => {
+      const snap = await getDoc(doc(db, "users", userId));
+      if (!snap.exists()) return null;
+      const data = snap.data() as { name?: string; photoUri?: string | null };
+      return {
+        id: userId,
+        name: data.name || "مستخدم",
+        photoUri: data.photoUri || null,
+      };
+    }),
+  );
+  return profiles.filter((profile): profile is StoryViewerProfile => Boolean(profile));
 }
 
 export async function toggleStoryLike(

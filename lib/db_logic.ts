@@ -1888,6 +1888,45 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   }
 };
 
+export type FollowerProfile = {
+  id: string;
+  name: string;
+  photoUri: string | null;
+  followedAt?: any;
+};
+
+/**
+ * Resolve the real accounts stored in users/{profileId}/followers.
+ * Follower documents intentionally only contain the follower id/timestamp,
+ * so the display name and photo come from the current user profile document.
+ */
+export const getFollowerProfiles = async (profileId: string): Promise<FollowerProfile[]> => {
+  if (!profileId) return [];
+  const snap = await getDocs(collection(db, "users", profileId, "followers"));
+  const profiles: Array<FollowerProfile | null> = await Promise.all(
+    snap.docs.map(async (followerDoc) => {
+      const follower = await getUserProfile(followerDoc.id);
+      if (!follower) return null;
+      return {
+        id: followerDoc.id,
+        name: follower.name || "مستخدم",
+        photoUri: follower.photoUri || null,
+        followedAt: followerDoc.data().followedAt,
+      };
+    }),
+  );
+
+  return profiles
+    .filter((profile): profile is FollowerProfile => Boolean(profile))
+    .sort((a, b) => {
+      const aTime = a.followedAt?.toMillis?.()
+        ?? (typeof a.followedAt?.seconds === "number" ? a.followedAt.seconds * 1000 : 0);
+      const bTime = b.followedAt?.toMillis?.()
+        ?? (typeof b.followedAt?.seconds === "number" ? b.followedAt.seconds * 1000 : 0);
+      return bTime - aTime;
+    });
+};
+
 /**
  * Propagate a changed display name to denormalized content documents.
  * Firestore limits a single batch to 500 writes, so large accounts are
