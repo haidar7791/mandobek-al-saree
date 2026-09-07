@@ -10,6 +10,7 @@ COPY server ./server
 COPY tsconfig.json ./
 COPY app.json ./
 
+# بناء ملفات TypeScript لتنتقل إلى مجلد الإخراج الصحيح
 RUN npm run server:build
 
 
@@ -26,7 +27,8 @@ RUN apk add --no-cache ffmpeg
 COPY package.json ./
 RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
-COPY --from=builder /app/server_dist ./server_dist
+COPY --from=builder /app/server ./server_dist
+COPY --from=builder /app/package.json ./package.json
 COPY server/templates ./server/templates
 COPY app.json ./
 COPY privacy.html ./
