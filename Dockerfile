@@ -25,7 +25,7 @@ ENV PORT=8080
 RUN apk add --no-cache ffmpeg
 
 COPY package.json ./
-RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
+RUN npm install --production --no-audit --no-fund
 
 COPY --from=builder /app/server ./server_dist
 COPY --from=builder /app/package.json ./package.json
