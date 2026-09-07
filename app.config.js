@@ -1,25 +1,3 @@
-// Dynamic Expo config. Keep the complete app configuration here so Expo Doctor
-// and EAS have a single source of truth.
-//
-// Prefer REACT_NATIVE_PACKAGER_HOSTNAME during development and fall back to
-// REPLIT_DEV_DOMAIN. Both values are plain hostnames without a protocol.
-const rawDomain =
-  process.env.REACT_NATIVE_PACKAGER_HOSTNAME ||
-  process.env.REPLIT_DEV_DOMAIN ||
-  "";
-
-const replitDomain =
-  rawDomain &&
-  rawDomain.includes(".") &&
-  !rawDomain.includes("127.0.0.1") &&
-  !rawDomain.includes("localhost")
-    ? rawDomain
-    : "";
-
-console.log("[app.config.js] REACT_NATIVE_PACKAGER_HOSTNAME =", process.env.REACT_NATIVE_PACKAGER_HOSTNAME);
-console.log("[app.config.js] REPLIT_DEV_DOMAIN             =", process.env.REPLIT_DEV_DOMAIN);
-console.log("[app.config.js] baking replitDomain =", replitDomain || "(empty — will use fallback)");
-
 module.exports = {
   name: "فورس",
   slug: "sanad-app",
@@ -127,16 +105,20 @@ module.exports = {
     [
       "expo-image-picker",
       {
-        photosPermission: "فورس - ForUs تحتاج إلى الوصول لصورك لرفع صورة الملف الشخصي.",
-        cameraPermission: "فورس - ForUs تحتاج إلى الكاميرا لالتقاط صورة الملف الشخصي.",
+        photosPermission:
+          "فورس - ForUs تحتاج إلى الوصول لصورك لرفع صورة الملف الشخصي.",
+        cameraPermission:
+          "فورس - ForUs تحتاج إلى الكاميرا لالتقاط صورة الملف الشخصي.",
         writeExternalStoragePermission: false,
       },
     ],
     [
       "expo-location",
       {
-        locationAlwaysAndWhenInUsePermission: "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين.",
-        locationWhenInUsePermission: "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين.",
+        locationAlwaysAndWhenInUsePermission:
+          "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين.",
+        locationWhenInUsePermission:
+          "فورس - ForUs تحتاج إلى موقعك لعرض مزودي الخدمات القريبين.",
       },
     ],
     "expo-local-authentication",
@@ -153,7 +135,6 @@ module.exports = {
     eas: {
       projectId: "1f2d5e60-adb9-45e4-9a08-d42a3de90285",
     },
-    replitDomain,
   },
   owner: "haidar7791",
 };

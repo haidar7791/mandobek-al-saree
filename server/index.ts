@@ -1,6 +1,5 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
-import { createProxyMiddleware } from "http-proxy-middleware";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
@@ -18,29 +17,16 @@ function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();
 
-    // Cloud Run production URL — always allowed
-    origins.add("https://forus-backend-911663879269.europe-west1.run.app");
-
-    if (process.env.REPLIT_DEV_DOMAIN) {
-      origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-    }
-
-    if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
-        origins.add(`https://${d.trim()}`);
-      });
+    // Cloud Run production origin can be configured explicitly when needed.
+    if (process.env.PUBLIC_APP_ORIGIN) {
+      origins.add(process.env.PUBLIC_APP_ORIGIN);
     }
 
     const origin = req.header("origin");
 
-    // Allow localhost origins for Expo web development (any port)
-    const isLocalhost =
-      origin?.startsWith("http://localhost:") ||
-      origin?.startsWith("http://127.0.0.1:");
-
-    // Native mobile apps send no Origin header — always pass through
-    // Browser requests from Cloud Run domain or Replit domains are whitelisted above
-    if (!origin || origins.has(origin) || isLocalhost) {
+    // Native mobile apps send no Origin header — always pass through.
+    // Web clients may use the explicitly configured Cloud Run origin.
+    if (!origin || origins.has(origin)) {
       if (origin) {
         res.header("Access-Control-Allow-Origin", origin);
         res.header(
@@ -195,10 +181,6 @@ function configureExpoAndLanding(app: express.Application) {
     }
 
     if (req.path === "/") {
-      // In dev mode, let the Metro proxy handle web requests
-      if (process.env.NODE_ENV === "development") {
-        return next();
-      }
       return serveLandingPage({
         req,
         res,
@@ -270,23 +252,9 @@ function setupErrorHandler(app: express.Application) {
 
   const server = await registerRoutes(app);
 
-  // In dev mode: proxy all remaining requests to the Metro web bundler (port 8081)
-  // so the Replit preview pane (port 5000) shows the live Expo web app.
-  if (process.env.NODE_ENV === "development") {
-    const metroProxy = createProxyMiddleware({
-      target: "http://127.0.0.1:8081",
-      changeOrigin: true,
-      ws: true,
-      logger: console,
-    });
-    app.use("/", metroProxy);
-    server.on("upgrade", metroProxy.upgrade as any);
-    log("Dev proxy: forwarding web requests → Metro at :8081");
-  }
-
   setupErrorHandler(app);
 
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "8080", 10);
   server.listen(
     {
       port,
