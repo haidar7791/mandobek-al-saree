@@ -362,11 +362,13 @@ export default function ProfileScreen() {
 
     setSaving(true);
     try {
+      const currentUserId = auth.currentUser?.uid || uid;
+      if (!currentUserId) throw new Error("not authenticated");
       const safeSpecialty = ["shovel", "roller", "backhoe"].includes(editSpecialty) ? "client" : editSpecialty;
       // Two explicit branches — no undefined values (Firestore/merge ignores undefined,
       // leaving stale artisan fields behind).
       if (safeSpecialty === "client") {
-        await setUserProfile(uid, {
+         await setUserProfile(currentUserId, {
           name: editName.trim(),
           bio: editBio.trim(),
           phone: trimmedPhone,
@@ -376,7 +378,7 @@ export default function ProfileScreen() {
           isAvailable: false,
         });
       } else {
-        await setUserProfile(uid, {
+         await setUserProfile(currentUserId, {
           name: editName.trim(),
           bio: editBio.trim(),
           phone: trimmedPhone,

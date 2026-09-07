@@ -1897,31 +1897,43 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
 export const updateUserNameAcrossContent = async (
   userId: string,
   newName: string
-): Promise<void> => {
+): Promise<number> => {
   const cleanName = newName.trim();
-  if (!userId || !cleanName) return;
+  if (!userId || !cleanName) return 0;
 
-  const [postsByUserSnap, postsByOwnerSnap, productsSnap] = await Promise.all([
-    getDocs(query(collection(db, "posts"), where("userId", "==", userId))),
-    // ownerId is retained for older feed documents created before userId was
-    // standardized, so a rename updates those posts as well.
-    getDocs(query(collection(db, "posts"), where("ownerId", "==", userId))),
-    getDocs(query(collection(db, "products"), where("sellerId", "==", userId))),
+  // Read the collections once and match ownership locally. This covers old
+  // documents written with userId, ownerId, sellerId, or authorId without
+  // relying on a query that may miss legacy records or be denied by a
+  // deployed rule that expects a different ownership field.
+  const [postsSnap, productsSnap] = await Promise.all([
+    getDocs(collection(db, "posts")),
+    getDocs(collection(db, "products")),
   ]);
 
   const refsAndData: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
   const updatedPaths = new Set<string>();
 
-  [...postsByUserSnap.docs, ...postsByOwnerSnap.docs].forEach((d) => {
+  postsSnap.docs.forEach((d) => {
+    const data = d.data() as any;
+    const ownerId = String(data.userId || data.ownerId || data.authorId || "");
+    if (ownerId !== userId) return;
     if (updatedPaths.has(d.ref.path)) return;
     updatedPaths.add(d.ref.path);
     refsAndData.push({
       ref: d.ref,
-      data: { userName: cleanName, authorName: cleanName, ownerName: cleanName },
+      data: {
+        userName: cleanName,
+        authorName: cleanName,
+        ownerName: cleanName,
+        authorDisplayName: cleanName,
+      },
     });
   });
 
   productsSnap.docs.forEach((d) => {
+    const data = d.data() as any;
+    const ownerId = String(data.sellerId || data.userId || data.ownerId || data.authorId || "");
+    if (ownerId !== userId) return;
     if (updatedPaths.has(d.ref.path)) return;
     updatedPaths.add(d.ref.path);
     refsAndData.push({
@@ -1931,6 +1943,7 @@ export const updateUserNameAcrossContent = async (
         userName: cleanName,
         authorName: cleanName,
         ownerName: cleanName,
+        sellerDisplayName: cleanName,
       },
     });
   });
@@ -1942,6 +1955,8 @@ export const updateUserNameAcrossContent = async (
     });
     await batch.commit();
   }
+
+  return refsAndData.length;
 };
 
 export const setUserProfile = async (
@@ -1961,13 +1976,26 @@ export const setUserProfile = async (
 
   await setDoc(doc(db, "users", userId), profile, { merge: true });
 
-  if (nextName && nextName !== oldName) {
-    try {
-      await updateUserNameAcrossContent(userId, nextName);
-    } catch (error) {
-      // Keep the profile save successful even if a legacy content document
-      // cannot be updated because of a temporary/network/rules issue.
-      console.error("updateUserNameAcrossContent error:", error);
+  // Run the sync whenever a name is supplied, even if it appears unchanged.
+  // This also repairs content left behind by an earlier interrupted rename.
+  if (nextName) {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await updateUserNameAcrossContent(userId, nextName);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+    }
+    if (lastError) {
+      // The profile write stays successful, but surface the sync failure so
+      // callers/logs do not report a false fully-completed rename.
+      console.error("updateUserNameAcrossContent error:", lastError);
     }
   }
 };
@@ -2696,6 +2724,10 @@ export const createProduct = async (data: {
 
   // Carry seller's active featured-until so the marketplace can sort/badge instantly
   const sellerSnap = await getDoc(doc(db, "users", data.sellerId));
+  const sellerProfileName = sellerSnap.exists()
+    ? String((sellerSnap.data() as any)?.name || "").trim()
+    : "";
+  const currentSellerName = sellerProfileName || data.sellerName.trim() || "مجهول";
   const sellerFeaturedUntil = sellerSnap.exists()
     ? (sellerSnap.data() as any).featuredUntil ?? null
     : null;
@@ -2707,7 +2739,10 @@ export const createProduct = async (data: {
     imageUrl,
     media,
     sellerId: data.sellerId,
-    sellerName: data.sellerName,
+    sellerName: currentSellerName,
+    userName: currentSellerName,
+    authorName: currentSellerName,
+    ownerName: currentSellerName,
     sellerPhone: data.sellerPhone,
     likesCount: 0,
     sellerFeaturedUntil,
