@@ -89,6 +89,7 @@ import ProfilePostComposerModal, {
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReservationsScreen from "./reservations";
+import { useVideoAudio } from "@/lib/video-audio-context";
 
 const C = Colors.light;
 const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
@@ -263,6 +264,7 @@ function ProductCard({
   isActive,
   onShare,
   onMediaPress,
+  isFullscreenOpen,
   onLoadingChange,
 }: {
   product: Product;
@@ -273,7 +275,8 @@ function ProductCard({
   isLoading: boolean;
   isActive: boolean;
   onShare: () => void;
-  onMediaPress: (item: ProductMedia) => void;
+  onMediaPress: (item: ProductMedia, positionMillis?: number) => void;
+  isFullscreenOpen: boolean;
   onLoadingChange: (productId: string | null) => void;
 }) {
   const isFocused = useIsFocused();
@@ -320,6 +323,7 @@ function ProductCard({
           media={normalizeProductMedia(product.media, product.imageUrl)}
           height={380}
           isVisible={isVisible}
+          isFullscreenOpen={isFullscreenOpen}
           onMediaPress={onMediaPress}
           onDoubleTapLike={async () => {
             const viewer = auth.currentUser;
@@ -776,6 +780,9 @@ const isFocused = useIsFocused();
   const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
+  const [fullscreenMediaPosition, setFullscreenMediaPosition] = useState(0);
+  const fullscreenVideoRef = useRef<Video | null>(null);
+  const { isAudioMuted } = useVideoAudio();
   const [homeFeed, setHomeFeed] = useState<HomeFeedPost[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeRefreshing, setHomeRefreshing] = useState(false);
@@ -1972,7 +1979,11 @@ try {
                     isLoading={buyingProductId === product.id}
                     isActive={product.id === focusedProductId}
                     onShare={() => { Haptics.selectionAsync(); setShareProduct(product); }}
-                    onMediaPress={(item) => setFullscreenMedia(item)}
+                    isFullscreenOpen={!!fullscreenMedia}
+                    onMediaPress={(item, positionMillis = 0) => {
+                      setFullscreenMediaPosition(positionMillis);
+                      setFullscreenMedia(item);
+                    }}
                     onLoadingChange={setBuyingProductId}
                   />
                 )}
@@ -2343,11 +2354,22 @@ try {
           <View style={styles.fullscreenOverlay}>
             {fullscreenMedia?.type === "video" ? (
               <Video
+                ref={(video) => {
+                  fullscreenVideoRef.current = video;
+                }}
                 source={{ uri: fullscreenMedia.url }}
                 style={styles.fullscreenImage}
                 resizeMode={ResizeMode.CONTAIN}
-                shouldPlay
-                isMuted={false}
+                shouldPlay={fullscreenMediaPosition <= 0}
+                onLoad={async () => {
+                  const video = fullscreenVideoRef.current;
+                  if (!video) return;
+                  if (fullscreenMediaPosition > 0) {
+                    await video.setPositionAsync(fullscreenMediaPosition).catch(() => {});
+                  }
+                  await video.playAsync().catch(() => {});
+                }}
+                isMuted={isAudioMuted}
                 useNativeControls
                 progressUpdateIntervalMillis={250}
               />

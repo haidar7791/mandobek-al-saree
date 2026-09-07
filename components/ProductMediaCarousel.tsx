@@ -48,11 +48,13 @@ type ProductMediaCarouselProps = {
   height?: number;
   style?: StyleProp<ViewStyle>;
   showIndicators?: boolean;
-  onMediaPress?: (item: ProductMedia) => void;
+  onMediaPress?: (item: ProductMedia, positionMillis?: number) => void;
   /** Called by a double-tap on media. */
   onDoubleTapLike?: (item: ProductMedia) => Promise<boolean> | boolean;
   /** True when this card is the focused one in the viewport â€” videos play only when true */
   isVisible?: boolean;
+  /** Pauses this carousel while the product fullscreen viewer is open. */
+  isFullscreenOpen?: boolean;
 };
 
 export default function ProductMediaCarousel({
@@ -63,10 +65,12 @@ export default function ProductMediaCarousel({
   onMediaPress,
   onDoubleTapLike,
   isVisible = true,
+  isFullscreenOpen = false,
 }: ProductMediaCarouselProps) {
   const { isAudioMuted, toggleMute } = useVideoAudio();
 
   const videoRefs = useRef<Record<number, Video | null>>({});
+  const playbackPositionsRef = useRef<Record<number, number>>({});
   const [slideWidth, setSlideWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
@@ -87,7 +91,7 @@ export default function ProductMediaCarousel({
   // instances and do NOT share this ref, so there is no cross-screen interference.
   useEffect(() => {
     const activeVideo = videoRefs.current[activeIndex];
-    if (isVisible) {
+    if (isVisible && !isFullscreenOpen) {
       // Explicitly resume the centred video after returning from any overlay screen
       activeVideo?.playAsync().catch(() => {});
     } else {
@@ -96,7 +100,7 @@ export default function ProductMediaCarousel({
         video?.pauseAsync().catch(() => {});
       });
     }
-  }, [isVisible, activeIndex]);
+  }, [isVisible, activeIndex, isFullscreenOpen]);
 
   const showLikeEffect = (index: number) => {
     setHeartIndex(index);
@@ -129,8 +133,12 @@ export default function ProductMediaCarousel({
     }
     setTimeout(() => {
       if (lastTapRef.current[index] === now) {
-        if (onMediaPress) onMediaPress(item);
-        else setFullscreenMedia(item);
+        const positionMillis = playbackPositionsRef.current[index] ?? 0;
+        if (onMediaPress) {
+          onMediaPress(item, positionMillis);
+        } else {
+          setFullscreenMedia(item);
+        }
       }
     }, 310);
   };
@@ -152,7 +160,7 @@ export default function ProductMediaCarousel({
     const isVideoItem = item.type === "video";
     const isActiveSlide = activeIndex === index;
     // Video plays only when this card is focused AND this slide is active
-    const shouldPlayVideo = isVisible && isActiveSlide;
+    const shouldPlayVideo = isVisible && isActiveSlide && !isFullscreenOpen;
 
     const content = isVideoItem ? (
       <Video
@@ -164,6 +172,11 @@ export default function ProductMediaCarousel({
         resizeMode={ResizeMode.CONTAIN}
         shouldPlay={shouldPlayVideo}
         progressUpdateIntervalMillis={250}
+        onPlaybackStatusUpdate={(status) => {
+          if (status.isLoaded) {
+            playbackPositionsRef.current[index] = status.positionMillis;
+          }
+        }}
         isLooping
         // Muted when card is out of viewport OR global mute is on
         isMuted={!isVisible || isAudioMuted}
@@ -277,7 +290,7 @@ export default function ProductMediaCarousel({
               style={styles.fullscreenMedia}
               resizeMode={ResizeMode.CONTAIN}
               shouldPlay
-              // Always unmute in fullscreen for immersive experience
+              // Keep the existing standalone carousel viewer behavior.
               isMuted={false}
               useNativeControls
               progressUpdateIntervalMillis={250}
