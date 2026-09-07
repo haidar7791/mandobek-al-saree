@@ -56,6 +56,9 @@ const destinationFor = (item: ActivityNotification): string | null => {
   if (item.entityType === "product" && item.entityId) {
     return `/product/${encodeURIComponent(item.entityId)}`;
   }
+  if (item.entityType === "post" && item.entityId) {
+    return `/dashboard?postId=${encodeURIComponent(item.entityId)}&openComments=1`;
+  }
   return null;
 };
 

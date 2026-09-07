@@ -992,13 +992,44 @@ export const likeProfilePost = async (likerId: string, userId: string, postId: s
     return true;
   });
   if (liked) {
+    // Older profile/portfolio posts may predate the top-level /posts mirror.
+    // Create that mirror lazily so the notification can use the same deep-link
+    // ID as Home feed posts. This must never undo a successful like.
+    try {
+      const profileSnapshot = await getDoc(userRef);
+      const sourcePost = ((profileSnapshot.data() as any)?.profilePosts ?? [])
+        .find((post: ProfilePost) => post?.id === postId);
+      if (sourcePost?.url) {
+        await setDoc(
+          doc(db, "posts", `${userId}_${postId}`),
+          {
+            postId,
+            userId,
+            userName: (profileSnapshot.data() as any)?.name || "مستخدم",
+            userPhotoUri: (profileSnapshot.data() as any)?.photoUri || null,
+            url: sourcePost.url,
+            mediaType: sourcePost.mediaType === "video" ? "video" : "image",
+            description: sourcePost.description ?? "",
+            likesCount: sourcePost.likesCount ?? 0,
+            commentsCount: sourcePost.commentsCount ?? 0,
+            createdAt: sourcePost.createdAt || new Date().toISOString(),
+            sourceType: "profilePost",
+          },
+          { merge: true },
+        );
+      }
+    } catch (error) {
+      console.warn("profile post feed mirror failed:", error);
+    }
     void createActivityNotification({
       recipientId: userId,
       actorId: likerId,
       type: "like",
       title: "إعجاب جديد",
       body: "أعجب بمنشورك",
-      entityId: postId,
+      // Profile posts are mirrored into /posts/{userId}_{postId}, which is
+      // also the ID used by the Home feed and its comments.
+      entityId: `${userId}_${postId}`,
       entityType: "post",
     });
   }
@@ -1870,24 +1901,37 @@ export const updateUserNameAcrossContent = async (
   const cleanName = newName.trim();
   if (!userId || !cleanName) return;
 
-  const [postsSnap, productsSnap] = await Promise.all([
+  const [postsByUserSnap, postsByOwnerSnap, productsSnap] = await Promise.all([
     getDocs(query(collection(db, "posts"), where("userId", "==", userId))),
+    // ownerId is retained for older feed documents created before userId was
+    // standardized, so a rename updates those posts as well.
+    getDocs(query(collection(db, "posts"), where("ownerId", "==", userId))),
     getDocs(query(collection(db, "products"), where("sellerId", "==", userId))),
   ]);
 
   const refsAndData: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+  const updatedPaths = new Set<string>();
 
-  postsSnap.docs.forEach((d) => {
+  [...postsByUserSnap.docs, ...postsByOwnerSnap.docs].forEach((d) => {
+    if (updatedPaths.has(d.ref.path)) return;
+    updatedPaths.add(d.ref.path);
     refsAndData.push({
       ref: d.ref,
-      data: { userName: cleanName, authorName: cleanName },
+      data: { userName: cleanName, authorName: cleanName, ownerName: cleanName },
     });
   });
 
   productsSnap.docs.forEach((d) => {
+    if (updatedPaths.has(d.ref.path)) return;
+    updatedPaths.add(d.ref.path);
     refsAndData.push({
       ref: d.ref,
-      data: { sellerName: cleanName, userName: cleanName, authorName: cleanName },
+      data: {
+        sellerName: cleanName,
+        userName: cleanName,
+        authorName: cleanName,
+        ownerName: cleanName,
+      },
     });
   });
 

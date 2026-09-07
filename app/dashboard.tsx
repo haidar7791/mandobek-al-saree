@@ -725,7 +725,11 @@ function HomeVideoViewer({
 
 
 export default function DashboardScreen() {
-  const { productId: sharedProductId } = useLocalSearchParams<{ productId?: string }>();
+  const {
+    productId: sharedProductId,
+    postId: requestedPostId,
+    openComments,
+  } = useLocalSearchParams<{ productId?: string; postId?: string; openComments?: string }>();
   // Screen-level focus — drives video start/stop & viewability guard
 const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -777,6 +781,8 @@ const isFocused = useIsFocused();
   const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
   const [postCaption, setPostCaption] = useState("");
   const [deletingHomePostId, setDeletingHomePostId] = useState<string | null>(null);
+  const homeFeedListRef = useRef<FlatList<HomeFeedPost>>(null);
+  const handledPostIntentRef = useRef<string | null>(null);
 
   const [buyingProductId, setBuyingProductId] = useState<string | null>(null);
   // productId → orderId for the current user's pending buy orders (prevents duplicates)
@@ -919,6 +925,35 @@ const isFocused = useIsFocused();
     }
     setActiveHomePostId((current) => current && homeFeed.some((post) => post.id === current) ? current : homeFeed[0].id);
   }, [homeFeed]);
+
+  // Notifications can deep-link to a post that is not the first item in the
+  // feed. The feed is loaded from the full /posts collection, so once it is
+  // available we can scroll to the exact card and open its comments.
+  useEffect(() => {
+    if (!requestedPostId || !homeFeed.length) return;
+    if (handledPostIntentRef.current === requestedPostId) return;
+
+    const post = homeFeed.find((item) => item.id === requestedPostId);
+    if (!post) return;
+
+    handledPostIntentRef.current = requestedPostId;
+    setActiveCategory("home");
+    setActiveHomePostId(post.id);
+
+    const postIndex = homeFeed.findIndex((item) => item.id === post.id);
+    requestAnimationFrame(() => {
+      homeFeedListRef.current?.scrollToIndex({
+        index: postIndex,
+        viewPosition: 0.08,
+        animated: true,
+      });
+      if (openComments === "1" || openComments === "true") {
+        setCommentPost(post);
+        setComments([]);
+        setCommentText("");
+      }
+    });
+  }, [homeFeed, openComments, requestedPostId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1733,6 +1768,7 @@ try {
             ) : activeCategory === "home" ? (
               /* ══ HOME SOCIAL FEED — posts/media only ══ */
               <FlatList
+                ref={homeFeedListRef}
                 data={homeFeed}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={[styles.listContent, styles.homeFeedContent, { paddingBottom: bottomPad + 20 }]}
