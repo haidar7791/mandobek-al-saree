@@ -22,6 +22,8 @@ export type ActivityNotificationType =
   | "share"
   | "purchase";
 
+export type ActivityNotificationAction = "new" | "accepted" | "rejected";
+
 export type ActivityNotification = {
   id: string;
   recipientId: string;
@@ -33,6 +35,7 @@ export type ActivityNotification = {
   body: string;
   entityId?: string;
   entityType?: "post" | "product" | "story" | "profile" | "order" | "service";
+  action?: ActivityNotificationAction;
   read: boolean;
   createdAt: string;
 };
@@ -46,20 +49,87 @@ const toIsoString = (value: unknown): string => {
   return new Date(0).toISOString();
 };
 
-const toNotification = (id: string, data: DocumentData): ActivityNotification => ({
-  id,
-  recipientId: String(data.recipientId || ""),
-  actorId: String(data.actorId || ""),
-  actorName: String(data.actorName || "مستخدم فورس"),
-  actorPhotoUri: data.actorPhotoUri || null,
-  type: data.type as ActivityNotificationType,
-  title: String(data.title || "نشاط جديد"),
-  body: String(data.body || ""),
-  entityId: data.entityId ? String(data.entityId) : undefined,
-  entityType: data.entityType,
-  read: data.read === true,
-  createdAt: toIsoString(data.createdAt),
-});
+const inferAction = (
+  value: unknown,
+  title: string,
+): ActivityNotificationAction | undefined => {
+  if (value === "new" || value === "accepted" || value === "rejected") {
+    return value;
+  }
+  if (title.startsWith("تم قبول")) return "accepted";
+  if (title.startsWith("تم رفض")) return "rejected";
+  return undefined;
+};
+
+const formatNotificationBody = ({
+  type,
+  entityType,
+  actorName,
+  action,
+  fallback,
+}: {
+  type: ActivityNotificationType;
+  entityType?: ActivityNotification["entityType"];
+  actorName: string;
+  action?: ActivityNotificationAction;
+  fallback: string;
+}): string => {
+  const name = actorName.trim();
+  if (!name) return fallback;
+
+  if (type === "like") {
+    const target =
+      entityType === "product"
+        ? "منتجك"
+        : entityType === "story"
+          ? "قصتك"
+          : "منشورك";
+    return `${name} أعجب بـ ${target}`;
+  }
+  if (type === "follow") return `${name} قام بمتابعتك`;
+  if (type === "comment") return `${name} قام بالتعليق على منشورك`;
+
+  if (type === "purchase") {
+    const isService = entityType === "service";
+    const subject = isService ? "طلب الخدمة" : "طلب الشراء";
+    if (action === "accepted") return `تم قبول ${subject} من قبل ${name}`;
+    if (action === "rejected") return `تم رفض ${subject} من قبل ${name}`;
+    if (action === "new") {
+      return `${name} أرسل طلب شراء ${isService ? "لخدمتك" : "لمنتجك"}`;
+    }
+  }
+
+  return fallback;
+};
+
+const toNotification = (id: string, data: DocumentData): ActivityNotification => {
+  const type = data.type as ActivityNotificationType;
+  const title = String(data.title || "نشاط جديد");
+  const actorName = String(data.actorName || "");
+  const entityType = data.entityType as ActivityNotification["entityType"];
+  const action = inferAction(data.action, title);
+  return {
+    id,
+    recipientId: String(data.recipientId || ""),
+    actorId: String(data.actorId || ""),
+    actorName,
+    actorPhotoUri: data.actorPhotoUri || null,
+    type,
+    title,
+    body: formatNotificationBody({
+      type,
+      entityType,
+      actorName,
+      action,
+      fallback: String(data.body || ""),
+    }),
+    entityId: data.entityId ? String(data.entityId) : undefined,
+    entityType,
+    action,
+    read: data.read === true,
+    createdAt: toIsoString(data.createdAt),
+  };
+};
 
 export const createActivityNotification = async (input: {
   recipientId: string;
@@ -69,6 +139,7 @@ export const createActivityNotification = async (input: {
   body: string;
   entityId?: string;
   entityType?: ActivityNotification["entityType"];
+  action?: ActivityNotificationAction;
 }): Promise<void> => {
   const actorId = input.actorId || auth.currentUser?.uid || "";
   if (!input.recipientId || !actorId || input.recipientId === actorId) return;
@@ -76,16 +147,30 @@ export const createActivityNotification = async (input: {
   try {
     const actorSnap = await getDoc(doc(db, "users", actorId));
     const actor = actorSnap.exists() ? actorSnap.data() : {};
+    const actorName = String(
+      actor.name ||
+        actor.displayName ||
+        auth.currentUser?.displayName ||
+        auth.currentUser?.email?.split("@")[0] ||
+        "",
+    ).trim();
     await addDoc(collection(db, "notifications"), {
       recipientId: input.recipientId,
       actorId,
-      actorName: String(actor.name || auth.currentUser?.displayName || "مستخدم فورس"),
+      actorName,
       actorPhotoUri: actor.photoUri || null,
       type: input.type,
       title: input.title,
-      body: input.body,
+      body: formatNotificationBody({
+        type: input.type,
+        entityType: input.entityType,
+        actorName,
+        action: input.action,
+        fallback: input.body,
+      }),
       entityId: input.entityId || null,
       entityType: input.entityType || null,
+      action: input.action || null,
       read: false,
       createdAt: serverTimestamp(),
     });

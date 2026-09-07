@@ -222,7 +222,7 @@ export async function toggleStoryLike(
         actorId: userId,
         type: "like",
         title: "إعجاب جديد",
-        body: "أعجب مستخدم بقصتك",
+        body: "أعجب بقصتك",
         entityId: storyId,
         entityType: "story",
       });

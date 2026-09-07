@@ -1182,11 +1182,20 @@ try {
           params: { chatId: data.chatId, otherName: data.senderName },
         });
       } else if (data?.type === "serviceRequest" || data?.type === "requestStatus") {
-        router.push("/reservations" as any);
+        router.push({
+          pathname: "/reservations",
+          params: { tab: "services" },
+        } as any);
       } else if (data?.type === "productOrder") {
-        router.push("/product-orders" as any);
+        router.push({
+          pathname: "/reservations",
+          params: { tab: "myProducts" },
+        } as any);
       } else if (data?.type === "productOrderResponse") {
-        router.push("/product-orders" as any);
+        router.push({
+          pathname: "/reservations",
+          params: { tab: "myOrders" },
+        } as any);
       }
     });
     return () => sub.remove();

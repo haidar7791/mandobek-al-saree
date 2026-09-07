@@ -15,3 +15,4 @@
 - [EAS Node and Metro watcher constraints](eas-node-and-metro-watchers.md) — EAS needs an exact Node version; keep global EAS CLI outside the project tree to avoid Metro ENOSPC
 - [Gmail SMTP authentication](gmail-smtp-authentication.md) — use Gmail App Password SMTP auth with EMAIL_PASSWORD; invalid_grant and 535 indicate different credential failures
 - [Expo dependency sync](expo-dependency-sync.md) — a package can be listed in package.json while missing from node_modules and breaking Expo config resolution
+- [Notification copy and routing](notification-copy-routing.md) — keep notification wording centralized and route order actions by explicit status

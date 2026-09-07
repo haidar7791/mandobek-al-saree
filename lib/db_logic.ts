@@ -498,9 +498,10 @@ export const createServiceRequest = async (
       actorId: data.clientId,
       type: "purchase",
       title: "طلب خدمة جديد",
-      body: `${data.clientName} أرسل طلب خدمة جديد`,
+      body: "أرسل طلب شراء لخدمتك",
       entityId: docRef.id,
       entityType: "service",
+      action: "new",
     });
   }
 
@@ -561,12 +562,19 @@ export const updateServiceRequestStatus = async (
 async function notifyClientOnRequest(
   request: ServiceRequest,
   title: string,
-  body: string
+  body: string,
+  action?: "accepted" | "rejected",
 ) {
   try {
     const profile = await getUserProfile(request.clientId);
     if (profile?.pushToken) {
-      await sendExpoPush(profile.pushToken, title, body, {
+      const pushBody =
+        action === "accepted"
+          ? `تم قبول طلب الخدمة من قبل ${request.artisanName}`
+          : action === "rejected"
+            ? `تم رفض طلب الخدمة من قبل ${request.artisanName}`
+            : body;
+      await sendExpoPush(profile.pushToken, title, pushBody, {
         type: "requestStatus",
         requestId: request.id,
         status: request.status,
@@ -584,6 +592,7 @@ async function notifyClientOnRequest(
     body,
     entityId: request.id,
     entityType: "service",
+    action,
   });
 }
 
@@ -596,7 +605,8 @@ export const acceptServiceRequest = async (requestId: string): Promise<void> => 
     await notifyClientOnRequest(
       req,
       "تم قبول طلبك! 🎉",
-      `قَبِل ${req.artisanName} طلبك. سيتواصل معك قريباً.`
+      "تم قبول طلب الخدمة",
+      "accepted",
     );
   }
 };
@@ -610,7 +620,8 @@ export const rejectServiceRequest = async (requestId: string): Promise<void> => 
     await notifyClientOnRequest(
       req,
       "تم رفض طلبك",
-      `اعتذر ${req.artisanName} عن قبول طلبك. يمكنك تجربة صاحب اختصاص آخر.`
+      "تم رفض طلب الخدمة",
+      "rejected",
     );
   }
 };
@@ -816,7 +827,7 @@ export const followArtisan = async (followerId: string, artisanId: string): Prom
       actorId: followerId,
       type: "follow",
       title: "متابع جديد",
-      body: "قام مستخدم بمتابعتك",
+      body: "قام بمتابعتك",
       entityId: followerId,
       entityType: "profile",
     });
@@ -913,7 +924,7 @@ export const likeProduct = async (likerId: string, productId: string): Promise<b
         actorId: likerId,
         type: "like",
         title: "إعجاب جديد",
-        body: "أعجب مستخدم بمنتجك",
+        body: "أعجب بمنتجك",
         entityId: productId,
         entityType: "product",
       });
@@ -986,7 +997,7 @@ export const likeProfilePost = async (likerId: string, userId: string, postId: s
       actorId: likerId,
       type: "like",
       title: "إعجاب جديد",
-      body: "أعجب مستخدم بمنشورك",
+      body: "أعجب بمنشورك",
       entityId: postId,
       entityType: "post",
     });
@@ -2391,7 +2402,7 @@ export const toggleProfilePostLike = async (postId: string): Promise<boolean> =>
         actorId: viewer,
         type: "like",
         title: "إعجاب جديد",
-        body: "أعجب مستخدم بمنشورك",
+        body: "أعجب بمنشورك",
         entityId: postId,
         entityType: "post",
       });
@@ -2446,7 +2457,7 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
       actorId: viewer.uid,
       type: "comment",
       title: "تعليق جديد",
-      body: `${comment.userName} علّق على منشورك`,
+      body: "قام بالتعليق على منشورك",
       entityId: postId,
       entityType: "post",
     });
@@ -2889,9 +2900,10 @@ export const createProductOrder = async (
     actorId: data.buyerId,
     type: "purchase",
     title: "طلب شراء جديد",
-    body: `${data.buyerName} أرسل طلب شراء لمنتجك`,
+    body: "أرسل طلب شراء لمنتجك",
     entityId: docRef.id,
     entityType: "order",
+    action: "new",
   });
   return docRef.id;
 };
@@ -2901,19 +2913,29 @@ export const respondToProductOrder = async (
   productId: string,
   productTitle: string,
   buyerId: string,
-  response: "accepted" | "rejected"
+  response: "accepted" | "rejected",
+  sellerName?: string,
 ): Promise<void> => {
   await updateDoc(doc(db, "productOrders", orderId), { status: response });
   try {
     const buyerProfile = await getUserProfile(buyerId);
     if (buyerProfile?.pushToken) {
       const accepted = response === "accepted";
+      const sellerProfile = auth.currentUser?.uid
+        ? await getUserProfile(auth.currentUser.uid)
+        : null;
+      const respondingSellerName =
+        sellerName?.trim() ||
+        sellerProfile?.name?.trim() ||
+        auth.currentUser?.displayName?.trim() ||
+        auth.currentUser?.email?.split("@")[0]?.trim() ||
+        "صاحب المنتج";
       await sendExpoPush(
         buyerProfile.pushToken,
         accepted ? `تم قبول طلبك — ${productTitle}` : `اعتذار — ${productTitle}`,
         accepted
-          ? "تم قبول طلب الشراء! تواصل مع صاحب المنتج لإتمام الصفقة."
-          : "اعتذر صاحب المنتج عن البيع في الوقت الحالي.",
+          ? `تم قبول طلب الشراء من قبل ${respondingSellerName}`
+          : `تم رفض طلب الشراء من قبل ${respondingSellerName}`,
         { type: "productOrderResponse", orderId, productId, response }
       );
     }
@@ -2926,10 +2948,11 @@ export const respondToProductOrder = async (
     type: "purchase",
     title: response === "accepted" ? `تم قبول طلبك — ${productTitle}` : `تم رفض طلبك — ${productTitle}`,
     body: response === "accepted"
-      ? "تم قبول طلب الشراء، يمكنك متابعة التفاصيل."
-      : "اعتذر صاحب المنتج عن قبول طلب الشراء.",
+      ? "تم قبول طلب الشراء"
+      : "تم رفض طلب الشراء",
     entityId: orderId,
     entityType: "order",
+    action: response,
   });
 };
 

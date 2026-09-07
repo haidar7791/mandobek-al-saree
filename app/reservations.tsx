@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -221,7 +221,12 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
   const [buyerOrders, setBuyerOrders] = useState<ProductOrder[]>([]);
-  const [tab, setTab] = useState<Tab>("services");
+  const { tab: requestedTab } = useLocalSearchParams<{ tab?: string }>();
+  const initialTab: Tab =
+    requestedTab === "myProducts" || requestedTab === "myOrders" || requestedTab === "history"
+      ? requestedTab
+      : "services";
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [isArtisan, setIsArtisan] = useState(false);
   const [loading, setLoading] = useState(true);
   // History cleanup: selection mode is only ever entered from the "السجل"
@@ -235,6 +240,17 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
   const [productSelectMode, setProductSelectMode] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [productDeleting, setProductDeleting] = useState(false);
+
+  useEffect(() => {
+    if (
+      requestedTab === "services" ||
+      requestedTab === "myProducts" ||
+      requestedTab === "myOrders" ||
+      requestedTab === "history"
+    ) {
+      setTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const currentUid = auth.currentUser?.uid;
 
@@ -867,7 +883,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                           Alert.alert("رفض الطلب", "هل تريد رفض هذا الطلب؟", [
                             { text: "إلغاء", style: "cancel" },
                             { text: "رفض", style: "destructive",
-                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected") },
+                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "rejected", order.sellerName) },
                           ])
                         }
                       >
@@ -880,7 +896,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                           Alert.alert("قبول الطلب", "هل تريد قبول هذا الطلب؟", [
                             { text: "إلغاء", style: "cancel" },
                             { text: "قبول",
-                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted") },
+                              onPress: () => respondToProductOrder(order.id, order.productId, order.productTitle, order.buyerId, "accepted", order.sellerName) },
                           ])
                         }
                       >

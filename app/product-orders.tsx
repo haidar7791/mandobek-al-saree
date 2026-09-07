@@ -673,8 +673,8 @@ export default function ProductOrdersScreen() {
             const cardNode = activeTab === "sales" ? (
               <SaleCard
                 order={item}
-                onAccept={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "accepted")}
-                onReject={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "rejected")}
+                onAccept={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "accepted", item.sellerName)}
+                onReject={() => respondToProductOrder(item.id, item.productId, item.productTitle, item.buyerId, "rejected", item.sellerName)}
               />
             ) : (
               <PurchaseCard order={item} />

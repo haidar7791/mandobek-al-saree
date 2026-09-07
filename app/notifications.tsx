@@ -40,7 +40,15 @@ const iconFor = (type: ActivityNotification["type"]): keyof typeof Feather.glyph
 
 const destinationFor = (item: ActivityNotification): string | null => {
   if (item.type === "purchase") {
-    return item.entityType === "service" ? "/reservations" : "/product-orders";
+    if (item.entityType === "service") {
+      return "/reservations?tab=services";
+    }
+    if (item.entityType === "order") {
+      const tab = item.action === "accepted" || item.action === "rejected"
+        ? "myOrders"
+        : "myProducts";
+      return `/reservations?tab=${tab}`;
+    }
   }
   if (item.entityType === "profile" && item.entityId) {
     return `/user-profile?userId=${encodeURIComponent(item.entityId)}`;
@@ -159,7 +167,7 @@ export default function NotificationsScreen() {
                   <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
                   {!item.read && <View style={styles.dot} />}
                 </View>
-                <Text style={styles.body}>{item.actorName} {item.body}</Text>
+                <Text style={styles.body}>{item.body}</Text>
                 <Text style={styles.time}>{formatTime(item.createdAt)}</Text>
               </View>
             </Pressable>
