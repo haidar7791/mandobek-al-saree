@@ -94,6 +94,9 @@ const C = Colors.light;
 const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
+const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 });
+const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 });
+const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
 type CategoryTab = "home" | "products" | "services" | "orders";
 
@@ -579,7 +582,7 @@ function HomeVideoViewer({
   const [muted, setMuted] = useState(true);
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const reelLastTapRef = useRef(0);
-  const reelViewabilityConfig = useRef({ itemVisiblePercentThreshold: 70 }).current;
+  const reelViewabilityConfig = REEL_VIEWABILITY_CONFIG;
   const reelViewabilityHandler = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
       const first = viewableItems?.find((entry) => entry?.isViewable && entry?.index != null);
@@ -798,7 +801,7 @@ const isFocused = useIsFocused();
   const isFocusedRef = useRef(false);
 
   // Home feed video focus: exactly one visible post may play at a time.
-  const homeViewabilityConfig = useRef({ itemVisiblePercentThreshold: 65 }).current;
+  const homeViewabilityConfig = HOME_VIEWABILITY_CONFIG;
   const homeViewabilityHandler = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
       if (!isFocusedRef.current || isReelsOpenRef.current || homeResumeBlockedRef.current || !isInlineVideoPlayingRef.current) return;
@@ -1054,7 +1057,7 @@ const isFocused = useIsFocused();
 
   // ── Viewability refs — created ONCE, never reassigned ───────────────────────
   // useRef(...).current freezes the value at mount time → perfectly stable reference
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const viewabilityConfig = PRODUCT_VIEWABILITY_CONFIG;
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
       try {
@@ -1769,6 +1772,7 @@ try {
               /* ══ HOME SOCIAL FEED — posts/media only ══ */
               <FlatList
                 ref={homeFeedListRef}
+                key="feed-list-home"
                 data={homeFeed}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={[styles.listContent, styles.homeFeedContent, { paddingBottom: bottomPad + 20 }]}
