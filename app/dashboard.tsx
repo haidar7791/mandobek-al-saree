@@ -579,8 +579,9 @@ function HomeVideoViewer({
 }) {
   const videos = posts.filter((p) => p.mediaType === "video");
   const [activeIndex, setActiveIndex] = useState(index);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
+  const pendingFollowStateRef = useRef(new Map<string, boolean>());
   const reelLastTapRef = useRef(0);
   const reelViewabilityConfig = REEL_VIEWABILITY_CONFIG;
   const reelViewabilityHandler = useRef(
@@ -593,8 +594,9 @@ function HomeVideoViewer({
   useEffect(() => {
     if (visible) {
       setActiveIndex(Math.min(Math.max(0, index), Math.max(0, videos.length - 1)));
-      setMuted(true);
+      setMuted(false);
       setFollowedUserIds(new Set());
+      pendingFollowStateRef.current.clear();
     }
   }, [visible, index, videos.length]);
 
@@ -606,6 +608,7 @@ function HomeVideoViewer({
     getIsFollowing(viewer.uid, current.userId)
       .then((following) => {
         if (cancelled) return;
+        if (pendingFollowStateRef.current.has(current.userId)) return;
         setFollowedUserIds((prev) => {
           const next = new Set(prev);
           if (following) next.add(current.userId); else next.delete(current.userId);
@@ -682,15 +685,31 @@ function HomeVideoViewer({
                               onPress={async () => {
                                 const viewer = auth.currentUser;
                                 if (!viewer || viewer.uid === item.userId) return;
+                                const nextFollowing = !isFollowing;
+                                pendingFollowStateRef.current.set(item.userId, nextFollowing);
+                                setFollowedUserIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (nextFollowing) next.add(item.userId);
+                                  else next.delete(item.userId);
+                                  return next;
+                                });
                                 try {
-                                  if (isFollowing) {
+                                  if (!nextFollowing) {
                                     await unfollowArtisan(viewer.uid, item.userId);
-                                    setFollowedUserIds((prev) => { const next = new Set(prev); next.delete(item.userId); return next; });
                                   } else {
                                     await followArtisan(viewer.uid, item.userId);
-                                    setFollowedUserIds((prev) => new Set(prev).add(item.userId));
                                   }
-                                } catch (e) { console.warn("follow toggle failed", e); }
+                                  pendingFollowStateRef.current.delete(item.userId);
+                                } catch (e) {
+                                  console.warn("follow toggle failed", e);
+                                  pendingFollowStateRef.current.delete(item.userId);
+                                  setFollowedUserIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (isFollowing) next.add(item.userId);
+                                    else next.delete(item.userId);
+                                    return next;
+                                  });
+                                }
                               }}
                               accessibilityRole="button"
                               accessibilityLabel={isFollowing ? "إلغاء المتابعة" : "متابعة"}
@@ -816,6 +835,54 @@ const isFocused = useIsFocused();
     catch (e) { console.error("Home feed error", e); }
     finally { setHomeLoading(false); setHomeRefreshing(false); }
   }, []);
+
+  const handleHomePostLike = useCallback(async (postId: string) => {
+    const wasLiked = likedPostIds.has(postId);
+    const nextLiked = !wasLiked;
+    const countDelta = nextLiked ? 1 : -1;
+
+    setLikedPostIds((prev) => {
+      const next = new Set(prev);
+      if (nextLiked) next.add(postId);
+      else next.delete(postId);
+      return next;
+    });
+    setHomeFeed((prev) => prev.map((post) => (
+      post.id === postId
+        ? { ...post, likesCount: Math.max(0, post.likesCount + countDelta) }
+        : post
+    )));
+
+    try {
+      const persistedLiked = await toggleProfilePostLike(postId);
+      if (persistedLiked === nextLiked) return;
+
+      setLikedPostIds((prev) => {
+        const next = new Set(prev);
+        if (persistedLiked) next.add(postId);
+        else next.delete(postId);
+        return next;
+      });
+      setHomeFeed((prev) => prev.map((post) => (
+        post.id === postId
+          ? { ...post, likesCount: Math.max(0, post.likesCount + (persistedLiked ? 1 : -1) - countDelta) }
+          : post
+      )));
+    } catch (e: any) {
+      setLikedPostIds((prev) => {
+        const next = new Set(prev);
+        if (wasLiked) next.add(postId);
+        else next.delete(postId);
+        return next;
+      });
+      setHomeFeed((prev) => prev.map((post) => (
+        post.id === postId
+          ? { ...post, likesCount: Math.max(0, post.likesCount - countDelta) }
+          : post
+      )));
+      Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ.");
+    }
+  }, [likedPostIds]);
 
   const handleAddPost = useCallback(async () => {
     const uid = auth.currentUser?.uid;
@@ -1816,13 +1883,7 @@ try {
                       setReelIndex(Math.max(0, videoIndex));
                       setShowReels(true);
                     }}
-                    onDoubleTapLike={async () => {
-                      try {
-                        const liked = await toggleProfilePostLike(item.id);
-                        setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
-                        setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
-                      } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
-                    }}
+                    onDoubleTapLike={() => { void handleHomePostLike(item.id); }}
                     onResumeVideo={() => {
                       if (showReels || isReelsOpenRef.current) return;
                       homeResumeBlockedRef.current = false;
@@ -1831,15 +1892,7 @@ try {
                       setActiveHomePostId(item.id);
                     }}
                     isLiked={likedPostIds.has(item.id)}
-                    onLike={async () => {
-                      try {
-                        const liked = await toggleProfilePostLike(item.id);
-                        setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
-                        setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
-                      } catch (e: any) {
-                        Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ.");
-                      }
-                    }}
+                    onLike={() => { void handleHomePostLike(item.id); }}
                     onComment={() => {
                       setCommentPost(item);
                       setComments([]);
@@ -2024,21 +2077,9 @@ try {
           setActiveHomePostId(null);
           setHomeVideoMuted(true);
         }}
-        onLike={async (item) => {
-          try {
-            const liked = await toggleProfilePostLike(item.id);
-            setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
-            setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
-          } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
-        }}
+        onLike={(item) => { void handleHomePostLike(item.id); }}
         isLiked={(postId) => likedPostIds.has(postId)}
-        onDoubleTapLike={async (item) => {
-          try {
-            const liked = await toggleProfilePostLike(item.id);
-            setLikedPostIds((prev) => { const next = new Set(prev); if (liked) next.add(item.id); else next.delete(item.id); return next; });
-            setHomeFeed((prev) => prev.map((p) => p.id === item.id ? { ...p, likesCount: Math.max(0, p.likesCount + (liked ? 1 : -1)) } : p));
-          } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
-        }}
+        onDoubleTapLike={(item) => { void handleHomePostLike(item.id); }}
          onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
          onShare={async (item) => {
            try {
