@@ -496,6 +496,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Email OTP ───────────────────────────────────────────────────────────────
 
+  /**
+   * POST /api/auth/google-login
+   * Verifies a Google account-selection token and returns a Firebase custom
+   * token only for an existing Firebase account. New accounts are created by
+   * the client through the normal email/password flow.
+   */
+  app.post("/api/auth/google-login", async (req: Request, res: Response) => {
+    const { idToken } = req.body as { idToken?: string };
+    if (!idToken) {
+      res.status(400).json({ ok: false, error: "رمز Google مفقود" });
+      return;
+    }
+
+    try {
+      const tokenResponse = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+      );
+      if (!tokenResponse.ok) {
+        res.status(401).json({ ok: false, error: "رمز Google غير صالح" });
+        return;
+      }
+
+      const tokenInfo = await tokenResponse.json() as {
+        aud?: string;
+        email?: string;
+        email_verified?: string;
+      };
+      const expectedAudience =
+        "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com";
+      const email = tokenInfo.email?.trim().toLowerCase();
+      if (
+        tokenInfo.aud !== expectedAudience ||
+        tokenInfo.email_verified !== "true" ||
+        !email
+      ) {
+        res.status(401).json({ ok: false, error: "تعذّر التحقق من حساب Google" });
+        return;
+      }
+
+      const admin = await getAdminApp();
+      const { getAuth } = await import("firebase-admin/auth");
+      const existing = await getAuth(admin).getUserByEmail(email);
+      const customToken = await getAuth(admin).createCustomToken(existing.uid);
+      res.json({ ok: true, customToken, uid: existing.uid, email });
+    } catch (err: any) {
+      if (err?.code === "auth/user-not-found") {
+        res.status(404).json({ ok: false, error: "هذا البريد غير مسجل" });
+        return;
+      }
+      console.error("[Google Auth] existing-account login failed:", err);
+      res.status(500).json({ ok: false, error: "تعذّر تسجيل الدخول بواسطة Google" });
+    }
+  });
+
   /** In-memory Email OTP store: email → { code, expiresAt } (5-min TTL) */
   const emailOtpStore = new Map<string, { code: string; expiresAt: number }>();
 

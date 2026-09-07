@@ -23,7 +23,7 @@ console.log("[app.config.js] baking replitDomain =", replitDomain || "(empty —
 module.exports = {
   name: "فورس",
   slug: "sanad-app",
-  version: "21",
+  version: "22",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "forus",
@@ -48,7 +48,7 @@ module.exports = {
     package: "com.haidar.forus",
     googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "pan",
-    versionCode: 21,
+    versionCode: 22,
     adaptiveIcon: {
       backgroundColor: "#0D1421",
       foregroundImage: "./assets/images/android-icon-foreground.png",

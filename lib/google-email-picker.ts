@@ -2,6 +2,11 @@ import { Platform } from "react-native";
 
 let configured = false;
 
+export interface GoogleAccountSelection {
+  email: string;
+  idToken: string | null;
+}
+
 /**
  * Opens the native Google account chooser and returns only the selected email.
  *
@@ -15,7 +20,7 @@ let configured = false;
  * The Google button itself requires a Development Build because
  * Expo Go does not contain RNGoogleSignin.
  */
-export async function pickGoogleEmail(): Promise<string | null> {
+export async function pickGoogleEmail(): Promise<GoogleAccountSelection | null> {
   if (Platform.OS !== "android") {
     throw new Error(
       "اختيار حساب Google متاح حالياً على أجهزة Android فقط"
@@ -53,6 +58,7 @@ export async function pickGoogleEmail(): Promise<string | null> {
   if (!configured) {
     GoogleSignin.configure({
       scopes: ["email", "profile"],
+      webClientId: "911663879269-006njooa5njderg7o05sju4bvtqaq3t7.apps.googleusercontent.com",
       offlineAccess: false,
     });
 
@@ -80,7 +86,9 @@ export async function pickGoogleEmail(): Promise<string | null> {
       ?.trim()
       .toLowerCase();
 
-    return email || null;
+    return email
+      ? { email, idToken: response.data?.idToken ?? null }
+      : null;
   } finally {
     /**
      * Google is only being used as an email picker.

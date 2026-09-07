@@ -1948,6 +1948,29 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   }
 };
 
+export const getUserProfileByEmail = async (
+  email: string,
+): Promise<{ userId: string; profile: UserProfile } | null> => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return null;
+    const snap = await getDocs(
+      query(
+        collection(db, "users"),
+        where("email", "==", normalizedEmail),
+        limit(1),
+      ),
+    );
+    const match = snap.docs[0];
+    return match
+      ? { userId: match.id, profile: match.data() as UserProfile }
+      : null;
+  } catch (err) {
+    console.error("getUserProfileByEmail error:", err);
+    return null;
+  }
+};
+
 export type FollowerProfile = {
   id: string;
   name: string;
