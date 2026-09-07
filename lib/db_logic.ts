@@ -26,6 +26,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { createActivityNotification } from "./notifications";
 
 // ─── Artisan Specialties ──────────────────────────────────────────────────────
 
@@ -491,6 +492,17 @@ export const createServiceRequest = async (
   } catch (err) {
     console.error("notify on createServiceRequest failed:", err);
   }
+  if (artisan?.userId) {
+    void createActivityNotification({
+      recipientId: artisan.userId,
+      actorId: data.clientId,
+      type: "purchase",
+      title: "طلب خدمة جديد",
+      body: `${data.clientName} أرسل طلب خدمة جديد`,
+      entityId: docRef.id,
+      entityType: "service",
+    });
+  }
 
   return docRef.id;
 };
@@ -564,6 +576,15 @@ async function notifyClientOnRequest(
   } catch (err) {
     console.error("notifyClientOnRequest failed:", err);
   }
+  void createActivityNotification({
+    recipientId: request.clientId,
+    actorId: request.artisanUserId || "",
+    type: "purchase",
+    title,
+    body,
+    entityId: request.id,
+    entityType: "service",
+  });
 }
 
 export const acceptServiceRequest = async (requestId: string): Promise<void> => {
@@ -776,7 +797,7 @@ export const getIsFollowing = async (followerId: string, artisanId: string): Pro
 export const followArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
   const profileRef = doc(db, "users", artisanId);
   const followRef = doc(db, "users", artisanId, "followers", followerId);
-  return runTransaction(db, async (transaction) => {
+  const followed = await runTransaction(db, async (transaction) => {
     const [profileSnap, followSnap] = await Promise.all([
       transaction.get(profileRef),
       transaction.get(followRef),
@@ -789,6 +810,18 @@ export const followArtisan = async (followerId: string, artisanId: string): Prom
     transaction.set(followRef, { followedAt: serverTimestamp() });
     return true;
   });
+  if (followed) {
+    void createActivityNotification({
+      recipientId: artisanId,
+      actorId: followerId,
+      type: "follow",
+      title: "متابع جديد",
+      body: "قام مستخدم بمتابعتك",
+      entityId: followerId,
+      entityType: "profile",
+    });
+  }
+  return followed;
 };
 
 export const unfollowArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
@@ -850,7 +883,7 @@ export const getIsProductLiked = async (likerId: string, productId: string): Pro
 export const likeProduct = async (likerId: string, productId: string): Promise<boolean> => {
   const productRef = doc(db, "products", productId);
   const likeRef = doc(db, "products", productId, "likes", likerId);
-  return runTransaction(db, async (transaction) => {
+  const liked = await runTransaction(db, async (transaction) => {
     const [productSnap, likeSnap] = await Promise.all([
       transaction.get(productRef),
       transaction.get(likeRef),
@@ -871,6 +904,22 @@ export const likeProduct = async (likerId: string, productId: string): Promise<b
     transaction.update(ownerRef, { contentLikesCount: increment(1) });
     return true;
   });
+  if (liked) {
+    const productSnap = await getDoc(productRef);
+    const ownerId = productSnap.exists() ? String((productSnap.data() as any).sellerId || "") : "";
+    if (ownerId) {
+      void createActivityNotification({
+        recipientId: ownerId,
+        actorId: likerId,
+        type: "like",
+        title: "إعجاب جديد",
+        body: "أعجب مستخدم بمنتجك",
+        entityId: productId,
+        entityType: "product",
+      });
+    }
+  }
+  return liked;
 };
 
 export const unlikeProduct = async (likerId: string, productId: string): Promise<boolean> => {
@@ -911,7 +960,7 @@ export const likeProfilePost = async (likerId: string, userId: string, postId: s
   if (likerId === userId) return false;
   const userRef = doc(db, "users", userId);
   const likeRef = doc(db, "users", userId, "profilePosts", postId, "likes", likerId);
-  return runTransaction(db, async (transaction) => {
+  const liked = await runTransaction(db, async (transaction) => {
     const [userSnap, likeSnap] = await Promise.all([
       transaction.get(userRef),
       transaction.get(likeRef),
@@ -931,6 +980,18 @@ export const likeProfilePost = async (likerId: string, userId: string, postId: s
     transaction.update(userRef, { contentLikesCount: increment(1) });
     return true;
   });
+  if (liked) {
+    void createActivityNotification({
+      recipientId: userId,
+      actorId: likerId,
+      type: "like",
+      title: "إعجاب جديد",
+      body: "أعجب مستخدم بمنشورك",
+      entityId: postId,
+      entityType: "post",
+    });
+  }
+  return liked;
 };
 
 export const unlikeProfilePost = async (likerId: string, userId: string, postId: string): Promise<boolean> => {
@@ -2282,7 +2343,7 @@ export const toggleProfilePostLike = async (postId: string): Promise<boolean> =>
   const postRef = doc(db, "posts", postId);
   const likeRef = doc(db, "posts", postId, "likes", viewer);
 
-  return runTransaction(db, async (transaction) => {
+  const liked = await runTransaction(db, async (transaction) => {
     const [postSnap, likeSnap] = await Promise.all([
       transaction.get(postRef),
       transaction.get(likeRef),
@@ -2319,6 +2380,24 @@ export const toggleProfilePostLike = async (postId: string): Promise<boolean> =>
     }
     return true;
   });
+  if (liked) {
+    const postSnap = await getDoc(postRef);
+    const ownerId = postSnap.exists()
+      ? String((postSnap.data() as any).userId || (postSnap.data() as any).ownerId || "")
+      : "";
+    if (ownerId) {
+      void createActivityNotification({
+        recipientId: ownerId,
+        actorId: viewer,
+        type: "like",
+        title: "إعجاب جديد",
+        body: "أعجب مستخدم بمنشورك",
+        entityId: postId,
+        entityType: "post",
+      });
+    }
+  }
+  return liked;
 };
 
 
@@ -2357,6 +2436,21 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
   // Best-effort aggregate update; the actual comment write above is the source
   // of truth and must not be rolled back by parent permission rules.
   await updateDoc(doc(db, "posts", postId), { commentsCount: increment(1) }).catch(() => undefined);
+  const postSnapshot = await getDoc(doc(db, "posts", postId));
+  const ownerId = postSnapshot.exists()
+    ? String((postSnapshot.data() as any).userId || (postSnapshot.data() as any).ownerId || "")
+    : "";
+  if (ownerId) {
+    void createActivityNotification({
+      recipientId: ownerId,
+      actorId: viewer.uid,
+      type: "comment",
+      title: "تعليق جديد",
+      body: `${comment.userName} علّق على منشورك`,
+      entityId: postId,
+      entityType: "post",
+    });
+  }
 
   return {
     id: commentRef.id,
@@ -2790,6 +2884,15 @@ export const createProductOrder = async (
   } catch (err) {
     console.error("notify seller on productOrder failed:", err);
   }
+  void createActivityNotification({
+    recipientId: data.sellerId,
+    actorId: data.buyerId,
+    type: "purchase",
+    title: "طلب شراء جديد",
+    body: `${data.buyerName} أرسل طلب شراء لمنتجك`,
+    entityId: docRef.id,
+    entityType: "order",
+  });
   return docRef.id;
 };
 
@@ -2817,6 +2920,17 @@ export const respondToProductOrder = async (
   } catch (err) {
     console.error("notify buyer on productOrder response failed:", err);
   }
+  void createActivityNotification({
+    recipientId: buyerId,
+    actorId: auth.currentUser?.uid || "",
+    type: "purchase",
+    title: response === "accepted" ? `تم قبول طلبك — ${productTitle}` : `تم رفض طلبك — ${productTitle}`,
+    body: response === "accepted"
+      ? "تم قبول طلب الشراء، يمكنك متابعة التفاصيل."
+      : "اعتذر صاحب المنتج عن قبول طلب الشراء.",
+    entityId: orderId,
+    entityType: "order",
+  });
 };
 
 export const deleteProduct = async (productId: string): Promise<void> => {

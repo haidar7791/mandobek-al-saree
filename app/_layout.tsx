@@ -50,6 +50,7 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="product/[id]" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="messages" />
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="reservations" />
         <Stack.Screen name="active-order" />
         <Stack.Screen name="support" />

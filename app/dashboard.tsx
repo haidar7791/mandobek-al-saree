@@ -81,6 +81,7 @@ import {
   performSignOut,
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
+import { createActivityNotification, subscribeToNotifications } from "@/lib/notifications";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import ProfilePostComposerModal, {
   type ProfilePostDraftMedia,
@@ -1116,6 +1117,17 @@ const isFocused = useIsFocused();
     return chatLastAts.filter((at) => at && at > lastMsgSeen).length;
   }, [chatLastAts, lastMsgSeen]);
 
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  useEffect(() => {
+    if (!userId) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+    return subscribeToNotifications(userId, (items) => {
+      setUnreadNotificationCount(items.filter((item) => !item.read).length);
+    });
+  }, [userId]);
+
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
 
@@ -1411,11 +1423,25 @@ try {
             </View>
             <Text style={styles.headerIconLabel}>المراسلات</Text>
           </Pressable>
-          <Pressable style={styles.headerIconCol} onPress={() => router.push("/support" as any)}>
+          <Pressable
+            style={styles.headerIconCol}
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/notifications" as any);
+            }}
+            accessibilityLabel="الإشعارات"
+          >
             <View style={styles.headerIconBtn}>
-              <Feather name="headphones" size={20} color="#FFF" />
+              <Feather name="bell" size={20} color="#FFF" />
+              {unreadNotificationCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                  </Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.headerIconLabel}>خدمة العملاء</Text>
+            <Text style={styles.headerIconLabel}>الإشعارات</Text>
           </Pressable>
           <View style={styles.headerIconCol}>
             <ProfileAvatar
@@ -1776,6 +1802,18 @@ try {
                           title: item.userName,
                           message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}`,
                         });
+                         const viewer = auth.currentUser;
+                         if (viewer) {
+                           void createActivityNotification({
+                             recipientId: item.userId,
+                             actorId: viewer.uid,
+                             type: "share",
+                             title: "مشاركة جديدة",
+                             body: "تمت مشاركة منشورك",
+                             entityId: item.id,
+                             entityType: "post",
+                           });
+                         }
                       } catch (e) {
                         console.warn("share post failed", e);
                       }
@@ -1953,10 +1991,26 @@ try {
           } catch (e: any) { Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ."); }
         }}
          onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
-        onShare={async (item) => {
-          try { await Share.share({ title: item.userName, message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}` }); }
-          catch (e) { console.warn("share reel failed", e); }
-        }}
+         onShare={async (item) => {
+           try {
+             await Share.share({
+               title: item.userName,
+               message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}`,
+             });
+             const viewer = auth.currentUser;
+             if (viewer) {
+               void createActivityNotification({
+                 recipientId: item.userId,
+                 actorId: viewer.uid,
+                 type: "share",
+                 title: "مشاركة جديدة",
+                 body: "تمت مشاركة منشورك",
+                 entityId: item.id,
+                 entityType: "post",
+               });
+             }
+           } catch (e) { console.warn("share reel failed", e); }
+         }}
         onOpenProfile={(item) => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           setShowReels(false);

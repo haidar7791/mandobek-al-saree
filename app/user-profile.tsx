@@ -36,6 +36,7 @@ import {
 import PublicProfileTabs from "@/components/PublicProfileTabs";
 import { ShareModal } from "@/components/ShareModal";
 import Colors from "@/constants/colors";
+import { createActivityNotification } from "@/lib/notifications";
 
 const C = Colors.light;
 
@@ -352,6 +353,20 @@ export default function UserProfileScreen() {
         deepLinkPath={userId ? `user/${userId}` : undefined}
         shareText={`👤 ${displayName}\nملف شخصي على تطبيق فورس`}
         shareMessage={`👤 تعرّف على ${displayName} على تطبيق فورس`}
+        onShared={() => {
+          const viewer = auth.currentUser;
+          if (viewer && userId) {
+            void createActivityNotification({
+              recipientId: userId,
+              actorId: viewer.uid,
+              type: "share",
+              title: "مشاركة ملفك",
+              body: "تمت مشاركة ملفك الشخصي",
+              entityId: userId,
+              entityType: "profile",
+            });
+          }
+        }}
       />
     </View>
   );

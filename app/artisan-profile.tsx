@@ -41,6 +41,7 @@ import {
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
 import Colors from "@/constants/colors";
+import { createActivityNotification } from "../lib/notifications";
 
 const C = Colors.light;
 
@@ -466,6 +467,20 @@ export default function ArtisanProfileScreen() {
         deepLinkPath={artisanId ? `profile/${artisanId}` : undefined}
         shareText={`👤 ${artisan.name} — ${artisan.specialty ? getSpecialtyLabel(artisan.specialty) : "متخصص"}\nملف شخصي على تطبيق فورس`}
         shareMessage={`👤 تعرّف على ${artisan.name}${artisan.specialty ? " (" + getSpecialtyLabel(artisan.specialty) + ")" : ""} على تطبيق فورس`}
+        onShared={() => {
+          const viewer = auth.currentUser;
+          if (viewer && artisan.userId) {
+            void createActivityNotification({
+              recipientId: artisan.userId,
+              actorId: viewer.uid,
+              type: "share",
+              title: "مشاركة ملفك",
+              body: "تمت مشاركة ملفك الشخصي",
+              entityId: artisan.userId,
+              entityType: "profile",
+            });
+          }
+        }}
       />
     </View>
   );

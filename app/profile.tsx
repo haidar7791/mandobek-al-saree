@@ -440,10 +440,17 @@ export default function ProfileScreen() {
             <Text style={styles.logoutHeaderText}>خروج</Text>
           </Pressable>
           <Text style={styles.headerTitle}>الملف الشخصي</Text>
-          {/* Settings — top-right → opens edit modal */}
-          <Pressable onPress={openEditModal} style={styles.headerIcon}>
-            <Feather name="settings" size={20} color={C.accent} />
-          </Pressable>
+          {/* Settings and customer support stay together under the profile header. */}
+          <View style={styles.headerTools}>
+            <Pressable onPress={openEditModal} style={styles.headerIcon}>
+              <Feather name="settings" size={20} color={C.accent} />
+              <Text style={styles.headerToolLabel}>الإعدادات</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push("/support" as any)} style={styles.headerIcon}>
+              <Feather name="headphones" size={19} color={C.accent} />
+              <Text style={styles.headerToolLabel}>خدمة العملاء</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.avatarSection}>
@@ -1054,6 +1061,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
+  headerTools: {
+    width: 92,
+    alignItems: "center",
+    gap: 5,
+  },
   // Logout button — top-left of header
   logoutHeaderBtn: {
     flexDirection: "row",
@@ -1077,12 +1089,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   headerIcon: {
-    width: 40,
-    height: 40,
+    width: 92,
+    height: 34,
     borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.12)",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 5,
+  },
+  headerToolLabel: {
+    color: C.accent,
+    fontSize: 10,
+    fontFamily: "Cairo_700Bold",
   },
   avatarSection: { alignItems: "center", gap: 8 },
   avatarWrap: {

@@ -91,6 +91,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Activity notifications are private to their recipient. A signed-in
+    // client may create only an activity attributed to its own account.
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.recipientId != request.auth.uid;
+      allow update: if isSignedIn() && resource.data.recipientId == request.auth.uid
+        && request.resource.data.recipientId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+    }
+
     // ── الحرفيون والبائعون ───────────────────────────────────────────────────
     match /artisans/{artisanId} {
       allow read, write: if isSignedIn();

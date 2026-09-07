@@ -14,3 +14,4 @@
 - [Firebase module type exports](firebase-module-types.md) — Firebase subpath runtime imports can lack top-level declarations; re-export @firebase types locally
 - [EAS Node and Metro watcher constraints](eas-node-and-metro-watchers.md) — EAS needs an exact Node version; keep global EAS CLI outside the project tree to avoid Metro ENOSPC
 - [Gmail SMTP authentication](gmail-smtp-authentication.md) — use Gmail App Password SMTP auth with EMAIL_PASSWORD; invalid_grant and 535 indicate different credential failures
+- [Expo dependency sync](expo-dependency-sync.md) — a package can be listed in package.json while missing from node_modules and breaking Expo config resolution

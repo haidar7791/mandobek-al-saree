@@ -42,11 +42,13 @@ export interface ShareModalProps {
   cardDetails?: string[];
   /** One or more accepted seller orders or my-products to send as rich cards. */
   orderCards?: OrderSharePayload[];
+  /** Called after an external or in-app share succeeds. */
+  onShared?: () => void;
 }
 
 export function ShareModal({
   visible, onClose, shareText, shareMessage, title, cardImage, cardTitle, cardRoute,
-  deepLinkPath, cardDetails, orderCards,
+  deepLinkPath, cardDetails, orderCards, onShared,
 }: ShareModalProps) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [searchResults, setSearchResults] = useState<ShareUserResult[]>([]);
@@ -91,6 +93,7 @@ export function ShareModal({
         links = orderCards.map((o) => `\n\n📦 ${o.productTitle}\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
       }
       await Share.share({ message: shareText + links, title: title || "مشاركة" });
+      onShared?.();
     } catch {}
   };
 
@@ -121,6 +124,7 @@ export function ShareModal({
         await sendMessage(chatId, user.uid, senderName, shareMessage);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onShared?.();
       onClose();
       router.push({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
     } catch {

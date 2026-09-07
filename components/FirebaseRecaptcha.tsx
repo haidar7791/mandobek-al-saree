@@ -10,16 +10,13 @@
  *   The WebView auto-fires reCAPTCHA on load and posts the token immediately.
  *   Previously, _resolve was still null at that moment so the token was silently
  *   dropped, leaving every subsequent verify() Promise hanging forever.
- *   Now we cache the token (or error) so verify() can return it instantly, and
- *   we reload the WebView whenever a fresh token is needed (e.g. resend).
+ *   Now we cache the token (or error) so verify() can return it instantly.
  *
  * On web (Platform.OS === 'web') use Firebase's native RecaptchaVerifier instead.
  */
 
 import React, {
   useRef,
-  useState,
-  useEffect,
   forwardRef,
   useImperativeHandle,
   useCallback,
@@ -34,7 +31,7 @@ import { firebaseConfig } from "@/lib/firebase";
 export interface FirebaseRecaptchaHandle {
   /** Implements ApplicationVerifier — pass to signInWithPhoneNumber */
   readonly verifier: ApplicationVerifier;
-  /** Clears the one-time token and remounts the verifier for a new OTP request. */
+  /** Clears the current one-time token before a new OTP request. */
   reset(): void;
 }
 
@@ -90,12 +87,6 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
   private _cachedToken: string | null = null;
   private _cachedError: string | null = null;
 
-  /**
- * Called by the component when it needs to reload the WebView to
-   * generate a new reCAPTCHA token (e.g. resend scenario).
-   */
-  _onNeedRefresh: (() => void) | null = null;
-
   verify(): Promise<string> {
     console.log("[RecaptchaVerifier] verify() called");
 
@@ -115,10 +106,10 @@ class WebViewRecaptchaVerifier implements ApplicationVerifier {
       return Promise.reject(new Error(msg));
     }
 
-    // ── Case 3: no token yet — reload WebView to trigger a fresh one ──
-    console.log("[RecaptchaVerifier] no cached token; requesting WebView refresh");
-    this._onNeedRefresh?.();
-
+    // ── Case 3: no token yet — wait for the already-mounted WebView ──
+    // The component deliberately does not remount itself here. Firebase's
+    // verifier can deliver the token asynchronously through onMessage.
+    console.log("[RecaptchaVerifier] no cached token; waiting for WebView");
     return new Promise<string>((resolve, reject) => {
       this._resolve = resolve;
       this._reject = reject;
@@ -242,21 +233,6 @@ function buildHtml(config: typeof firebaseConfig): string {
  */
 const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
   const verifierRef = useRef(new WebViewRecaptchaVerifier());
-  // Incrementing this key forces the WebView to fully remount and re-fire reCAPTCHA
-  const [webviewKey, setWebviewKey] = useState(0);
-
-  // Wire the refresh callback into the verifier
-  useEffect(() => {
-    const v = verifierRef.current;
-    v._onNeedRefresh = () => {
-      console.log("[FirebaseRecaptcha] remounting WebView for fresh token");
-      // إعادة تعيين State فقط — لا استدعاء لأي دالة reset()
-      setWebviewKey((k) => k + 1);
-    };
-    return () => {
-      v._onNeedRefresh = null;
-    };
-  }, []);
 
   useImperativeHandle(ref, () => ({
     verifier: verifierRef.current,
@@ -285,7 +261,6 @@ const FirebaseRecaptcha = forwardRef<FirebaseRecaptchaHandle>((_, ref) => {
   return (
     <View style={styles.hidden} pointerEvents="none">
       <WebView
-        key={webviewKey}
         style={styles.webview}
         source={{
           html: buildHtml(firebaseConfig),

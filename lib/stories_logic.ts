@@ -28,6 +28,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getApiUrl } from "./config";
+import { createActivityNotification } from "./notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,6 +212,22 @@ export async function toggleStoryLike(
   await updateDoc(doc(db, "stories", storyId), {
     likes: currentlyLiked ? arrayRemove(userId) : arrayUnion(userId),
   });
+  if (!currentlyLiked) {
+    const story = await getDocs(query(collection(db, "stories"), where("__name__", "==", storyId)));
+    const storyDoc = story.docs[0];
+    const ownerId = storyDoc ? String(storyDoc.data().userId || "") : "";
+    if (ownerId) {
+      void createActivityNotification({
+        recipientId: ownerId,
+        actorId: userId,
+        type: "like",
+        title: "إعجاب جديد",
+        body: "أعجب مستخدم بقصتك",
+        entityId: storyId,
+        entityType: "story",
+      });
+    }
+  }
 }
 
 // ─── Realtime listeners ───────────────────────────────────────────────────────
