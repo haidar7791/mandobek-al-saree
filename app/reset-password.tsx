@@ -17,21 +17,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import { getApiUrl } from "@/lib/config";
 
 const C = Colors.light;
 
 // ─── Backend URL ──────────────────────────────────────────────────────────────
 /** Cloud Run production backend — stable URL */
-const CLOUD_RUN_BASE = "https://forus-backend-laoeoqcoza-ew.a.run.app";
-
-function getApiBase(): string {
-  // Explicit env override (EAS builds can set this)
-  const explicit = process.env.EXPO_PUBLIC_SERVER_URL;
-  if (explicit && explicit.startsWith("https://") && !explicit.includes("localhost")) {
-    return explicit.endsWith("/") ? explicit : explicit + "/";
-  }
-  return CLOUD_RUN_BASE + "/";
-}
 
 // ─── PasswordInput helper ─────────────────────────────────────────────────────
 
@@ -108,7 +99,7 @@ export default function ResetPasswordScreen() {
 
     setLoading(true);
     try {
-      const endpoint = `${getApiBase()}api/reset-password-with-token`;
+      const endpoint = getApiUrl("/api/reset-password-with-token");
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,7 +148,7 @@ export default function ResetPasswordScreen() {
           </Text>
           <Pressable
             style={styles.loginBtn}
-            onPress={() => router.replace("/login" as any)}
+            onPress={() => router.replace("/" as any)}
           >
             <LinearGradient
               colors={[C.accent, C.accentLight]}

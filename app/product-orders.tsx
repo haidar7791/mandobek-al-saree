@@ -424,7 +424,7 @@ export default function ProductOrdersScreen() {
 
   useEffect(() => {
     const user = auth.currentUser;
-    if (!user) { router.replace("/login" as any); return; }
+    if (!user) { router.replace("/" as any); return; }
     const unsubSales = subscribeToSellerProductOrders(
       user.uid,
       (data) => { setSaleOrders(data); setLoadingSales(false); },

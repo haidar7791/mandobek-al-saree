@@ -31,7 +31,7 @@ export async function pickGoogleEmail(): Promise<GoogleAccountSelection | null> 
    * Load Google Sign-In only when the Google button is actually used.
    *
    * This prevents Expo Go from trying to load RNGoogleSignin
-   * while opening the login/register screens.
+    * while opening the auth screen.
    */
   let GoogleSignin: any;
   let isSuccessResponse: any;

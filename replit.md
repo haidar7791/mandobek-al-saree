@@ -20,7 +20,7 @@ The backend serves a landing page at port 5000 with a QR code. Scan it with **Ex
 
 ## Key files
 
-- `app/` — Expo Router screens (login, register, dashboard, chat, wallet, admin, etc.)
+- `app/` — Expo Router screens (authentication, dashboard, chat, wallet, admin, etc.)
 - `server/` — Express backend (routes, storage, email templates)
 - `app.json` — Expo / EAS config (app name, bundle IDs, plugins)
 - `assets/images/` — App icons and splash screen

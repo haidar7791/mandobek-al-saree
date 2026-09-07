@@ -134,7 +134,7 @@ export default function MessagesScreen() {
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
     const unsub = subscribeToUserChats(

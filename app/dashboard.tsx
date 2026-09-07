@@ -1248,7 +1248,7 @@ const isFocused = useIsFocused();
 
   const loadData = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user) { router.replace("/login" as any); return; }
+    if (!user) { router.replace("/" as any); return; }
 
     try {
       const [profile, allArtisans] = await Promise.all([
@@ -1386,7 +1386,7 @@ try {
         style: "destructive",
         onPress: async () => {
           await performSignOut();
-          router.replace("/login");
+          router.replace("/");
         },
       },
     ]);

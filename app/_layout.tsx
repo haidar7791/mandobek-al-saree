@@ -22,7 +22,7 @@ SplashScreen.preventAutoHideAsync();
 
 I18nManager.forceRTL(true);
 
-// Auth-gated routing: the "logged out" group (index/login/register) and the
+// Auth-gated routing: the single logged-out auth screen (index) and the
 // "logged in" group (dashboard and everything behind it) are mounted
 // exclusively via Stack.Protected. When isLoggedIn flips, expo-router
 // unmounts the inactive group entirely — its screens are wiped from the
@@ -35,8 +35,6 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!isLoggedIn}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="register" />
       </Stack.Protected>
 
       <Stack.Protected guard={isLoggedIn}>

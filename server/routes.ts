@@ -550,6 +550,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * POST /api/auth/google-email-login
+   * POST /api/google-email-login (legacy alias)
+   *
+   * Google is used only to choose an email address. Existing Firebase users
+   * receive a custom token; a new address is returned to the client so it can
+   * complete normal email/password account creation.
+   */
+  app.post(
+    ["/api/auth/google-email-login", "/api/google-email-login"],
+    async (req: Request, res: Response) => {
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.status(400).json({ ok: false, error: "بريد إلكتروني غير صحيح" });
+        return;
+      }
+
+      try {
+        const admin = await getAdminApp();
+        const { getAuth } = await import("firebase-admin/auth");
+        const firebaseAuth = getAuth(admin);
+        const existing = await firebaseAuth.getUserByEmail(email);
+        const customToken = await firebaseAuth.createCustomToken(existing.uid);
+        res.json({
+          ok: true,
+          exists: true,
+          customToken,
+          email,
+        });
+      } catch (err: any) {
+        if (err?.code === "auth/user-not-found") {
+          res.json({ ok: true, exists: false, email });
+          return;
+        }
+
+        console.error("[Google email auth] lookup failed:", err);
+        res.status(500).json({
+          ok: false,
+          error: "تعذّر التحقق من البريد الإلكتروني",
+        });
+      }
+    },
+  );
+
   /** In-memory Email OTP store: email → { code, expiresAt } (5-min TTL) */
   const emailOtpStore = new Map<string, { code: string; expiresAt: number }>();
 
@@ -711,7 +755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   function getResetLinkBase(): string {
     // Always use the stable Cloud Run URL so reset links work from any device
-    return "https://forus-backend-laoeoqcoza-ew.a.run.app";
+    return "https://forus-backend-911663879269.europe-west1.run.app";
   }
 
   // ─── Reset-password web page ───────────────────────────────────────────────

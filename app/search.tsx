@@ -99,7 +99,7 @@ export default function SearchScreen() {
   // ── Buy handler (same logic as dashboard) ────────────────────────────────
   const handleBuyProduct = async (p: Product) => {
     const user = auth.currentUser;
-    if (!user) { router.replace("/login" as any); return; }
+    if (!user) { router.replace("/" as any); return; }
     const selfProfile = await getUserProfile(user.uid);
     Alert.alert(
       "تأكيد الشراء",

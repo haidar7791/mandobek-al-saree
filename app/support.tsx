@@ -10,7 +10,7 @@ export default function SupportScreen() {
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
     setChatId(buildSupportChatId(user.uid));

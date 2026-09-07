@@ -19,7 +19,7 @@ function setupCors(app: express.Application) {
     const origins = new Set<string>();
 
     // Cloud Run production URL — always allowed
-    origins.add("https://forus-backend-laoeoqcoza-ew.a.run.app");
+    origins.add("https://forus-backend-911663879269.europe-west1.run.app");
 
     if (process.env.REPLIT_DEV_DOMAIN) {
       origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);

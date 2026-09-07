@@ -260,7 +260,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
 

@@ -13,13 +13,10 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import type { ProductMedia } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import { API_BASE_URL } from "@/lib/config";
 
 const C = Colors.light;
-// Expo web is served by Metro on :8081 while API routes live behind the
-// Express proxy on :5000, so relative /api URLs miss the server in development.
-const API_ORIGIN = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : "";
+const API_ORIGIN = API_BASE_URL;
 
 type ProductOrderThumbnailProps = {
   imageUrl?: string | null;

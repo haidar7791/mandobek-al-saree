@@ -59,7 +59,7 @@ export default function ActiveOrderScreen() {
     if (!requestId) return;
     const user = auth.currentUser;
     if (!user) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
     (async () => {

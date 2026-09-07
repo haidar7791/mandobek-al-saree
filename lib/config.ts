@@ -2,6 +2,7 @@
 
 // الرابط المباشر والدائم لسيرفر Google Cloud Run الحالي
 export const API_BASE_URL = "https://forus-backend-911663879269.europe-west1.run.app";
+export const GOOGLE_EMAIL_LOGIN_PATH = "/api/auth/google-email-login";
 
 // Public HTTPS host used for Android App Links and external sharing.
 // This is the current Cloud Run service URL; replace it only when a custom

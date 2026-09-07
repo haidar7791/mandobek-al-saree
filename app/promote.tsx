@@ -52,7 +52,7 @@ export default function PromoteScreen() {
   const load = async () => {
     const user = auth.currentUser;
     if (!user) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
     const [a, b] = await Promise.all([

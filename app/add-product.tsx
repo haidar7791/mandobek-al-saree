@@ -101,7 +101,7 @@ export default function AddProductScreen() {
     }
 
     const user = auth.currentUser;
-    if (!user) { router.replace("/login" as any); return; }
+    if (!user) { router.replace("/" as any); return; }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
