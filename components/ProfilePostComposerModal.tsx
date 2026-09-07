@@ -45,6 +45,72 @@ export default function ProfilePostComposerModal({
     if (!posting) onClose();
   };
 
+  const sheet = (
+    <View style={styles.sheet}>
+      <View style={styles.handle} />
+      <View style={styles.header}>
+        <Text style={styles.title}>وصف المنشور</Text>
+        <Pressable
+          disabled={posting}
+          onPress={close}
+          style={styles.closeButton}
+          accessibilityRole="button"
+          accessibilityLabel="إغلاق نافذة وصف المنشور"
+        >
+          <Feather name="x" size={19} color={C.textSecondary} />
+        </Pressable>
+      </View>
+
+      {media && (
+        media.mediaType === "video" ? (
+          <View style={styles.previewVideo}>
+            <Video
+              source={{ uri: media.uri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={false}
+              isMuted
+            />
+          </View>
+        ) : (
+          <Image
+            source={{ uri: media.uri }}
+            style={styles.previewImage}
+            resizeMode="cover"
+          />
+        )
+      )}
+
+      <TextInput
+        value={caption}
+        onChangeText={onCaptionChange}
+        placeholder="اكتب وصفاً أو تفاصيل عن المنشور..."
+        placeholderTextColor={C.textMuted}
+        style={styles.input}
+        multiline
+        maxLength={1000}
+        textAlign="right"
+        editable={!posting}
+        autoFocus
+      />
+
+      <Pressable
+        style={styles.publishButton}
+        onPress={onPublish}
+        disabled={posting}
+        accessibilityRole="button"
+        accessibilityLabel="نشر المنشور"
+      >
+        {posting ? (
+          <ActivityIndicator size="small" color="#FFF" />
+        ) : (
+          <Feather name="send" size={17} color="#FFF" />
+        )}
+        <Text style={styles.publishText}>{posting ? "جارٍ النشر..." : "نشر"}</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <Modal
       visible={!!media}
@@ -55,75 +121,24 @@ export default function ProfilePostComposerModal({
     >
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
-          style={styles.keyboard}
-        >
-          <View style={styles.sheet}>
-            <View style={styles.handle} />
-            <View style={styles.header}>
-              <Text style={styles.title}>وصف المنشور</Text>
-              <Pressable
-                disabled={posting}
-                onPress={close}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel="إغلاق نافذة وصف المنشور"
-              >
-                <Feather name="x" size={19} color={C.textSecondary} />
-              </Pressable>
-            </View>
-
-            {media && (
-              media.mediaType === "video" ? (
-                <View style={styles.previewVideo}>
-                  <Video
-                    source={{ uri: media.uri }}
-                    style={StyleSheet.absoluteFill}
-                    resizeMode={ResizeMode.COVER}
-                    shouldPlay={false}
-                    isMuted
-                  />
-                </View>
-              ) : (
-                <Image
-                  source={{ uri: media.uri }}
-                  style={styles.previewImage}
-                  resizeMode="cover"
-                />
-              )
-            )}
-
-            <TextInput
-              value={caption}
-              onChangeText={onCaptionChange}
-              placeholder="اكتب وصفاً أو تفاصيل عن المنشور..."
-              placeholderTextColor={C.textMuted}
-              style={styles.input}
-              multiline
-              maxLength={1000}
-              textAlign="right"
-              editable={!posting}
-              autoFocus
-            />
-
-            <Pressable
-              style={styles.publishButton}
-              onPress={onPublish}
-              disabled={posting}
-              accessibilityRole="button"
-              accessibilityLabel="نشر المنشور"
-            >
-              {posting ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Feather name="send" size={17} color="#FFF" />
-              )}
-              <Text style={styles.publishText}>{posting ? "جارٍ النشر..." : "نشر"}</Text>
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
+        {Platform.OS === "ios" ? (
+          <KeyboardAvoidingView
+            behavior="padding"
+            keyboardVerticalOffset={0}
+            style={styles.keyboard}
+          >
+            {sheet}
+          </KeyboardAvoidingView>
+        ) : (
+          <KeyboardAvoidingView
+            behavior="position"
+            keyboardVerticalOffset={0}
+            style={styles.keyboard}
+            contentContainerStyle={styles.keyboardContent}
+          >
+            {sheet}
+          </KeyboardAvoidingView>
+        )}
       </View>
     </Modal>
   );
@@ -136,6 +151,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   keyboard: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "flex-end",
+  },
+  keyboardContent: {
     flex: 1,
     width: "100%",
     justifyContent: "flex-end",
