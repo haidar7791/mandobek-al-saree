@@ -18,3 +18,4 @@
 - [Notification copy and routing](notification-copy-routing.md) — keep notification wording centralized and route order actions by explicit status
 - [Denormalized name sync](name-sync-denormalized-content.md) — rename propagation must cover legacy ownership fields across all content records
 - [Product video fullscreen behavior](product-video-fullscreen.md) — shared media carousels must opt into product-feed fullscreen synchronization explicitly
+- [Chat unread state](chat-unread-state.md) — keep list highlighting separate from the home badge's latest-sender rule

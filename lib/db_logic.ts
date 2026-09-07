@@ -1111,6 +1111,7 @@ export const ensureSupportWelcome = async (userId: string): Promise<void> => {
         participants: [userId, ADMIN_UID].sort(),
         lastMessage: SUPPORT_AUTO_REPLY,
         lastAt: new Date().toISOString(),
+        lastSenderId: ADMIN_UID,
         isSupport: true,
       },
       { merge: true }
@@ -1185,7 +1186,43 @@ export interface ChatSummary {
   otherPhotoUri: string | null;
   lastMessage: string;
   lastAt: string;
+  lastSenderId?: string;
+  unreadCount?: number;
 }
+
+export interface ChatLastActivity {
+  lastAt: string;
+  lastSenderId: string;
+  unreadCount: number;
+}
+
+const getChatReadState = async (
+  chatId: string,
+  viewerId: string,
+  chatData: Record<string, any>,
+): Promise<{ lastSenderId: string; unreadCount: number }> => {
+  try {
+    const messagesSnap = await getDocs(collection(db, "chats", chatId, "messages"));
+    const messageDocs = messagesSnap.docs;
+    const latestMessage = messageDocs.reduce<any>((latest, current) => {
+      const currentAt = String(current.data().createdAt || "");
+      const latestAt = String(latest?.createdAt || "");
+      return currentAt > latestAt ? current.data() : latest;
+    }, null);
+    const lastSenderId = String(chatData.lastSenderId || latestMessage?.senderId || "");
+    const unreadCount = messageDocs.filter((message) => {
+      const data = message.data();
+      return data.senderId !== viewerId && data.read !== true;
+    }).length;
+    return { lastSenderId, unreadCount };
+  } catch (err) {
+    console.error("getChatReadState error:", err);
+    return {
+      lastSenderId: String(chatData.lastSenderId || ""),
+      unreadCount: 0,
+    };
+  }
+};
 
 export function buildChatId(uid1: string, uid2: string): string {
   return [uid1, uid2].sort().join("_");
@@ -1210,6 +1247,7 @@ export const sendMessage = async (
       participants: chatId.split("_"),
       lastMessage: text,
       lastAt: new Date().toISOString(),
+      lastSenderId: senderId,
     },
     { merge: true }
   );
@@ -1259,6 +1297,7 @@ export const sendStoryReply = async (
       participants: chatId.split("_"),
       lastMessage: text,
       lastAt: new Date().toISOString(),
+      lastSenderId: senderId,
     },
     { merge: true }
   );
@@ -1316,6 +1355,7 @@ export const sendCardMessage = async (
       participants: chatId.split("_"),
       lastMessage: previewText,
       lastAt: new Date().toISOString(),
+      lastSenderId: senderId,
     },
     { merge: true }
   );
@@ -1481,6 +1521,7 @@ export const sendOrderCardMessage = async (
     participants: chatId.split("_"),
     lastMessage: previewText,
     lastAt: new Date().toISOString(),
+    lastSenderId: senderId,
   }, { merge: true });
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
@@ -1525,14 +1566,16 @@ export const getUserChats = async (
           const data = d.data();
           const participants: string[] = data.participants || [];
           const otherUid = participants.find((u) => u !== userId) || "";
-          const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
+           const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
+           const readState = await getChatReadState(d.id, userId, data);
           return {
             chatId: d.id,
             otherUserId: otherUid,
             otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
             otherPhotoUri: otherProfile?.photoUri || null,
             lastMessage: data.lastMessage || "",
-            lastAt: data.lastAt || "",
+             lastAt: data.lastAt || "",
+             ...readState,
           } as ChatSummary;
         })
     );
@@ -1568,14 +1611,16 @@ export const subscribeToUserChats = (
           const data = d.data();
           const participants: string[] = data.participants || [];
           const otherUid = participants.find((u) => u !== userId) || "";
-          const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
+           const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
+           const readState = await getChatReadState(d.id, userId, data);
           return {
             chatId: d.id,
             otherUserId: otherUid,
             otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
             otherPhotoUri: otherProfile?.photoUri || null,
             lastMessage: data.lastMessage || "",
-            lastAt: data.lastAt || "",
+             lastAt: data.lastAt || "",
+             ...readState,
           } as ChatSummary;
         })
     );
@@ -1604,6 +1649,11 @@ export const markMessagesRead = async (chatId: string, readerId: string): Promis
       });
       await batch.commit();
     }
+    await setDoc(
+      doc(db, "chats", chatId),
+      { lastReadAtBy: { [readerId]: new Date().toISOString() } },
+      { merge: true },
+    );
   } catch (err) {
     console.error("markMessagesRead error:", err);
   }
@@ -1669,6 +1719,7 @@ export const sendMediaMessage = async (
       participants: chatId.split("_"),
       lastMessage: msgData.text,
       lastAt: new Date().toISOString(),
+      lastSenderId: senderId,
     },
     { merge: true }
   );
@@ -1694,15 +1745,24 @@ export const sendMediaMessage = async (
 
 export const subscribeToUserChatLastAts = (
   userId: string,
-  callback: (lastAts: string[]) => void
+  callback: (activities: ChatLastActivity[]) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, "chats"),
     where("participants", "array-contains", userId)
   );
-  return onSnapshot(q, (snap) => {
-    const lastAts = snap.docs.map((d) => (d.data().lastAt as string) || "");
-    callback(lastAts);
+  return onSnapshot(q, async (snap) => {
+    const activities = await Promise.all(
+      snap.docs.map(async (d) => {
+        const data = d.data();
+        const readState = await getChatReadState(d.id, userId, data);
+        return {
+          lastAt: (data.lastAt as string) || "",
+          ...readState,
+        };
+      }),
+    );
+    callback(activities);
   });
 };
 

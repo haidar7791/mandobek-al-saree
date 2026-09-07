@@ -38,10 +38,15 @@ function formatTime(iso: string): string {
 
 function ChatItem({ chat, index, onDelete }: { chat: ChatSummary; index: number; onDelete: (c: ChatSummary) => void }) {
   const initial = chat.otherName?.[0] || "?";
+  const isUnread = (chat.unreadCount ?? 0) > 0;
   return (
     <Animated.View entering={FadeInDown.delay(index * 50).springify()}>
       <Pressable
-        style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [
+          styles.row,
+          isUnread && styles.unreadRow,
+          pressed && { opacity: 0.85 },
+        ]}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           onDelete(chat);
@@ -67,7 +72,10 @@ function ChatItem({ chat, index, onDelete }: { chat: ChatSummary; index: number;
 
         <View style={styles.body}>
           <View style={styles.topRow}>
-            <Text style={styles.time}>{formatTime(chat.lastAt)}</Text>
+            <View style={styles.timeWrap}>
+              <Text style={styles.time}>{formatTime(chat.lastAt)}</Text>
+              {isUnread && <View style={styles.unreadDot} />}
+            </View>
             <Text style={styles.name} numberOfLines={1}>
               {chat.otherName}
             </Text>
@@ -241,6 +249,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
   },
+  unreadRow: {
+    backgroundColor: "rgba(201,168,76,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.45)",
+  },
   avatarWrap: { width: 52, height: 52, borderRadius: 26, overflow: "hidden" },
   avatar: { width: 52, height: 52, borderRadius: 26 },
   avatarFallback: {
@@ -256,6 +269,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   name: { flex: 1, fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   time: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, marginLeft: 8 },
+  timeWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
   last: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
   deleteIconBtn: {
     width: 34,

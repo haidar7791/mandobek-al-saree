@@ -52,6 +52,7 @@ import {
   ALL_SPECIALTIES,
   isFeaturedActive,
   subscribeToUserChatLastAts,
+  type ChatLastActivity,
   fetchProductsOnce,
   deleteProduct,
   likeProduct,
@@ -769,8 +770,7 @@ const isFocused = useIsFocused();
   const [userRole, setUserRole] = useState<"client" | "artisan" | "admin">("client");
   const [loading, setLoading] = useState(true);
 
-  const [chatLastAts, setChatLastAts] = useState<string[]>([]);
-  const [lastMsgSeen, setLastMsgSeen] = useState<string>("");
+  const [chatLastAts, setChatLastAts] = useState<ChatLastActivity[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   // ── Marketplace ──
@@ -1225,9 +1225,12 @@ const isFocused = useIsFocused();
   const { profile: liveProfile } = useProfileCheck(userId);
 
   const unreadMsgCount = useMemo(() => {
-    if (!lastMsgSeen) return 0;
-    return chatLastAts.filter((at) => at && at > lastMsgSeen).length;
-  }, [chatLastAts, lastMsgSeen]);
+    if (!userId) return 0;
+    return chatLastAts.filter(
+      (activity) =>
+        activity.unreadCount > 0 && activity.lastSenderId !== userId,
+    ).length;
+  }, [chatLastAts, userId]);
 
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   useEffect(() => {
@@ -1313,22 +1316,7 @@ try {
     return () => sub.remove();
   }, []);
 
-  // Badge: load last-seen timestamp for messages
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    AsyncStorage.getItem(`@forus:msgSeen:${user.uid}`).then((val) => {
-      if (val) {
-        setLastMsgSeen(val);
-      } else {
-        const now = new Date().toISOString();
-        AsyncStorage.setItem(`@forus:msgSeen:${user.uid}`, now);
-        setLastMsgSeen(now);
-      }
-    });
-  }, []);
-
-  // Badge: subscribe to chat timestamps (no profile lookups — fast)
+  // Badge: subscribe to incoming unread messages only.
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -1381,12 +1369,6 @@ try {
   }, [userId]);
 
   const handleMessagesPress = useCallback(async () => {
-    const user = auth.currentUser;
-    if (user) {
-      const now = new Date().toISOString();
-      await AsyncStorage.setItem(`@forus:msgSeen:${user.uid}`, now);
-      setLastMsgSeen(now);
-    }
     router.push("/messages" as any);
   }, []);
 
