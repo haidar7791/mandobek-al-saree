@@ -16,6 +16,7 @@ import { VideoAudioProvider } from "@/lib/video-audio-context";
 import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
 import { isAuthRoutingSuspended } from "@/lib/auth_flow";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -223,15 +224,17 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <NetworkProvider>
-            <VideoAudioProvider>
-              <RootLayoutNav isLoggedIn={isLoggedIn} />
-            </VideoAudioProvider>
-          </NetworkProvider>
-        </GestureHandlerRootView>
-      </QueryClientProvider>
+      <KeyboardProvider>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <NetworkProvider>
+              <VideoAudioProvider>
+                <RootLayoutNav isLoggedIn={isLoggedIn} />
+              </VideoAudioProvider>
+            </NetworkProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </KeyboardProvider>
     </ErrorBoundary>
   );
 }

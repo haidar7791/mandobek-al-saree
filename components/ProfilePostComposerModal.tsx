@@ -2,7 +2,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { ResizeMode, Video } from "expo-av";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -57,6 +57,7 @@ export default function ProfilePostComposerModal({
         <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
           style={styles.keyboard}
         >
           <View style={styles.sheet}>
@@ -134,7 +135,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,.55)",
     justifyContent: "flex-end",
   },
-  keyboard: { width: "100%" },
+  keyboard: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "flex-end",
+  },
   sheet: {
     backgroundColor: C.card,
     borderTopLeftRadius: 24,

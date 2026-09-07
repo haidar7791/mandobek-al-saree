@@ -47,6 +47,7 @@ module.exports = {
   android: {
     package: "com.haidar.forus",
     googleServicesFile: "./google-services.json",
+    softwareKeyboardLayoutMode: "resize",
     versionCode: 21,
     adaptiveIcon: {
       backgroundColor: "#0D1421",
