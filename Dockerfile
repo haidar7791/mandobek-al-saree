@@ -24,13 +24,13 @@ ENV PORT=8080
 # ffmpeg is required by the existing server routes for video thumbnails.
 RUN apk add --no-cache ffmpeg
 
-# بدلاً من تشغيل npm install الذي يعتمد على الحزم المعقدة، سننسخ الحزم البرمجية مباشرة أو نعتمد على ملفات البناء الجاهزة
-COPY --from=builder /app/server ./server_dist
+# نسخ الملفات المطلوبة للتشغيل بشكل صحيح ومباشر في مجلد العمل الحالي
+COPY --from=builder /app/server ./server
 COPY --from=builder /app/package.json ./package.json
-COPY server/templates ./server/templates
+COPY --from=builder /app/node_modules ./node_modules
 COPY app.json ./
 COPY privacy.html ./
 
 EXPOSE 8080
 
-CMD ["node", "server_dist/index.js"]
+CMD ["node", "server/index.js"]
