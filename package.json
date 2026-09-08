@@ -3,8 +3,8 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "server:build": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server_dist",
-    "server:prod": "NODE_ENV=production node server_dist/index.js",
+    "server:build": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outfile=server/index.js",
+    "server:prod": "NODE_ENV=production node server/index.js",
     "db:push": "drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint",
