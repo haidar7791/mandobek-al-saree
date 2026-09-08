@@ -310,7 +310,7 @@ export default function AuthScreen() {
       </View>
       <Text style={styles.appName}>فورس</Text>
       <Text style={styles.appNameLatin}>ForUs</Text>
-      <Text style={styles.tagline}>منصة خدمات المنزل والسيارة</Text>
+      <Text style={styles.tagline}>وجهتك الأولى للمنتجات و الخدمات والترفيه</Text>
     </View>
   );
 
@@ -403,14 +403,25 @@ export default function AuthScreen() {
               </>
             ) : (
               <>
-                <View style={styles.cardHeading}>
-                  <View style={styles.headingIcon}>
-                    <Ionicons name="log-in" size={22} color={C.accent} />
-                  </View>
-                  <View style={styles.headingText}>
-                    <Text style={styles.headingTitle}>مرحباً بك</Text>
-                    <Text style={styles.headingSubtitle}>سجّل دخولك للمتابعة</Text>
-                  </View>
+                <Pressable
+                  style={[styles.googleButton, googleLoading && styles.disabled]}
+                  onPress={handleGoogleEmailPick}
+                  disabled={googleLoading || loading}
+                >
+                  {googleLoading ? (
+                    <ActivityIndicator size="small" color="#4285F4" />
+                  ) : (
+                    <FontAwesome name="google" size={19} color="#4285F4" />
+                  )}
+                  <Text style={styles.googleButtonText}>
+                    {googleLoading ? "جارٍ اختيار البريد..." : "التسجيل بواسطة Google"}
+                  </Text>
+                </Pressable>
+
+                <View style={styles.orRow}>
+                  <View style={styles.orLine} />
+                  <Text style={styles.orText}>أو</Text>
+                  <View style={styles.orLine} />
                 </View>
 
                 <InputField
@@ -462,27 +473,6 @@ export default function AuthScreen() {
                       </>
                     )}
                   </LinearGradient>
-                </Pressable>
-
-                <View style={styles.orRow}>
-                  <View style={styles.orLine} />
-                  <Text style={styles.orText}>أو</Text>
-                  <View style={styles.orLine} />
-                </View>
-
-                <Pressable
-                  style={[styles.googleButton, googleLoading && styles.disabled]}
-                  onPress={handleGoogleEmailPick}
-                  disabled={googleLoading || loading}
-                >
-                  {googleLoading ? (
-                    <ActivityIndicator size="small" color="#4285F4" />
-                  ) : (
-                    <FontAwesome name="google" size={19} color="#4285F4" />
-                  )}
-                  <Text style={styles.googleButtonText}>
-                    {googleLoading ? "جارٍ اختيار البريد..." : "التسجيل بواسطة Google"}
-                  </Text>
                 </Pressable>
               </>
             )}
@@ -552,7 +542,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#0D1B3E" },
   flex: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 20, gap: 20 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 20, gap: 14 },
   brand: { alignItems: "center", gap: 5 },
   logoCircle: {
     width: 76,
@@ -598,7 +588,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 22,
     padding: 20,
-    gap: 16,
+    gap: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.18,
@@ -631,7 +621,7 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     textAlign: "right",
   },
-  fieldWrap: { gap: 6 },
+  fieldWrap: { gap: 4 },
   fieldLabel: {
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
@@ -653,7 +643,7 @@ const styles = StyleSheet.create({
   inputIcon: { width: 27, alignItems: "center" },
   input: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
@@ -677,7 +667,7 @@ const styles = StyleSheet.create({
     color: C.text,
     textAlign: "right",
   },
-  primaryButton: { borderRadius: 14, overflow: "hidden", marginTop: 2 },
+  primaryButton: { borderRadius: 14, overflow: "hidden", marginTop: 0 },
   primaryGradient: {
     minHeight: 53,
     flexDirection: "row",
@@ -696,7 +686,7 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_600SemiBold",
     color: C.accent,
   },
-  orRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 1 },
+  orRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 0 },
   orLine: { flex: 1, height: 1, backgroundColor: "#E2E5EA" },
   orText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
   googleButton: {
