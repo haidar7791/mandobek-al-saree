@@ -1,16 +1,18 @@
-# Cloud Run production image for the Express/Firebase backend.
 FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# نسخ ملفات التثبيت أولاً للاستفادة من الـ caching
 COPY package.json ./
-RUN npm install --no-audit --no-fund --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
-COPY server ./server
+# نسخ باقي ملفات المصدر الضرورية للبناء
 COPY tsconfig.json ./
 COPY app.json ./
+COPY server ./server
+COPY shared ./shared
 
-# بناء ملفات TypeScript
+# بناء السيرفر
 RUN npm run server:build
 
 
@@ -21,14 +23,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# ffmpeg is required by the existing server routes for video thumbnails.
 RUN apk add --no-cache ffmpeg
 
-# نسخ الملفات المطلوبة للتشغيل بشكل صحيح ومباشر في مجلد العمل الحالي
-COPY --from=builder /app/server ./server
+# نسخ الملفات المطلوبة للتشغيل من مرحلة البناء
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
-COPY app.json ./
+COPY --from=builder /app/server/index.js ./server/index.js
+# إذا كان هناك ملفات تجميلية أو قوالب إضافية تحتاجها:
+COPY --from=builder /app/server/templates ./server/templates
 COPY privacy.html ./
 
 EXPOSE 8080
