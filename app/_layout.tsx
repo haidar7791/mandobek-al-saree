@@ -159,7 +159,7 @@ export default function RootLayout() {
       let path = "";
       if (url.startsWith("forus://")) {
         path = url.replace(/^forus:\/\//, "");
-      } else if (url.startsWith("https://forus-backend-911663879269.europe-west1.run.app/")) {
+      } else if (url.startsWith("https://forus-backend-new-911663879269.europe-west1.run.app/")) {
         path = url.replace(/^https:\/\/forus-backend-911663879269\.europe-west1\.run\.app\//, "");
       } else {
         return;

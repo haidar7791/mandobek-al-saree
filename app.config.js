@@ -49,7 +49,7 @@ module.exports = {
         data: [
           {
             scheme: "https",
-            host: "forus-backend-911663879269.europe-west1.run.app",
+            host: "forus-backend-new-911663879269.europe-west1.run.app",
             pathPrefix: "/product",
           },
         ],
@@ -61,7 +61,7 @@ module.exports = {
         data: [
           {
             scheme: "https",
-            host: "forus-backend-911663879269.europe-west1.run.app",
+            host: "forus-backend-new-911663879269.europe-west1.run.app",
             pathPrefix: "/profile",
           },
         ],
@@ -73,7 +73,7 @@ module.exports = {
         data: [
           {
             scheme: "https",
-            host: "forus-backend-911663879269.europe-west1.run.app",
+            host: "forus-backend-new-911663879269.europe-west1.run.app",
             pathPrefix: "/user",
           },
         ],

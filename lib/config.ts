@@ -1,7 +1,7 @@
 // lib/config.ts
 
 // الرابط المباشر والدائم لسيرفر Google Cloud Run الحالي
-export const API_BASE_URL = "https://forus-backend-911663879269.europe-west1.run.app";
+export const API_BASE_URL = "https://forus-backend-new-911663879269.europe-west1.run.app";
 export const GOOGLE_EMAIL_LOGIN_PATH = "/api/auth/google-email-login";
 
 // Public HTTPS host used for Android App Links and external sharing.
