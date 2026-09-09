@@ -1,7 +1,7 @@
 module.exports = {
   name: "فورس",
   slug: "sanad-app",
-  version: "22",
+  version: "23",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "forus",
@@ -26,7 +26,7 @@ module.exports = {
     package: "com.haidar.forus",
     googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "pan",
-    versionCode: 22,
+    versionCode: 23,
     adaptiveIcon: {
       backgroundColor: "#0D1421",
       foregroundImage: "./assets/images/android-icon-foreground.png",

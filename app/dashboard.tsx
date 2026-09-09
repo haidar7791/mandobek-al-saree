@@ -17,7 +17,6 @@ import {
   ActivityIndicator,
   TextInput,
   Dimensions,
-  Share,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -807,6 +806,7 @@ const isFocused = useIsFocused();
   const [productsRefreshing, setProductsRefreshing] = useState(false);
   const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
+  const [sharePost, setSharePost] = useState<HomeFeedPost | null>(null);
   const [fullscreenMedia, setFullscreenMedia] = useState<ProductMedia | null>(null);
   const [fullscreenMediaPosition, setFullscreenMediaPosition] = useState(0);
   const fullscreenVideoRef = useRef<Video | null>(null);
@@ -838,8 +838,8 @@ const isFocused = useIsFocused();
   const [commentToast, setCommentToast] = useState<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
   const commentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [posting, setPosting] = useState(false);
   const [homePublishing, setHomePublishing] = useState(false);
+  const [homePublishProgress, setHomePublishProgress] = useState(0);
   const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
   const [postCaption, setPostCaption] = useState("");
   const [deletingHomePostId, setDeletingHomePostId] = useState<string | null>(null);
@@ -879,10 +879,13 @@ const isFocused = useIsFocused();
     }
     try {
       const page = await getHomeFeedPosts(10, refresh ? null : homeFeedCursorRef.current);
-      if (refresh) {
+      if (refresh || homeFeedCursorRef.current === null) {
         setHomeFeed(page.posts);
-      } else {
-        setHomeFeed(page.posts);
+      } else if (page.posts.length) {
+        setHomeFeed((current) => {
+          const seen = new Set(current.map((item) => item.id));
+          return [...current, ...page.posts.filter((item) => !seen.has(item.id))];
+        });
       }
       homeFeedCursorRef.current = page.lastDoc;
       setHomeHasMore(page.hasMore);
@@ -1282,7 +1285,15 @@ const isFocused = useIsFocused();
             setProductPublishProgress(0);
           }
 
-          setHomePublishing(!!homeRaw);
+          if (homeRaw) {
+            const startedAt = Number(JSON.parse(homeRaw)?.startedAt || now);
+            const elapsed = Math.max(0, now - startedAt);
+            setHomePublishing(true);
+            setHomePublishProgress(Math.min(0.92, (elapsed / 90000) * 0.92));
+          } else {
+            setHomePublishing(false);
+            setHomePublishProgress(0);
+          }
         }
       } catch (err) {
         console.error("publish progress refresh failed:", err);
@@ -1940,10 +1951,10 @@ try {
                       <Pressable
                         style={styles.addPostBtn}
                         onPress={handleAddPost}
-                        disabled={posting}
+                        disabled={homePublishing}
                       >
-                        {posting ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="plus" size={16} color="#FFF" />}
-                        <Text style={styles.addPostBtnText}>{posting ? "جارٍ النشر..." : "إضافة منشور"}</Text>
+                        {homePublishing ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="plus" size={16} color="#FFF" />}
+                        <Text style={styles.addPostBtnText}>{homePublishing ? `جارٍ النشر ${Math.round(homePublishProgress * 100)}%` : "إضافة منشور"}</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -1982,27 +1993,9 @@ try {
                       setComments([]);
                       setCommentText("");
                     }}
-                    onShare={async () => {
-                      try {
-                        await Share.share({
-                          title: item.userName,
-                          message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}`,
-                        });
-                         const viewer = auth.currentUser;
-                         if (viewer) {
-                           void createActivityNotification({
-                             recipientId: item.userId,
-                             actorId: viewer.uid,
-                             type: "share",
-                             title: "مشاركة جديدة",
-                             body: "تمت مشاركة منشورك",
-                             entityId: item.id,
-                             entityType: "post",
-                           });
-                         }
-                      } catch (e) {
-                        console.warn("share post failed", e);
-                      }
+                    onShare={() => {
+                      Haptics.selectionAsync();
+                      setSharePost(item);
                     }}
                     onOpenProfile={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2142,7 +2135,7 @@ try {
       <ProfilePostComposerModal
         media={pendingPostMedia}
         caption={postCaption}
-        posting={posting}
+        posting={homePublishing}
         onCaptionChange={setPostCaption}
         onClose={() => {
           setPendingPostMedia(null);
@@ -2172,25 +2165,9 @@ try {
         hasMore={homeHasMore}
         loadingMore={homeLoadingMore}
          onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
-         onShare={async (item) => {
-           try {
-             await Share.share({
-               title: item.userName,
-               message: `${item.userName}${item.description ? `\n\n${item.description}` : ""}\n\n${item.url}`,
-             });
-             const viewer = auth.currentUser;
-             if (viewer) {
-               void createActivityNotification({
-                 recipientId: item.userId,
-                 actorId: viewer.uid,
-                 type: "share",
-                 title: "مشاركة جديدة",
-                 body: "تمت مشاركة منشورك",
-                 entityId: item.id,
-                 entityType: "post",
-               });
-             }
-           } catch (e) { console.warn("share reel failed", e); }
+         onShare={(item) => {
+           Haptics.selectionAsync();
+           setSharePost(item);
          }}
         onOpenProfile={(item) => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2393,6 +2370,49 @@ try {
           )}
         </View>
       </Modal>
+
+      {/* ── Share post/reel modal — same internal sharing flow as products ── */}
+      <ShareModal
+        visible={!!sharePost}
+        onClose={() => setSharePost(null)}
+        title={sharePost?.userName || "منشور"}
+        cardImage={sharePost?.url}
+        cardTitle={sharePost?.description?.trim() || `منشور من ${sharePost?.userName || "مستخدم"}`}
+        cardRoute={sharePost ? `/dashboard?postId=${encodeURIComponent(sharePost.id)}` : undefined}
+        deepLinkPath={sharePost ? `post/${sharePost.id}` : undefined}
+        cardDetails={
+          sharePost
+            ? [
+                `👤 ${sharePost.userName}`,
+                sharePost.mediaType === "video" ? "🎬 ريلز" : "🖼️ منشور صورة",
+              ]
+            : undefined
+        }
+        shareText={
+          sharePost
+            ? `📱 منشور عبر تطبيق فورس\n\n👤 ${sharePost.userName}${sharePost.description ? `\n\n${sharePost.description}` : ""}`
+            : ""
+        }
+        shareMessage={
+          sharePost
+            ? `📱 شاهد منشور ${sharePost.userName} على تطبيق فورس`
+            : ""
+        }
+        onShared={() => {
+          const viewer = auth.currentUser;
+          if (viewer && sharePost) {
+            void createActivityNotification({
+              recipientId: sharePost.userId,
+              actorId: viewer.uid,
+              type: "share",
+              title: "مشاركة جديدة",
+              body: "تمت مشاركة منشورك",
+              entityId: sharePost.id,
+              entityType: "post",
+            });
+          }
+        }}
+      />
 
       {/* ── Share product modal ── */}
       <ShareModal

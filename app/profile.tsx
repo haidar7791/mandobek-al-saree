@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -55,6 +56,7 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
+const PROFILE_POST_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:profilePostPublishProgress:${userId}`;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
@@ -74,6 +76,8 @@ export default function ProfileScreen() {
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [uploadingPost, setUploadingPost] = useState(false);
+  const [profilePostPublishing, setProfilePostPublishing] = useState(false);
+  const [profilePostPublishProgress, setProfilePostPublishProgress] = useState(0);
   const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
   const [postCaption, setPostCaption] = useState("");
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
@@ -97,6 +101,34 @@ export default function ProfileScreen() {
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad =
     Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
+
+  // Persisted background-publish status keeps the profile button informative
+  // even when the upload continues after the composer is closed or the screen
+  // is mounted again.
+  useEffect(() => {
+    if (!uid) return;
+    let cancelled = false;
+    const refreshPublishStatus = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PROFILE_POST_PUBLISH_PROGRESS_KEY(uid));
+        if (cancelled) return;
+        if (!raw) {
+          setProfilePostPublishing(false);
+          setProfilePostPublishProgress(0);
+          return;
+        }
+        const startedAt = Number(JSON.parse(raw)?.startedAt || Date.now());
+        const elapsed = Math.max(0, Date.now() - startedAt);
+        setProfilePostPublishing(true);
+        setProfilePostPublishProgress(Math.min(0.92, (elapsed / 90000) * 0.92));
+      } catch (err) {
+        console.error("profile post publish progress refresh failed:", err);
+      }
+    };
+    refreshPublishStatus();
+    const timer = setInterval(refreshPublishStatus, 500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [uid]);
 
   const specialtyLabel =
     specialty === "client"
@@ -250,7 +282,18 @@ export default function ProfileScreen() {
     const userId = auth.currentUser?.uid || uid;
     if (!userId || !pendingPostMedia) return;
 
+    const caption = postCaption.trim();
     setUploadingPost(true);
+    setProfilePostPublishing(true);
+    setProfilePostPublishProgress(0.03);
+    await AsyncStorage.setItem(
+      PROFILE_POST_PUBLISH_PROGRESS_KEY(userId),
+      JSON.stringify({ startedAt: Date.now() }),
+    );
+    // Close the composer immediately; the upload continues without blocking
+    // the profile UI, while the action button shows the publishing indicator.
+    setPendingPostMedia(null);
+    setPostCaption("");
     try {
       const uploaded = await uploadProfilePostMedia(userId, pendingPostMedia.uri, pendingPostMedia.mediaType, {
         mimeType: pendingPostMedia.mimeType,
@@ -261,7 +304,7 @@ export default function ProfileScreen() {
         url: uploaded.url,
         mediaType: pendingPostMedia.mediaType,
         createdAt: new Date().toISOString(),
-        description: postCaption.trim(),
+        description: caption,
         likesCount: 0,
         commentsCount: 0,
         storagePath: uploaded.storagePath,
@@ -269,8 +312,6 @@ export default function ProfileScreen() {
       };
       await addProfilePost(userId, post);
       setProfilePosts((prev) => [post, ...prev]);
-      setPendingPostMedia(null);
-      setPostCaption("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       const code = err?.code || "";
@@ -286,7 +327,10 @@ export default function ProfileScreen() {
         userMsg = "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
       Alert.alert("خطأ في رفع المنشور", `${userMsg}\n\n[${code || "unknown"}]`);
     } finally {
+      await AsyncStorage.removeItem(PROFILE_POST_PUBLISH_PROGRESS_KEY(userId));
       setUploadingPost(false);
+      setProfilePostPublishing(false);
+      setProfilePostPublishProgress(0);
     }
   };
 
@@ -593,9 +637,9 @@ export default function ProfileScreen() {
                 onDelete={handleDeleteProfilePost}
                 showEmptyState
                 title="معرض أعمالي"
-                actionLabel="إضافة منشور"
+                actionLabel={profilePostPublishing ? `جارٍ النشر ${Math.round(profilePostPublishProgress * 100)}%` : "إضافة منشور"}
                 onAction={handleAddProfilePost}
-                actionDisabled={uploadingPost}
+                actionDisabled={uploadingPost || profilePostPublishing}
                 onDoubleTapLike={async () => false}
               />
             </View>

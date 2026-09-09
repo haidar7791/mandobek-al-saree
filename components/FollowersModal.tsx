@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { getFollowerProfiles, type FollowerProfile } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
@@ -106,7 +107,15 @@ export default function FollowersModal({ visible, onClose, profileId, profileNam
                 </View>
               }
               renderItem={({ item }) => (
-                <View style={styles.row}>
+                <Pressable
+                  style={styles.row}
+                  onPress={() => {
+                    onClose();
+                    router.push({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`فتح ملف ${item.name}`}
+                >
                   {item.photoUri ? (
                     <Image source={{ uri: item.photoUri }} style={styles.avatar} />
                   ) : (
@@ -116,10 +125,10 @@ export default function FollowersModal({ visible, onClose, profileId, profileNam
                   )}
                   <View style={styles.rowCopy}>
                     <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.rowHint}>متابع حقيقي</Text>
+                    <Text style={styles.rowHint}>متابع حقيقي • اضغط لفتح الملف</Text>
                   </View>
-                  <Feather name="user" size={17} color={C.textMuted} />
-                </View>
+                  <Feather name="chevron-left" size={17} color={C.textMuted} />
+                </Pressable>
               )}
             />
           )}

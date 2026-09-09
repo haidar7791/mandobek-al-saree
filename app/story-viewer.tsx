@@ -38,6 +38,9 @@ import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
 import { auth } from "@/lib/firebase";
 import {
   fetchUserStories,
+  subscribeToActiveStories,
+  subscribeToMyStories,
+  type StoryGroup,
   markStoryViewed,
   toggleStoryLike,
   deleteStory,
@@ -76,6 +79,10 @@ export default function StoryViewerScreen() {
 
   const [stories, setStories] = useState<Story[]>([]);
   const [index, setIndex] = useState(0);
+  const storiesRef = useRef<Story[]>([]);
+  const activeGroupUserIdRef = useRef(userId || "");
+  const storyGroupsRef = useRef<StoryGroup[]>([]);
+  const myStoriesRef = useRef<Story[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -89,6 +96,7 @@ export default function StoryViewerScreen() {
   const [videoReady, setVideoReady] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const videoRef = useRef<Video | null>(null);
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const pausedProgressRef = useRef(0); // stores progress when paused
 
@@ -103,10 +111,24 @@ export default function StoryViewerScreen() {
       .catch(() => setCurrentUserName(auth.currentUser?.displayName || "مستخدم"));
   }, [currentUserId]);
 
+  // Keep the same story-strip ordering used by the Home screen so that
+  // finishing one user's stories advances to the next user instead of
+  // closing the viewer.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const unsubActive = subscribeToActiveStories(currentUserId, (groups) => {
+      storyGroupsRef.current = groups;
+    });
+    const unsubMine = subscribeToMyStories(currentUserId, (mine) => {
+      myStoriesRef.current = mine;
+    });
+    return () => { unsubActive(); unsubMine(); };
+  }, [currentUserId]);
+
   // ── Load stories ────────────────────────────────────────────────────────
   const loadStories = useCallback(async () => {
     const uid = Array.isArray(userId) ? userId[0] : userId;
-    if (!uid) { router.back(); return; }
+    if (!uid) { if (router.canGoBack()) router.back(); return; }
 
     setLoading(true);
     setFetchError(false);
@@ -117,6 +139,8 @@ export default function StoryViewerScreen() {
         router.back();
         return;
       }
+      storiesRef.current = data;
+      activeGroupUserIdRef.current = uid;
       setStories(data);
       setLoading(false);
     } catch (err) {
@@ -179,6 +203,17 @@ export default function StoryViewerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, story?.id, loading]);
 
+  // Pause everything immediately before opening a user profile from the viewers list.
+  // This stops both the image timer and the currently playing video before navigation.
+  const pauseStoryForProfile = useCallback(() => {
+    animationRef.current?.stop();
+    progressAnim.stopAnimation((val) => {
+      pausedProgressRef.current = val;
+    });
+    videoRef.current?.pauseAsync().catch(() => {});
+    setPaused(true);
+  }, [progressAnim]);
+
   // ── Pause / resume ──────────────────────────────────────────────────────
   useEffect(() => {
     if (loading || !story) return;
@@ -195,12 +230,39 @@ export default function StoryViewerScreen() {
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const goNext = useCallback(() => {
-    setIndex((i) => {
-      if (i < stories.length - 1) return i + 1;
-      router.back();
-      return i;
-    });
-  }, [stories.length]);
+    const currentStories = storiesRef.current;
+    const currentIndex = index;
+    if (currentIndex < currentStories.length - 1) {
+      setIndex((i) => i + 1);
+      return;
+    }
+
+    const ownGroup: StoryGroup | null = myStoriesRef.current.length > 0
+      ? {
+          userId: currentUserId,
+          userName: myStoriesRef.current[0]?.userName || "مستخدم",
+          userPhotoUri: myStoriesRef.current[0]?.userPhotoUri || null,
+          coverImageUri: myStoriesRef.current[myStoriesRef.current.length - 1]?.mediaUrl || null,
+          stories: myStoriesRef.current,
+          hasUnseen: false,
+        }
+      : null;
+    const groups = ownGroup ? [ownGroup, ...storyGroupsRef.current] : storyGroupsRef.current;
+    const currentGroupIndex = groups.findIndex((group) => group.userId === activeGroupUserIdRef.current);
+    const nextGroup = currentGroupIndex >= 0 ? groups[currentGroupIndex + 1] : groups[0];
+
+    if (nextGroup?.stories?.length) {
+      const nextStories = nextGroup.stories;
+      activeGroupUserIdRef.current = nextGroup.userId;
+      storiesRef.current = nextStories;
+      setStories(nextStories);
+      setIndex(0);
+      setPaused(false);
+      return;
+    }
+
+    if (router.canGoBack()) router.back();
+  }, [currentUserId, index]);
 
   const goPrev = useCallback(() => {
     setIndex((i) => Math.max(0, i - 1));
@@ -247,7 +309,7 @@ export default function StoryViewerScreen() {
         onPress: async () => {
           try { await deleteStory(story.id); } catch { /* ignore */ }
           const remaining = stories.filter((_, i) => i !== index);
-          if (remaining.length === 0) { router.back(); return; }
+          if (remaining.length === 0) { if (router.canGoBack()) router.back(); return; }
           setStories(remaining);
           setIndex(Math.min(index, remaining.length - 1));
         },
@@ -346,6 +408,7 @@ export default function StoryViewerScreen() {
         </View>
       ) : (
         <Video
+          ref={videoRef}
           source={{ uri: story.mediaUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode={ResizeMode.COVER}
@@ -465,6 +528,11 @@ export default function StoryViewerScreen() {
         onClose={() => setViewersVisible(false)}
         viewerIds={story.views}
         storyOwnerName={story.userName}
+        onOpenProfile={(viewer) => {
+          pauseStoryForProfile();
+          setViewersVisible(false);
+          router.push({ pathname: "/user-profile", params: { userId: viewer.id, userName: viewer.name } } as any);
+        }}
       />
 
       {/* ── Tap areas (prev / next / pause) ── */}

@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import {
   getStoryViewerProfiles,
   type StoryViewerProfile,
@@ -23,6 +24,7 @@ type Props = {
   onClose: () => void;
   viewerIds: string[];
   storyOwnerName?: string;
+  onOpenProfile?: (viewer: StoryViewerProfile) => void;
 };
 
 function initials(name: string): string {
@@ -40,6 +42,7 @@ export default function StoryViewersModal({
   onClose,
   viewerIds,
   storyOwnerName,
+  onOpenProfile,
 }: Props) {
   const [viewers, setViewers] = useState<StoryViewerProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -114,7 +117,16 @@ export default function StoryViewersModal({
                 </View>
               }
               renderItem={({ item }) => (
-                <View style={styles.row}>
+                <Pressable
+                  style={styles.row}
+                  onPress={() => {
+                    onClose();
+                    if (onOpenProfile) onOpenProfile(item);
+                    else router.push({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`فتح ملف ${item.name}`}
+                >
                   {item.photoUri ? (
                     <Image source={{ uri: item.photoUri }} style={styles.avatar} />
                   ) : (
@@ -124,10 +136,10 @@ export default function StoryViewersModal({
                   )}
                   <View style={styles.rowCopy}>
                     <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.rowHint}>شاهد الاستوري</Text>
+                    <Text style={styles.rowHint}>شاهد الاستوري • اضغط لفتح الملف</Text>
                   </View>
-                  <Feather name="check-circle" size={17} color={C.accent} />
-                </View>
+                  <Feather name="chevron-left" size={17} color={C.textMuted} />
+                </Pressable>
               )}
             />
           )}
