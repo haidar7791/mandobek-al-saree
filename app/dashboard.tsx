@@ -94,6 +94,7 @@ import { useVideoAudio } from "@/lib/video-audio-context";
 
 const C = Colors.light;
 const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
+const HOME_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:homePublishProgress:${userId}`;
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
 const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 });
@@ -569,6 +570,9 @@ function HomeVideoViewer({
   onComment,
   onShare,
   onOpenProfile,
+  onLoadMore,
+  hasMore,
+  loadingMore,
 }: {
   posts: HomeFeedPost[];
   index: number;
@@ -581,6 +585,9 @@ function HomeVideoViewer({
   onComment: (post: HomeFeedPost) => void;
   onShare: (post: HomeFeedPost) => void;
   onOpenProfile: (post: HomeFeedPost) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 }) {
   const videos = posts.filter((p) => p.mediaType === "video");
   const [activeIndex, setActiveIndex] = useState(index);
@@ -589,10 +596,23 @@ function HomeVideoViewer({
   const pendingFollowStateRef = useRef(new Map<string, boolean>());
   const reelLastTapRef = useRef(0);
   const reelViewabilityConfig = REEL_VIEWABILITY_CONFIG;
+  const hasMoreRef = useRef(!!hasMore);
+  const loadingMoreRef = useRef(!!loadingMore);
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => {
+    hasMoreRef.current = !!hasMore;
+    loadingMoreRef.current = !!loadingMore;
+    onLoadMoreRef.current = onLoadMore;
+  }, [hasMore, loadingMore, onLoadMore]);
   const reelViewabilityHandler = useRef(
     ({ viewableItems }: { viewableItems: Array<any> }) => {
       const first = viewableItems?.find((entry) => entry?.isViewable && entry?.index != null);
-      if (first?.index != null) setActiveIndex(first.index);
+      if (first?.index != null) {
+        setActiveIndex(first.index);
+        if (hasMoreRef.current && !loadingMoreRef.current && first.index >= videos.length - 3) {
+          void onLoadMoreRef.current?.();
+        }
+      }
     }
   ).current;
 
@@ -603,7 +623,7 @@ function HomeVideoViewer({
       setFollowedUserIds(new Set());
       pendingFollowStateRef.current.clear();
     }
-  }, [visible, index, videos.length]);
+  }, [visible, index]);
 
   useEffect(() => {
     const viewer = auth.currentUser;
@@ -633,8 +653,16 @@ function HomeVideoViewer({
           keyExtractor={(item) => item.id}
           pagingEnabled
           showsVerticalScrollIndicator={false}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          removeClippedSubviews={Platform.OS !== "web"}
           viewabilityConfig={reelViewabilityConfig}
           onViewableItemsChanged={reelViewabilityHandler}
+          onEndReached={() => {
+            if (hasMoreRef.current && !loadingMoreRef.current) void onLoadMoreRef.current?.();
+          }}
+          onEndReachedThreshold={0.7}
           getItemLayout={(_, i) => ({ length: Dimensions.get("window").height, offset: Dimensions.get("window").height * i, index: i })}
           renderItem={({ item, index: itemIndex }) => {
             const itemLiked = isLiked(item.id);
@@ -786,6 +814,10 @@ const isFocused = useIsFocused();
   const [homeFeed, setHomeFeed] = useState<HomeFeedPost[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [homeLoadingMore, setHomeLoadingMore] = useState(false);
+  const [homeHasMore, setHomeHasMore] = useState(true);
+  const homeFeedCursorRef = useRef<any | null>(null);
+  const homeLoadingMoreRef = useRef(false);
   const [activeHomePostId, setActiveHomePostId] = useState<string | null>(null);
   const [homeVideoMuted, setHomeVideoMuted] = useState(true);
   const [isInlineVideoPlaying, setIsInlineVideoPlaying] = useState(true);
@@ -807,6 +839,7 @@ const isFocused = useIsFocused();
   const commentInputRef = useRef<TextInput>(null);
   const commentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [posting, setPosting] = useState(false);
+  const [homePublishing, setHomePublishing] = useState(false);
   const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
   const [postCaption, setPostCaption] = useState("");
   const [deletingHomePostId, setDeletingHomePostId] = useState<string | null>(null);
@@ -837,11 +870,51 @@ const isFocused = useIsFocused();
   ).current;
 
   const loadHomeFeed = useCallback(async (refresh = false) => {
-    if (refresh) setHomeRefreshing(true); else setHomeLoading(true);
-    try { setHomeFeed(await getHomeFeedPosts()); }
-    catch (e) { console.error("Home feed error", e); }
-    finally { setHomeLoading(false); setHomeRefreshing(false); }
+    if (refresh) {
+      setHomeRefreshing(true);
+      homeFeedCursorRef.current = null;
+      setHomeHasMore(true);
+    } else {
+      setHomeLoading(true);
+    }
+    try {
+      const page = await getHomeFeedPosts(10, refresh ? null : homeFeedCursorRef.current);
+      if (refresh) {
+        setHomeFeed(page.posts);
+      } else {
+        setHomeFeed(page.posts);
+      }
+      homeFeedCursorRef.current = page.lastDoc;
+      setHomeHasMore(page.hasMore);
+    } catch (e) {
+      console.error("Home feed error", e);
+    } finally {
+      setHomeLoading(false);
+      setHomeRefreshing(false);
+    }
   }, []);
+
+  const loadMoreHomeFeed = useCallback(async () => {
+    if (homeLoadingMoreRef.current || homeLoadingMore || !homeHasMore || !homeFeedCursorRef.current) return;
+    homeLoadingMoreRef.current = true;
+    setHomeLoadingMore(true);
+    try {
+      const page = await getHomeFeedPosts(10, homeFeedCursorRef.current);
+      if (page.posts.length) {
+        setHomeFeed((current) => {
+          const seen = new Set(current.map((item) => item.id));
+          return [...current, ...page.posts.filter((item) => !seen.has(item.id))];
+        });
+      }
+      homeFeedCursorRef.current = page.lastDoc;
+      setHomeHasMore(page.hasMore);
+    } catch (e) {
+      console.error("Home feed pagination error", e);
+    } finally {
+      homeLoadingMoreRef.current = false;
+      setHomeLoadingMore(false);
+    }
+  }, [homeHasMore, homeLoadingMore]);
 
   const handleHomePostLike = useCallback(async (postId: string) => {
     const wasLiked = likedPostIds.has(postId);
@@ -908,32 +981,42 @@ const isFocused = useIsFocused();
 
   const publishPendingPost = useCallback(async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid || !pendingPostMedia) return;
-    setPosting(true);
+    const media = pendingPostMedia;
+    const caption = postCaption.trim();
+    if (!uid || !media) return;
+
+    // Match the existing product publishing flow: persist a small status marker,
+    // close the composer immediately, then let upload + Firestore writes continue.
+    await AsyncStorage.setItem(
+      HOME_PUBLISH_PROGRESS_KEY(uid),
+      JSON.stringify({ startedAt: Date.now() }),
+    );
+    setPendingPostMedia(null);
+    setPostCaption("");
+
     try {
-      const uploaded = await uploadProfilePostMedia(uid, pendingPostMedia.uri, pendingPostMedia.mediaType, {
-        mimeType: pendingPostMedia.mimeType,
-        fileName: pendingPostMedia.fileName,
+      const uploaded = await uploadProfilePostMedia(uid, media.uri, media.mediaType, {
+        mimeType: media.mimeType,
+        fileName: media.fileName,
       });
       await addProfilePost(uid, {
         id: `${uid}-${Date.now()}`,
         url: uploaded.url,
-        mediaType: pendingPostMedia.mediaType,
+        mediaType: media.mediaType,
         createdAt: new Date().toISOString(),
-        description: postCaption.trim(),
+        description: caption,
         likesCount: 0,
         commentsCount: 0,
         storagePath: uploaded.storagePath,
         mimeType: uploaded.mimeType,
       });
-      setPendingPostMedia(null);
-      setPostCaption("");
-      await loadHomeFeed(true);
-      Alert.alert("تم النشر", "تمت إضافة المنشور بنجاح.");
     } catch (e: any) {
+      console.error("background home post publish error:", e);
       Alert.alert("تعذر النشر", e?.message || "حدث خطأ أثناء رفع المنشور.");
-    } finally { setPosting(false); }
-  }, [pendingPostMedia, postCaption, loadHomeFeed]);
+    } finally {
+      await AsyncStorage.removeItem(HOME_PUBLISH_PROGRESS_KEY(uid));
+    }
+  }, [pendingPostMedia, postCaption]);
 
   const handleDeleteHomePost = useCallback((post: HomeFeedPost) => {
     const viewer = auth.currentUser;
@@ -966,8 +1049,10 @@ const isFocused = useIsFocused();
   }, []);
 
   useFocusEffect(useCallback(() => {
-    loadHomeFeed();
-  }, [loadHomeFeed]));
+    if (homeFeed.length === 0 && !homeLoadingMore && !homeRefreshing) {
+      loadHomeFeed();
+    }
+  }, [loadHomeFeed, homeFeed.length, homeLoadingMore, homeRefreshing]));
 
   useEffect(() => {
     isFocusedRef.current = isFocused;
@@ -1168,9 +1253,10 @@ const isFocused = useIsFocused();
     let cancelled = false;
     const refreshPublishProgress = async () => {
       try {
-        const [storyRaw, productRaw] = await Promise.all([
+        const [storyRaw, productRaw, homeRaw] = await Promise.all([
           AsyncStorage.getItem(STORY_PUBLISH_PROGRESS_KEY(userId)),
           AsyncStorage.getItem(PRODUCT_PUBLISH_PROGRESS_KEY(userId)),
+          AsyncStorage.getItem(HOME_PUBLISH_PROGRESS_KEY(userId)),
         ]);
 
         const now = Date.now();
@@ -1195,6 +1281,8 @@ const isFocused = useIsFocused();
             setProductPublishing(false);
             setProductPublishProgress(0);
           }
+
+          setHomePublishing(!!homeRaw);
         }
       } catch (err) {
         console.error("publish progress refresh failed:", err);
@@ -1834,6 +1922,13 @@ try {
                 contentContainerStyle={[styles.listContent, styles.homeFeedContent, { paddingBottom: bottomPad + 20 }]}
                 refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={() => loadHomeFeed(true)} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
+                initialNumToRender={3}
+                maxToRenderPerBatch={3}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS !== "web"}
+                onEndReached={loadMoreHomeFeed}
+                onEndReachedThreshold={0.6}
+                ListFooterComponent={homeLoadingMore ? <ActivityIndicator size="small" color={C.accent} style={{ paddingVertical: 16 }} /> : null}
                 viewabilityConfig={homeViewabilityConfig}
                 onViewableItemsChanged={homeViewabilityHandler}
                 ListHeaderComponent={
@@ -2073,6 +2168,9 @@ try {
         onLike={(item) => { void handleHomePostLike(item.id); }}
         isLiked={(postId) => likedPostIds.has(postId)}
         onDoubleTapLike={(item) => { void handleHomePostLike(item.id); }}
+        onLoadMore={loadMoreHomeFeed}
+        hasMore={homeHasMore}
+        loadingMore={homeLoadingMore}
          onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
          onShare={async (item) => {
            try {

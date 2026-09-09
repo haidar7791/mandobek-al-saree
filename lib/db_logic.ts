@@ -21,6 +21,7 @@ import {
   writeBatch,
   startAt,
   endAt,
+  startAfter,
   limit,
   deleteField,
   type Unsubscribe,
@@ -1803,9 +1804,12 @@ export const adjustBalanceByDelta = async (userId: string, delta: number): Promi
 
 export const getWalletRequests = async (): Promise<WalletRequest[]> => {
   try {
-    const q = query(collection(db, "walletRequests"), orderBy("createdAt", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WalletRequest));
+    // Avoid a Firestore composite-index dependency here. Sorting is done
+    // locally after the simple collection read.
+    const snap = await getDocs(collection(db, "walletRequests"));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as WalletRequest))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   } catch (err) {
     console.error("getWalletRequests error:", err);
     return [];
@@ -1814,13 +1818,16 @@ export const getWalletRequests = async (): Promise<WalletRequest[]> => {
 
 export const getWalletRequestsByUser = async (userId: string): Promise<WalletRequest[]> => {
   try {
+    // Keep the user filter, but remove the where+orderBy composite query so
+    // this path does not require a manually-created Firestore index.
     const q = query(
       collection(db, "walletRequests"),
-      where("userId", "==", userId),
-      orderBy("createdAt", "desc")
+      where("userId", "==", userId)
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WalletRequest));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as WalletRequest))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   } catch (err) {
     console.error("getWalletRequestsByUser error:", err);
     return [];
@@ -1830,24 +1837,42 @@ export const getWalletRequestsByUser = async (userId: string): Promise<WalletReq
 export const createWalletRequest = async (
   req: Omit<WalletRequest, "id" | "createdAt" | "status">
 ): Promise<string> => {
-  // Create the ID first so a receipt can be stored at a stable, user-owned path.
+  // Keep the request path aligned with the Firestore security rules.
   const docRef = doc(collection(db, "walletRequests"));
-  let receiptUrl = req.imageUri;
+  const userId = req.userId || "";
+  const amount = Number(req.amount);
+  const accountNumber = req.accountNumber || "";
+  let receiptUrl = req.imageUri || "";
 
   if (req.imageUri) {
     const response = await fetch(req.imageUri);
     if (!response.ok) throw new Error(`wallet receipt fetch failed: ${response.status}`);
     const blob = await response.blob();
-    const receiptRef = ref(storage, `walletReceipts/${req.userId}/${docRef.id}.jpg`);
+    const receiptRef = ref(storage, `walletReceipts/${userId}/${docRef.id}.jpg`);
     await uploadBytes(receiptRef, blob, { contentType: blob.type || "image/jpeg" });
     receiptUrl = await getDownloadURL(receiptRef);
   }
 
-  await setDoc(docRef, {
-    ...req,
+  // Firestore rejects undefined values. Build an explicitly sanitized payload.
+  const payload: WalletRequest = {
+    id: docRef.id,
+    userId,
+    type: req.type,
+    amount,
+    accountNumber,
     imageUri: receiptUrl,
     status: "pending",
     createdAt: new Date().toISOString(),
+  };
+
+  await setDoc(docRef, {
+    userId: payload.userId,
+    type: payload.type,
+    amount: payload.amount,
+    accountNumber: payload.accountNumber,
+    imageUri: payload.imageUri,
+    status: payload.status,
+    createdAt: payload.createdAt,
   });
   return docRef.id;
 };
@@ -2503,11 +2528,26 @@ function toIsoString(value: any): string {
   return "";
 }
 
-export const getHomeFeedPosts = async (): Promise<HomeFeedPost[]> => {
-  // Dedicated feed source: do not read the users collection here.
-  // New profile posts and portfolio items are mirrored into /posts so the
-  // Home tab can load only content documents.
-  const snap = await getDocs(collection(db, "posts"));
+export interface HomeFeedPage {
+  posts: HomeFeedPost[];
+  lastDoc: any | null;
+  hasMore: boolean;
+}
+
+export const getHomeFeedPosts = async (
+  pageSize = 10,
+  cursor: any | null = null,
+): Promise<HomeFeedPage> => {
+  // Dedicated feed source: query only the content documents needed for the
+  // current page. The Home screen requests the next page as the user scrolls.
+  const constraints: any[] = [
+    orderBy("createdAt", "desc"),
+    limit(Math.max(1, pageSize)),
+  ];
+  if (cursor) constraints.splice(1, 0, startAfter(cursor));
+
+  const feedQuery = query(collection(db, "posts"), ...constraints);
+  const snap = await getDocs(feedQuery);
   const posts: HomeFeedPost[] = [];
 
   snap.forEach((postDoc) => {
@@ -2520,8 +2560,6 @@ export const getHomeFeedPosts = async (): Promise<HomeFeedPost[]> => {
     if (!userId || !url) return;
 
     posts.push({
-      // Use the actual /posts document id so likes/comments resolve to
-      // /posts/{postId}/likes and /posts/{postId}/comments exactly.
       id: postDoc.id,
       userId,
       userName: String(data.userName || data.ownerName || data.authorName || "مستخدم"),
@@ -2535,7 +2573,11 @@ export const getHomeFeedPosts = async (): Promise<HomeFeedPost[]> => {
     });
   });
 
-  return posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return {
+    posts,
+    lastDoc: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
+    hasMore: snap.docs.length === Math.max(1, pageSize),
+  };
 };
 
 export const toggleProfilePostLike = async (postId: string): Promise<boolean> => {

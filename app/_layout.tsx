@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
-import { I18nManager, Linking } from "react-native";
+import { I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { configurePushHandler, registerForPushNotifications } from "@/lib/push_notifications";
@@ -17,6 +17,8 @@ import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
 import { isAuthRoutingSuspended } from "@/lib/auth_flow";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import * as Application from "expo-application";
+import { compareVersions, getMinimumRequiredVersion } from "@/lib/remote_config";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -70,6 +72,7 @@ export default function RootLayout() {
   // Catches async errors from Firebase / network that can't be caught by the
   // class-based ErrorBoundary (which only intercepts render-phase throws).
   const [fatalError, setFatalError] = useState<Error | null>(null);
+  const [forceUpdateRequired, setForceUpdateRequired] = useState(false);
 
   // Automatic artisan location tracking: no-op for client accounts, kicks in
   // silently for artisan accounts as soon as they're signed in.
@@ -93,6 +96,22 @@ export default function RootLayout() {
       setFontsReady(true);
     }
     loadFonts();
+  }, []);
+
+  // Firebase Remote Config: enforce the minimum app version without changing
+  // authentication or navigation logic. A failed fetch is non-blocking.
+  useEffect(() => {
+    let cancelled = false;
+    getMinimumRequiredVersion().then((requiredVersion) => {
+      if (cancelled) return;
+      const currentVersion = Application.nativeApplicationVersion || "0";
+      if (compareVersions(currentVersion, requiredVersion) < 0) {
+        setForceUpdateRequired(true);
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -229,6 +248,59 @@ export default function RootLayout() {
             <NetworkProvider>
               <VideoAudioProvider>
                 <RootLayoutNav isLoggedIn={isLoggedIn} />
+                <Modal
+                  visible={forceUpdateRequired}
+                  transparent
+                  animationType="fade"
+                  onRequestClose={() => {}}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      backgroundColor: "rgba(0,0,0,0.72)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      paddingHorizontal: 24,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: "100%",
+                        maxWidth: 420,
+                        backgroundColor: "#FFF",
+                        borderRadius: 20,
+                        padding: 24,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 10 }}>
+                        يتوفر تحديث جديد
+                      </Text>
+                      <Text style={{ fontSize: 16, color: "#4B5563", textAlign: "center", lineHeight: 25, marginBottom: 22 }}>
+                        يجب تحديث تطبيق فورس إلى أحدث إصدار للمتابعة.
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          const marketUrl = "market://details?id=com.haidar.forus";
+                          const webUrl = "https://play.google.com/store/apps/details?id=com.haidar.forus";
+                          Linking.openURL(marketUrl).catch(() => Linking.openURL(webUrl).catch(() => {}));
+                        }}
+                        style={{
+                          width: "100%",
+                          minHeight: 48,
+                          borderRadius: 12,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#0D1421",
+                        }}
+                      >
+                        <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "700" }}>
+                          تحديث التطبيق
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </Modal>
               </VideoAudioProvider>
             </NetworkProvider>
           </GestureHandlerRootView>

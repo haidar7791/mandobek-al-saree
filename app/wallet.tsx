@@ -246,13 +246,15 @@ export default function WalletScreen() {
 
     setLoading(true);
     try {
-      const newId = await createWalletRequest({
-        userId: currentUser,
+      const withdrawalPayload = {
+        userId: currentUser || auth.currentUser?.uid || "",
         type: activeTab,
-        amount: numAmount,
-        accountNumber: accountNumber.trim(),
-        imageUri: activeTab === "deposit" ? (imageUri ?? undefined) : undefined,
-      });
+        amount: Number(numAmount),
+        accountNumber: accountNumber.trim() || "",
+        ...(activeTab === "deposit" && imageUri ? { imageUri } : {}),
+      };
+
+      const newId = await createWalletRequest(withdrawalPayload);
       const newReq: WalletRequest = {
         id: newId,
         userId: currentUser,
@@ -270,8 +272,9 @@ export default function WalletScreen() {
         activeTab === "deposit" ? "تم إرسال طلب الإيداع" : "تم إرسال طلب السحب",
         "سيتم مراجعة طلبك من قبل الإدارة خلال 24 ساعة."
       );
-    } catch {
-      Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب");
+    } catch (error: any) {
+      console.error("Withdrawal submission error:", error);
+      Alert.alert("خطأ في السحب", error?.message || "حدث خطأ أثناء إرسال الطلب");
     } finally {
       setLoading(false);
     }
