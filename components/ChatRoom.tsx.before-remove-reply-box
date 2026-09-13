@@ -679,7 +679,7 @@ export default function ChatRoom({
       senderId: item.senderId,
       senderName: item.senderName || "مستخدم",
       text: preview,
-      ...(item.type ? { type: item.type } : {}),
+      type: item.type,
     };
   };
 
@@ -1265,23 +1265,49 @@ export default function ChatRoom({
             </>
           )}
 
-          
+          {replyingTo && (
+            <View style={styles.replyComposer}>
+              <View style={styles.replyComposerAccent} />
+
+              <View style={styles.replyComposerContent}>
+                <View style={styles.replyComposerTop}>
+                  <Text
+                    style={styles.replyComposerName}
+                    numberOfLines={1}
+                  >
+                    رد على {replyingTo.senderName}
+                  </Text>
+
+                  <Pressable
+                    style={styles.replyComposerClose}
+                    onPress={() => setReplyingTo(null)}
+                    hitSlop={8}
+                  >
+                    <Feather
+                      name="x"
+                      size={16}
+                      color={C.textMuted}
+                    />
+                  </Pressable>
+                </View>
+
+                <View style={styles.replyComposerPreviewRow}>
+                  <Text
+                    style={styles.replyComposerPreview}
+                    numberOfLines={1}
+                  >
+                    {replyingTo.text || "رسالة"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
 
           <View style={styles.composerShell}>
-            {replyingTo && (
-              <Pressable
-                style={styles.replyCancelBtn}
-                onPress={() => setReplyingTo(null)}
-                hitSlop={8}
-                accessibilityLabel="إلغاء الرد"
-              >
-                <Feather name="x" size={15} color={C.textMuted} />
-              </Pressable>
-            )}
-            <TextInput
+<TextInput
               ref={inputRef}
-              style={[styles.textInput, replyingTo && styles.textInputReplying]}
-              placeholder={replyingTo ? "قم بالرد على الرسالة" : "اكتب رسالتك..."}
+              style={styles.textInput}
+              placeholder={replyingTo ? "اكتب ردك..." : "اكتب رسالتك..."}
               placeholderTextColor={C.textMuted}
               value={text}
               onChangeText={setText}
@@ -1663,20 +1689,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(201,168,76,0.28)",
     overflow: "hidden",
-  },
-  replyCancelBtn: {
-    position: "absolute",
-    left: 6,
-    top: 7,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 20,
-  },
-  textInputReplying: {
-    paddingLeft: 40,
   },
   replyComposerAccent: {
     width: 3,
