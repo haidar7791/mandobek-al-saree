@@ -22,9 +22,7 @@ import {
   startAt,
   endAt,
   startAfter,
-  endBefore,
   limit,
-  limitToLast,
   deleteField,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -1427,50 +1425,18 @@ export const sendCardMessage = async (
   }
 };
 
-const CHAT_MESSAGES_PAGE_SIZE = 30;
-
 export const subscribeToMessages = (
   chatId: string,
   callback: (messages: ChatMessage[]) => void
 ): Unsubscribe => {
   const q = query(
     collection(db, "chats", chatId, "messages"),
-    orderBy("createdAt", "asc"),
-    limitToLast(CHAT_MESSAGES_PAGE_SIZE)
+    orderBy("createdAt", "asc")
   );
-
   return onSnapshot(q, (snap) => {
-    const msgs = snap.docs.map(
-      (d) => ({ id: d.id, ...d.data() } as ChatMessage)
-    );
+    const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
     callback(msgs);
   });
-};
-
-export const loadOlderMessages = async (
-  chatId: string,
-  beforeCreatedAt: string
-): Promise<{
-  messages: ChatMessage[];
-  hasMore: boolean;
-}> => {
-  const q = query(
-    collection(db, "chats", chatId, "messages"),
-    orderBy("createdAt", "asc"),
-    endBefore(beforeCreatedAt),
-    limitToLast(CHAT_MESSAGES_PAGE_SIZE)
-  );
-
-  const snap = await getDocs(q);
-
-  const msgs = snap.docs.map(
-    (d) => ({ id: d.id, ...d.data() } as ChatMessage)
-  );
-
-  return {
-    messages: msgs,
-    hasMore: msgs.length === CHAT_MESSAGES_PAGE_SIZE,
-  };
 };
 
 // Account allowed to see every conversation in the messages list, including

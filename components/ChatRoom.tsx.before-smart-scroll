@@ -120,10 +120,6 @@ export default function ChatRoom({
   const initialMessagesLoadedRef = useRef(false);
   const initialPositionedRef = useRef(false);
 
-  // true = المستخدم في آخر المحادثة ويمكن تحريكه تلقائياً
-  // false = المستخدم يتصفح الرسائل القديمة ولا يجب إعادته للأسفل
-  const isNearBottomRef = useRef(true);
-
   // Presence state
   const [presenceState, setPresenceState] = useState<"online" | "offline" | null>(null);
 
@@ -343,7 +339,6 @@ export default function ChatRoom({
 
     initialMessagesLoadedRef.current = false;
     initialPositionedRef.current = false;
-    isNearBottomRef.current = true;
     setMessages([]);
     setHasMoreMessages(true);
     setLoadingOlderMessages(false);
@@ -1266,20 +1261,8 @@ export default function ChatRoom({
         showsVerticalScrollIndicator={false}
         renderItem={renderMessage}
         onScroll={({ nativeEvent }) => {
-          const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-
-          // مقدار المسافة بين أسفل المحتوى وأسفل الشاشة
-          const distanceFromBottom =
-            contentSize.height -
-            (contentOffset.y + layoutMeasurement.height);
-
-          // إذا كان المستخدم قريباً من آخر رسالة،
-          // يسمح للنظام بالانتقال تلقائياً للرسائل الجديدة.
-          isNearBottomRef.current = distanceFromBottom <= 80;
-
-          // تحميل الرسائل الأقدم فقط عند السحب إلى أعلى المحادثة.
           if (
-            contentOffset.y <= 80 &&
+            nativeEvent.contentOffset.y <= 80 &&
             initialMessagesLoadedRef.current &&
             !loadingOlderMessages &&
             hasMoreMessages
@@ -1295,27 +1278,13 @@ export default function ChatRoom({
         onContentSizeChange={() => {
           if (
             messages.length > 0 &&
-            initialMessagesLoadedRef.current
+            initialMessagesLoadedRef.current &&
+            !initialPositionedRef.current
           ) {
-            // أول فتح للمحادثة:
-            // اذهب مباشرة إلى آخر رسالة.
-            if (!initialPositionedRef.current) {
-              requestAnimationFrame(() => {
-                flatRef.current?.scrollToEnd({ animated: false });
-                isNearBottomRef.current = true;
-                initialPositionedRef.current = true;
-              });
-              return;
-            }
-
-            // بعد ذلك:
-            // لا نتحرك تلقائياً إلا إذا كان المستخدم أصلاً
-            // في نهاية المحادثة.
-            if (isNearBottomRef.current) {
-              requestAnimationFrame(() => {
-                flatRef.current?.scrollToEnd({ animated: true });
-              });
-            }
+            requestAnimationFrame(() => {
+              flatRef.current?.scrollToEnd({ animated: false });
+              initialPositionedRef.current = true;
+            });
           }
         }}
         ListEmptyComponent={
