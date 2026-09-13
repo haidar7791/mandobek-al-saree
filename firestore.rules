@@ -16,6 +16,17 @@ service cloud.firestore {
         && request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2";
     }
 
+    function chatAllowsMessage(chatId) {
+      let chat = get(/databases/$(database)/documents/chats/$(chatId)).data;
+      return isSignedIn()
+        && request.auth.uid in chat.participants
+        && (chat.isGroup == true
+            || (request.auth.uid == chat.participants[0]
+                && !(request.auth.uid in get(/databases/$(database)/documents/users/$(chat.participants[1])).data.get("blockedUserIds", [])))
+            || (request.auth.uid == chat.participants[1]
+                && !(request.auth.uid in get(/databases/$(database)/documents/users/$(chat.participants[0])).data.get("blockedUserIds", []))));
+    }
+
     // ── المنشورات الرئيسية والمعرض (Posts / Reels Feed) ──────────────────────────
     // دعم جلب وإنشاء منشورات الرئيسية مع الإعجابات والتعليقات
     match /posts/{postId} {
@@ -155,7 +166,9 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
 
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn();
+        allow create: if chatAllowsMessage(chatId);
+        allow update, delete: if isSignedIn();
       }
     }
 

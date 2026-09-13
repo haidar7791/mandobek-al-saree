@@ -37,15 +37,18 @@ service firebase.storage {
                     && request.resource.size < 10 * 1024 * 1024;
     }
 
-    // وسائط المحادثات - المشاركون فقط يكتبون/يقرأون
+    // وسائط المحادثات - أي مشارك حالي يستطيع إرسال/قراءة الوسائط.
+    // هذا يعتمد على participants من وثيقة المحادثة، لذلك الأعضاء المضافون
+    // لاحقاً إلى المجموعة يستطيعون أيضاً إرسال الصور والفيديو.
     match /chatMedia/{chatId}/{fileName} {
-      allow read: if request.auth != null
-                    && request.auth.uid in chatId.split("_");
-      allow write: if request.auth != null
-                    && request.auth.uid in chatId.split("_")
+      function isChatParticipant() {
+        return request.auth != null
+          && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+      }
+      allow read: if isChatParticipant();
+      allow write: if isChatParticipant()
                     && request.resource.size < 50 * 1024 * 1024;
-      allow delete: if request.auth != null
-                    && request.auth.uid in chatId.split("_");
+      allow delete: if isChatParticipant();
     }
 
     // وسائط المنتجات — صور وفيديوهات
@@ -77,6 +80,17 @@ service firebase.storage {
                     && request.resource.contentType.matches('image/.*|video/.*');
       allow delete: if request.auth != null
                     && request.auth.uid == userId;
+    }
+
+
+
+    // صور أغلفة مجموعات المحادثة
+    match /chatGroups/{chatId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null;
     }
 
     // إيصالات تحويل المحفظة

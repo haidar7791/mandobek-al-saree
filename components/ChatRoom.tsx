@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  PanResponder,
   TextInput,
   FlatList,
   KeyboardAvoidingView,
@@ -21,16 +22,24 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { Audio } from "expo-av";
+import * as Location from "expo-location";
+import { Audio, Video, ResizeMode } from "expo-av";
 import { auth } from "../lib/firebase";
 import {
   sendMessage,
   sendMediaMessage,
+  toggleMessageLike,
+  type ChatReply,
   subscribeToMessages,
   markMessagesRead,
   deleteMessageForEveryone,
+  sendLocationMessage,
   getUserProfile,
   getArtisanByUserId,
+  getGroupDetails,
+  isUserBlocked,
+  setUserBlocked,
+  type GroupMemberProfile,
   ADMIN_UID,
   ADMIN_DISPLAY_NAME,
   type ChatMessage,
@@ -41,7 +50,7 @@ import Colors from "@/constants/colors";
 
 // Only images use the pending-preview step before sending. Voice notes are
 // uploaded and sent immediately when the user confirms the recording.
-type PendingMedia = { type: "image"; uri: string };
+type PendingMedia = { type: "image" | "video"; uri: string };
 
 const C = Colors.light;
 
@@ -64,6 +73,8 @@ export interface ChatRoomProps {
   headerIcon?: keyof typeof Feather.glyphMap;
   /** Subtitle shown under the header name when presence is hidden. */
   headerSubtitle?: string;
+  isGroup?: boolean;
+  groupPhotoUri?: string | null;
 }
 
 function parsePassedArtisan(raw?: string | null): ArtisanProfile | null {
@@ -89,11 +100,18 @@ export default function ChatRoom({
   showPresence = true,
   headerIcon,
   headerSubtitle,
+  isGroup = false,
+  groupPhotoUri = null,
 }: ChatRoomProps) {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [senderName, setSenderName] = useState("مستخدم");
+  const [replyingTo, setReplyingTo] = useState<ChatReply | null>(null);
+  const replySwipeStartX = useRef<Record<string, number>>({});
+  const replySwipeTriggered = useRef<Record<string, boolean>>({});
+
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const flatRef = useRef<FlatList>(null);
 
   // Presence state
@@ -146,6 +164,11 @@ export default function ChatRoom({
 
   // Full-screen image viewer
   const [viewerUri, setViewerUri] = useState<string | null>(null);
+  const [viewerVideoUri, setViewerVideoUri] = useState<string | null>(null);
+  const [locationMenuVisible, setLocationMenuVisible] = useState(false);
+  const [sendingLocation, setSendingLocation] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockActionLoading, setBlockActionLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -154,7 +177,7 @@ export default function ChatRoom({
 
   // Derive the other participant's uid from chatId unless explicitly provided.
   const otherUid =
-    otherUidProp ?? (chatId ? chatId.split("_").find((u) => u !== currentUid) || null : null);
+    otherUidProp ?? (isGroup ? null : (chatId ? chatId.split("_").find((u) => u !== currentUid) || null : null));
 
   // Artisan profile of the other participant, used to make the header
   // avatar/name tappable and to open their profile instantly. Seeded from
@@ -169,6 +192,16 @@ export default function ChatRoom({
   // Basic user profile for the other participant (non-artisan fallback)
   const [otherUserName, setOtherUserName] = useState<string | null>(null);
   const [otherUserPhoto, setOtherUserPhoto] = useState<string | null>(null);
+  const [groupMembers, setGroupMembers] = useState<GroupMemberProfile[]>([]);
+
+  useEffect(() => {
+    if (!isGroup || !chatId) { setGroupMembers([]); return; }
+    let cancelled = false;
+    getGroupDetails(chatId).then((details) => {
+      if (!cancelled) setGroupMembers(details?.members || []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [chatId, isGroup]);
 
   useEffect(() => {
     if (!otherUid || otherUid === ADMIN_UID) {
@@ -227,6 +260,72 @@ export default function ChatRoom({
   const handleOpenArtisanProfile = handleOpenOtherProfile;
   // Header tap is enabled for any non-admin participant (artisan OR regular user)
   const canOpenProfile = !!otherUid && otherUid !== ADMIN_UID;
+
+  // Load the block state only for one-to-one conversations.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (isGroup || !currentUid || !otherUid || otherUid === ADMIN_UID) {
+      setIsBlocked(false);
+      return;
+    }
+
+    isUserBlocked(currentUid, otherUid)
+      .then((blocked) => {
+        if (!cancelled) setIsBlocked(blocked);
+      })
+      .catch(() => {
+        if (!cancelled) setIsBlocked(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUid, otherUid, isGroup]);
+
+  const handleToggleBlock = () => {
+    if (isGroup || !currentUid || !otherUid || otherUid === ADMIN_UID || blockActionLoading) {
+      return;
+    }
+
+    const nextBlocked = !isBlocked;
+
+    Alert.alert(
+      nextBlocked ? "حظر المستخدم" : "إلغاء حظر المستخدم",
+      nextBlocked
+        ? `هل تريد حظر ${otherUserName || otherName} من إرسال الرسائل إليك؟`
+        : `هل تريد السماح لـ ${otherUserName || otherName} بإرسال الرسائل إليك مرة أخرى؟`,
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: nextBlocked ? "حظر" : "إلغاء الحظر",
+          style: nextBlocked ? "destructive" : "default",
+          onPress: async () => {
+            setBlockActionLoading(true);
+            try {
+              await setUserBlocked(currentUid, otherUid, nextBlocked);
+              setIsBlocked(nextBlocked);
+              Haptics.notificationAsync(
+                nextBlocked
+                  ? Haptics.NotificationFeedbackType.Warning
+                  : Haptics.NotificationFeedbackType.Success
+              );
+            } catch (error) {
+              console.error("toggle block failed:", error);
+              Alert.alert(
+                "خطأ",
+                nextBlocked
+                  ? "تعذّر حظر المستخدم، حاول مرة أخرى."
+                  : "تعذّر إلغاء الحظر، حاول مرة أخرى."
+              );
+            } finally {
+              setBlockActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -307,10 +406,12 @@ export default function ChatRoom({
       setUploading(true);
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        await sendMediaMessage(chatId, user.uid, senderName, "image", pendingMedia.uri);
+        await sendMediaMessage(chatId, user.uid, senderName, pendingMedia.type, pendingMedia.uri, undefined, replyingTo);
         setPendingMedia(null);
-      } catch (err) {
-        Alert.alert("خطأ", "تعذّر إرسال الوسائط، حاول مرة أخرى");
+        setReplyingTo(null);
+      } catch (err: any) {
+        if (err?.message === "USER_BLOCKED") Alert.alert("لا يمكن الإرسال", "هذا المستخدم قام بحظرك.");
+        else Alert.alert("خطأ", "تعذّر إرسال الوسائط، حاول مرة أخرى");
       } finally {
         setUploading(false);
       }
@@ -321,26 +422,80 @@ export default function ChatRoom({
     const msg = text.trim();
     setText("");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await sendMessage(chatId, user.uid, senderName, msg);
+    try {
+      await sendMessage(chatId, user.uid, senderName, msg, replyingTo);
+      setReplyingTo(null);
+    } catch (err: any) {
+      if (err?.message === "USER_BLOCKED") Alert.alert("لا يمكن الإرسال", "هذا المستخدم قام بحظرك.");
+      else Alert.alert("خطأ", "تعذّر إرسال الرسالة، حاول مرة أخرى");
+    }
   };
 
   const handlePickImage = async () => {
-    // Android 13+ uses the system Photo Picker automatically — no permission
-    // declaration or runtime request needed. We call launchImageLibraryAsync
-    // directly; expo-image-picker handles the rest.
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       quality: 0.8,
       allowsEditing: false,
+      videoMaxDuration: 180,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPendingMedia({ type: "image", uri: asset.uri });
+    setPendingMedia({
+      type: asset.type === "video" ? "video" : "image",
+      uri: asset.uri,
+    });
   };
 
   const handleCancelPendingMedia = () => {
     setPendingMedia(null);
+  };
+
+  const handleShareLocation = async () => {
+    if (sendingLocation) return;
+    const user = auth.currentUser;
+    if (!user || !chatId) return;
+
+    setSendingLocation(true);
+    try {
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        Alert.alert("تفعيل الموقع", "فعّل خدمة الموقع على جهازك ثم حاول مرة أخرى.");
+        return;
+      }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("إذن الموقع", "يجب السماح بالوصول إلى موقعك لاستخدام مشاركة الموقع.");
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      await sendLocationMessage(
+        chatId,
+        user.uid,
+        senderName,
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+      setLocationMenuVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error("share location failed:", error);
+      Alert.alert("خطأ", "تعذّر الحصول على موقعك الحالي بدقة.");
+    } finally {
+      setSendingLocation(false);
+    }
+  };
+
+  const handleOpenLocation = (item: ChatMessage) => {
+    if (item.latitude == null || item.longitude == null) return;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${item.latitude},${item.longitude}`,
+    )}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert("خطأ", "تعذّر فتح الخريطة.");
+    });
   };
 
   const handleStartRecording = async () => {
@@ -411,9 +566,11 @@ export default function ChatRoom({
     setUploading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await sendMediaMessage(chatId, user.uid, senderName, "audio", uri, duration);
-    } catch (err) {
-      Alert.alert("خطأ", "تعذّر إرسال الرسالة الصوتية");
+      await sendMediaMessage(chatId, user.uid, senderName, "audio", uri, duration, replyingTo);
+      setReplyingTo(null);
+    } catch (err: any) {
+      if (err?.message === "USER_BLOCKED") Alert.alert("لا يمكن الإرسال", "هذا المستخدم قام بحظرك.");
+      else Alert.alert("خطأ", "تعذّر إرسال الرسالة الصوتية");
     } finally {
       setUploading(false);
     }
@@ -505,6 +662,48 @@ export default function ChatRoom({
     );
   };
 
+  const makeReplyFromMessage = (item: ChatMessage): ChatReply => {
+    let preview = item.text || "";
+
+    if (!preview) {
+      if (item.type === "image") preview = "📷 صورة";
+      else if (item.type === "video") preview = "🎥 فيديو";
+      else if (item.type === "audio") preview = "🎤 رسالة صوتية";
+      else if (item.type === "location") preview = "📍 موقع";
+      else preview = "رسالة";
+    }
+
+    return {
+      messageId: item.id,
+      senderId: item.senderId,
+      senderName: item.senderName || "مستخدم",
+      text: preview,
+      type: item.type,
+    };
+  };
+
+  const handleMessagePress = (item: ChatMessage) => {
+    if (item.deleted || item.type === "image" || item.type === "video") return;
+    setSelectedMessageId((prev) => prev === item.id ? null : item.id);
+  };
+
+  const handleReply = (item: ChatMessage) => {
+    setReplyingTo(makeReplyFromMessage(item));
+    setSelectedMessageId(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleLike = async (item: ChatMessage) => {
+    const user = auth.currentUser;
+    if (!user || !chatId || item.deleted) return;
+    try {
+      await toggleMessageLike(chatId, item.id, user.uid);
+      Haptics.selectionAsync();
+    } catch {
+      Alert.alert("خطأ", "تعذّر تسجيل الإعجاب");
+    }
+  };
+
   const handleLongPressMessage = (item: ChatMessage) => {
     if (item.senderId !== currentUid || item.deleted) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -518,8 +717,42 @@ export default function ChatRoom({
     ]);
   };
 
+  const createReplySwipeResponder = (item: ChatMessage) =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        // نلتقط السحب الأفقي فقط، ونترك التمرير العمودي للقائمة.
+        return Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15;
+      },
+      onPanResponderGrant: (_, gesture) => {
+        replySwipeStartX.current[item.id] = gesture.x0;
+        replySwipeTriggered.current[item.id] = false;
+      },
+      onPanResponderMove: (_, gesture) => {
+        if (
+          !replySwipeTriggered.current[item.id] &&
+          Math.abs(gesture.dx) >= 55 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15
+        ) {
+          replySwipeTriggered.current[item.id] = true;
+          handleReply(item);
+        }
+      },
+      onPanResponderRelease: () => {
+        delete replySwipeStartX.current[item.id];
+        delete replySwipeTriggered.current[item.id];
+      },
+      onPanResponderTerminate: () => {
+        delete replySwipeStartX.current[item.id];
+        delete replySwipeTriggered.current[item.id];
+      },
+    });
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isMine = item.senderId === currentUid;
+
+    const swipeResponder = createReplySwipeResponder(item);
+
     const isAdminSender = !isMine && item.senderId === ADMIN_UID;
     const time = new Date(item.createdAt).toLocaleTimeString("ar-IQ", {
       hour: "2-digit",
@@ -536,6 +769,13 @@ export default function ChatRoom({
         ) : (
           <Feather name="check" size={11} color="rgba(255,255,255,0.5)" />
         )}
+      </View>
+    ) : null;
+
+    const replyPreview = item.replyTo ? (
+      <View style={[styles.replyPreview, isMine ? styles.replyPreviewMine : styles.replyPreviewTheirs]}>
+        <Text style={[styles.replyPreviewName, isMine ? { color: "rgba(255,255,255,0.9)" } : { color: C.accent }]} numberOfLines={1}>{item.replyTo.senderName}</Text>
+        <Text style={[styles.replyPreviewText, isMine ? { color: "rgba(255,255,255,0.72)" } : { color: C.textSecondary }]} numberOfLines={2}>{item.replyTo.text}</Text>
       </View>
     ) : null;
 
@@ -558,10 +798,56 @@ export default function ChatRoom({
           </Text>
         </View>
       );
+    } else if (item.type === "location" && item.latitude != null && item.longitude != null) {
+      bubbleContent = (
+        <Pressable style={styles.locationBubble} onPress={() => handleOpenLocation(item)}>
+          <View style={styles.locationIcon}>
+            <Feather name="map-pin" size={22} color={C.primary} />
+          </View>
+          <View style={styles.locationInfo}>
+            <Text style={styles.locationTitle}>موقع جغرافي</Text>
+            <Text style={styles.locationSub}>اضغط لفتح الموقع على الخريطة</Text>
+          </View>
+          <View style={styles.readIndicatorRow}>
+            {readIndicator}
+            <Text style={[styles.msgTime, isMine ? { color: "rgba(255,255,255,0.6)" } : { color: C.textMuted }]}>
+              {time}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    } else if (item.type === "video" && item.mediaUrl) {
+      bubbleContent = (
+        <View>
+          <Pressable onPress={() => { setSelectedMessageId(item.id); setViewerVideoUri(item.mediaUrl!); }}>
+            <Video
+              source={{ uri: item.mediaUrl }}
+              style={styles.videoBubble}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={false}
+              isLooping={false}
+              useNativeControls={false}
+            />
+            <View style={styles.videoPlayOverlay}>
+              <View style={styles.videoPlayCircle}>
+                <Feather name="play" size={20} color="#FFF" />
+              </View>
+            </View>
+          </Pressable>
+          <View style={styles.mediaFooter}>
+            <View style={styles.readIndicatorRow}>
+              {readIndicator}
+              <Text style={[styles.msgTime, isMine ? { color: "rgba(255,255,255,0.6)" } : { color: C.textMuted }]}>
+                {time}
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
     } else if (item.type === "image" && item.mediaUrl) {
       bubbleContent = (
         <View>
-          <Pressable onPress={() => setViewerUri(item.mediaUrl!)}>
+          <Pressable onPress={() => { setSelectedMessageId(item.id); setViewerUri(item.mediaUrl!); }}>
             <Image
               source={{ uri: item.mediaUrl }}
               style={styles.imageBubble}
@@ -762,14 +1048,45 @@ export default function ChatRoom({
 
     return (
       <View style={[styles.msgRow, isMine ? styles.msgRowMine : styles.msgRowTheirs]}>
-        <Pressable
-          onLongPress={() => handleLongPressMessage(item)}
-          delayLongPress={350}
-          style={[styles.msgBubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}
-        >
-          {isAdminSender && <Text style={styles.adminLabel}>{ADMIN_DISPLAY_NAME}</Text>}
-          {bubbleContent}
-        </Pressable>
+        <View style={styles.messageColumn}>
+          <Pressable
+            onPress={() => handleMessagePress(item)}
+            onLongPress={() => handleLongPressMessage(item)}
+            delayLongPress={350}
+            style={[styles.msgBubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}
+          >
+            {isGroup && (
+              <View style={styles.groupSenderRow}>
+                {(() => {
+                  const member = groupMembers.find((m) => m.userId === item.senderId);
+                  return member?.photoUri ? (
+                    <Image source={{ uri: member.photoUri }} style={styles.groupSenderAvatar} contentFit="cover" />
+                  ) : (
+                    <View style={styles.groupSenderAvatarFallback}><Text style={styles.groupSenderAvatarText}>{(member?.name || item.senderName || "مستخدم")[0]}</Text></View>
+                  );
+                })()}
+                <View>
+                  <Text style={styles.groupSenderName}>{groupMembers.find((m) => m.userId === item.senderId)?.name || item.senderName || "مستخدم"}</Text>
+                  {isAdminSender && <Text style={styles.adminLabel}>مسؤول النظام</Text>}
+                </View>
+              </View>
+            )}
+            {replyPreview}
+            {bubbleContent}
+          </Pressable>
+          {selectedMessageId === item.id && !item.deleted && (
+            <View style={[styles.messageActions, isMine ? styles.messageActionsMine : styles.messageActionsTheirs]}>
+              <Pressable style={styles.messageActionBtn} onPress={() => handleReply(item)}>
+                <Feather name="corner-up-right" size={16} color={C.primary} />
+                <Text style={styles.messageActionText}>رد</Text>
+              </Pressable>
+              <Pressable style={styles.messageActionBtn} onPress={() => handleLike(item)}>
+                <Text style={styles.heartAction}>{(item.likedBy || []).includes(currentUid || "") ? "❤️" : "♡"}</Text>
+                {(item.likesCount || 0) > 0 && <Text style={styles.likeCount}>{item.likesCount}</Text>}
+              </Pressable>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -792,10 +1109,31 @@ export default function ChatRoom({
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
+
+        {!isGroup && canOpenProfile && (
+          <Pressable
+            style={styles.headerBlockBtn}
+            onPress={handleToggleBlock}
+            disabled={blockActionLoading}
+            hitSlop={8}
+            accessibilityLabel={isBlocked ? "إلغاء حظر المستخدم" : "حظر المستخدم"}
+          >
+            {blockActionLoading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Feather
+                name={isBlocked ? "user-check" : "slash"}
+                size={18}
+                color={isBlocked ? "#4ade80" : "#FFF"}
+              />
+            )}
+          </Pressable>
+        )}
+
         <Pressable
           style={styles.headerInfo}
-          onPress={handleOpenArtisanProfile}
-          disabled={!canOpenProfile}
+          onPress={() => isGroup ? router.push({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
+          disabled={!isGroup && !canOpenProfile}
           hitSlop={6}
         >
           <Text style={styles.headerName}>{otherName}</Text>
@@ -810,13 +1148,13 @@ export default function ChatRoom({
         </Pressable>
         <Pressable
           style={styles.headerAvatar}
-          onPress={handleOpenArtisanProfile}
-          disabled={!canOpenProfile}
+          onPress={() => isGroup ? router.push({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
+          disabled={!isGroup && !canOpenProfile}
           hitSlop={6}
         >
-          {(otherArtisanProfile?.photoUri || otherUserPhoto) ? (
+          {(groupPhotoUri || otherArtisanProfile?.photoUri || otherUserPhoto) ? (
             <Image
-              source={{ uri: (otherArtisanProfile?.photoUri || otherUserPhoto)! }}
+              source={{ uri: (groupPhotoUri || otherArtisanProfile?.photoUri || otherUserPhoto)! }}
               style={styles.headerAvatarImage}
               contentFit="cover"
             />
@@ -846,8 +1184,15 @@ export default function ChatRoom({
 
       {pendingMedia && (
         <View style={styles.pendingBar}>
-          <Image source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} contentFit="cover" />
-          <Text style={styles.pendingLabel}>جاهزة للإرسال</Text>
+          {pendingMedia.type === "video" ? (
+            <View style={styles.pendingVideoThumb}>
+              <Video source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} resizeMode={ResizeMode.COVER} shouldPlay={false} />
+              <Feather name="play-circle" size={20} color="#FFF" style={styles.pendingVideoIcon} />
+            </View>
+          ) : (
+            <Image source={{ uri: pendingMedia.uri }} style={styles.pendingThumb} contentFit="cover" />
+          )}
+          <Text style={styles.pendingLabel}>{pendingMedia.type === "video" ? "الفيديو جاهز للإرسال" : "جاهزة للإرسال"}</Text>
           <Pressable style={styles.pendingCancelBtn} onPress={handleCancelPendingMedia} disabled={uploading}>
             <Feather name="x" size={16} color={C.textMuted} />
           </Pressable>
@@ -888,6 +1233,14 @@ export default function ChatRoom({
             <>
               <Pressable
                 style={styles.mediaBtn}
+                onPress={() => setLocationMenuVisible(true)}
+                disabled={!!pendingMedia}
+                accessibilityLabel="خيارات المحادثة"
+              >
+                <Feather name="more-horizontal" size={20} color={C.textMuted} />
+              </Pressable>
+              <Pressable
+                style={styles.mediaBtn}
                 onPress={handleStartRecording}
                 disabled={!!pendingMedia}
               >
@@ -903,19 +1256,33 @@ export default function ChatRoom({
             </>
           )}
 
-          <TextInput
-            style={styles.textInput}
-            placeholder="اكتب رسالتك..."
-            placeholderTextColor={C.textMuted}
-            value={text}
-            onChangeText={setText}
-            textAlign="right"
-            multiline
-            maxLength={500}
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
-            editable={!pendingMedia}
-          />
+          <View style={styles.composerShell}>
+            {replyingTo && (
+              <View style={styles.replyInline}>
+                <View style={styles.replyInlineAccent} />
+                <View style={styles.replyInlineContent}>
+                  <Text style={styles.replyInlineName} numberOfLines={1}>رد على {replyingTo.senderName}</Text>
+                  <Text style={styles.replyInlineBody} numberOfLines={1}>{replyingTo.text}</Text>
+                </View>
+                <Pressable style={styles.replyInlineClose} onPress={() => setReplyingTo(null)} hitSlop={6}>
+                  <Feather name="x" size={16} color={C.textMuted} />
+                </Pressable>
+              </View>
+            )}
+            <TextInput
+              style={styles.textInput}
+              placeholder={replyingTo ? "اكتب ردك..." : "اكتب رسالتك..."}
+              placeholderTextColor={C.textMuted}
+              value={text}
+              onChangeText={setText}
+              textAlign="right"
+              multiline
+              maxLength={500}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              editable={!pendingMedia}
+            />
+          </View>
 
           {/* Send button — left side of the bar */}
           <Pressable
@@ -933,6 +1300,36 @@ export default function ChatRoom({
         </View>
       )}
 
+      <Modal
+        visible={locationMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLocationMenuVisible(false)}
+      >
+        <Pressable style={styles.optionBackdrop} onPress={() => setLocationMenuVisible(false)}>
+          <View style={styles.locationMenu}>
+            <Text style={styles.locationMenuTitle}>مشاركة</Text>
+            <Pressable
+              style={styles.locationOption}
+              onPress={handleShareLocation}
+              disabled={sendingLocation}
+            >
+              {sendingLocation ? (
+                <ActivityIndicator size="small" color={C.accent} />
+              ) : (
+                <View style={styles.locationOptionIcon}>
+                  <Feather name="map-pin" size={19} color={C.accent} />
+                </View>
+              )}
+              <View style={styles.locationOptionText}>
+                <Text style={styles.locationOptionTitle}>مشاركة موقعي الحالي</Text>
+                <Text style={styles.locationOptionSub}>سيُطلب إذن الموقع عند اختيار هذا الخيار فقط</Text>
+              </View>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* Full-screen image viewer */}
       <Modal
         visible={!!viewerUri}
@@ -946,6 +1343,29 @@ export default function ChatRoom({
           </Pressable>
           {viewerUri && (
             <Image source={{ uri: viewerUri }} style={styles.viewerImage} contentFit="contain" />
+          )}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!viewerVideoUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerVideoUri(null)}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable style={styles.viewerCloseBtn} onPress={() => setViewerVideoUri(null)}>
+            <Feather name="x" size={26} color="#FFF" />
+          </Pressable>
+          {viewerVideoUri && (
+            <Video
+              source={{ uri: viewerVideoUri }}
+              style={styles.viewerVideo}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+              useNativeControls
+              isLooping={false}
+            />
           )}
         </View>
       </Modal>
@@ -972,6 +1392,15 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 12, fontFamily: "Cairo_400Regular" },
   presenceRow: { flexDirection: "row", alignItems: "center", gap: 5, justifyContent: "flex-end" },
   onlineDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#4ade80" },
+  headerBlockBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 4,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
   headerAvatar: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.2)",
@@ -984,12 +1413,30 @@ const styles = StyleSheet.create({
   msgRow: { flexDirection: "row" },
   msgRowMine: { justifyContent: "flex-start" },
   msgRowTheirs: { justifyContent: "flex-end" },
+  messageColumn: { maxWidth: "75%", alignItems: "stretch" },
   msgBubble: {
-    maxWidth: "75%", borderRadius: 16, paddingHorizontal: 14,
+    maxWidth: "100%", borderRadius: 16, paddingHorizontal: 14,
     paddingVertical: 10, gap: 4,
   },
+  replyPreview: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 5, borderLeftWidth: 3 },
+  replyPreviewMine: { backgroundColor: "rgba(255,255,255,0.10)", borderLeftColor: C.accent },
+  replyPreviewTheirs: { backgroundColor: "rgba(13,27,62,0.06)", borderLeftColor: C.accent },
+  replyPreviewName: { fontSize: 10, fontFamily: "Cairo_700Bold", textAlign: "right" },
+  replyPreviewText: { fontSize: 10, fontFamily: "Cairo_400Regular", textAlign: "right" },
+  messageActions: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 4, backgroundColor: C.card, borderRadius: 18, paddingHorizontal: 6, paddingVertical: 4, alignSelf: "flex-end", elevation: 2 },
+  messageActionsMine: { alignSelf: "flex-start" },
+  messageActionsTheirs: { alignSelf: "flex-end" },
+  messageActionBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 14, backgroundColor: C.inputBg },
+  messageActionText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
+  heartAction: { fontSize: 18, lineHeight: 20 },
+  likeCount: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.textMuted },
   bubbleMine: { backgroundColor: C.primary, borderBottomLeftRadius: 4 },
   bubbleTheirs: { backgroundColor: C.card, borderBottomRightRadius: 4 },
+  groupSenderRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", gap: 6, marginBottom: 2 },
+  groupSenderAvatar: { width: 24, height: 24, borderRadius: 12 },
+  groupSenderAvatarFallback: { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(201,168,76,0.18)", alignItems: "center", justifyContent: "center" },
+  groupSenderAvatarText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.accent },
+  groupSenderName: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
   adminLabel: {
     fontSize: 10, fontFamily: "Cairo_600SemiBold",
     color: C.accent, textAlign: "right",
@@ -1022,6 +1469,48 @@ const styles = StyleSheet.create({
   },
   storyThumbBadgeText: { color: "#FFF", fontSize: 10, fontWeight: "600" },
   imageBubble: { width: 200, height: 200, borderRadius: 10 },
+  videoBubble: { width: 220, height: 170, borderRadius: 10, backgroundColor: "#000" },
+  videoPlayOverlay: {
+    position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
+    alignItems: "center", justifyContent: "center",
+  },
+  videoPlayCircle: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center",
+  },
+  locationBubble: {
+    minWidth: 220, flexDirection: "row", alignItems: "center", gap: 9,
+  },
+  locationIcon: {
+    width: 42, height: 42, borderRadius: 13, backgroundColor: C.accent,
+    alignItems: "center", justifyContent: "center",
+  },
+  locationInfo: { flex: 1, gap: 1 },
+  locationTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  locationSub: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  optionBackdrop: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end",
+    padding: 14,
+  },
+  locationMenu: {
+    backgroundColor: C.card, borderRadius: 20, padding: 16, marginBottom: 8,
+  },
+  locationMenuTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right", marginBottom: 10 },
+  locationOption: {
+    flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.inputBg,
+    borderRadius: 14, padding: 12,
+  },
+  locationOptionIcon: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(201,168,76,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  locationOptionText: { flex: 1, alignItems: "flex-end" },
+  locationOptionTitle: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+  locationOptionSub: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  pendingVideoThumb: { width: 48, height: 48, borderRadius: 8, overflow: "hidden", position: "relative" },
+  pendingVideoIcon: { position: "absolute", left: 14, top: 14 },
+  viewerVideo: { width: "100%", height: "100%" },
+
   mediaFooter: { marginTop: 4 },
   audioBubble: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 140 },
   playBtn: {
@@ -1042,7 +1531,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: C.border,
   },
   textInput: {
-    flex: 1, backgroundColor: C.inputBg, borderRadius: 16,
+    flex: 1, backgroundColor: "transparent", borderRadius: 16,
     paddingHorizontal: 16, paddingVertical: 10,
     fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text,
     maxHeight: 100,
@@ -1148,6 +1637,77 @@ const styles = StyleSheet.create({
 
   deletedRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   deletedText: { fontSize: 13, fontFamily: "Cairo_400Regular", fontStyle: "italic" },
+  composerShell: { flex: 1, backgroundColor: C.inputBg, borderRadius: 16, overflow: "hidden", minHeight: 44 },
+  replyInline: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: 10, paddingTop: 7, paddingBottom: 2, backgroundColor: "rgba(201,168,76,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(201,168,76,0.18)" },
+  replyInlineAccent: { width: 3, height: 30, borderRadius: 2, backgroundColor: C.accent, marginRight: 8 },
+  replyInlineContent: { flex: 1, alignItems: "flex-end" },
+  replyInlineName: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  replyInlineBody: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  replyInlineClose: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", marginLeft: 5 },
+
+  replyComposer: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 52,
+    marginHorizontal: 8,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(201,168,76,0.09)",
+    borderWidth: 1,
+    borderColor: "rgba(201,168,76,0.28)",
+    overflow: "hidden",
+  },
+  replyComposerAccent: {
+    width: 3,
+    alignSelf: "stretch",
+    borderRadius: 3,
+    backgroundColor: C.accent,
+    marginRight: 9,
+  },
+  replyComposerContent: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: "flex-end",
+  },
+  replyComposerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    width: "100%",
+    justifyContent: "flex-end",
+  },
+  replyComposerName: {
+    fontSize: 11,
+    fontFamily: "Cairo_700Bold",
+    color: C.accent,
+    textAlign: "right",
+    flexShrink: 1,
+  },
+  replyComposerPreviewRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 5,
+    marginTop: 1,
+  },
+  replyComposerPreview: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+    fontFamily: "Cairo_400Regular",
+    color: C.textSecondary,
+    textAlign: "right",
+  },
+  replyComposerClose: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 5,
+  },
   pendingBar: {
     flexDirection: "row",
     alignItems: "center",

@@ -1156,6 +1156,14 @@ export const sendExpoPush = async (
 
 // ─── Chat Messages ─────────────────────────────────────────────────────────────
 
+export interface ChatReply {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  type?: ChatMessage["type"];
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -1164,9 +1172,11 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   read?: boolean;
-  type?: "text" | "image" | "audio" | "card" | "order_card";
+  type?: "text" | "image" | "video" | "audio" | "location" | "card" | "order_card";
   mediaUrl?: string;
   duration?: number;
+  latitude?: number;
+  longitude?: number;
   deleted?: boolean;
   /** Card message fields — populated when type === "card" */
   cardImage?: string;   // image URL for the card thumbnail
@@ -1176,9 +1186,31 @@ export interface ChatMessage {
   /** Story reply — thumbnail of the story that was replied to */
   storyImageUrl?: string;
   orderCard?: OrderSharePayload;
+  /** Reference to the message this message replies to. */
+  replyTo?: ChatReply;
+  likedBy?: string[];
+  likesCount?: number;
 }
 
 export const DELETED_MESSAGE_TEXT = "تم حذف هذه الرسالة";
+
+export interface GroupMemberProfile {
+  userId: string;
+  name: string;
+  photoUri: string | null;
+  role: "admin" | "moderator" | "member";
+}
+
+export interface GroupDetails {
+  chatId: string;
+  groupName: string;
+  groupPhotoUri: string | null;
+  participants: string[];
+  createdBy: string;
+  adminIds: string[];
+  moderatorIds: string[];
+  members: GroupMemberProfile[];
+}
 
 export interface ChatSummary {
   chatId: string;
@@ -1189,6 +1221,10 @@ export interface ChatSummary {
   lastAt: string;
   lastSenderId?: string;
   unreadCount?: number;
+  isGroup?: boolean;
+  groupName?: string;
+  groupPhotoUri?: string | null;
+  participants?: string[];
 }
 
 export interface ChatLastActivity {
@@ -1197,57 +1233,67 @@ export interface ChatLastActivity {
   unreadCount: number;
 }
 
-const getChatReadState = async (
-  chatId: string,
+const getChatReadState = (
   viewerId: string,
   chatData: Record<string, any>,
-): Promise<{ lastSenderId: string; unreadCount: number }> => {
-  try {
-    const messagesSnap = await getDocs(collection(db, "chats", chatId, "messages"));
-    const messageDocs = messagesSnap.docs;
-    const latestMessage = messageDocs.reduce<any>((latest, current) => {
-      const currentAt = String(current.data().createdAt || "");
-      const latestAt = String(latest?.createdAt || "");
-      return currentAt > latestAt ? current.data() : latest;
-    }, null);
-    const lastSenderId = String(chatData.lastSenderId || latestMessage?.senderId || "");
-    const unreadCount = messageDocs.filter((message) => {
-      const data = message.data();
-      return data.senderId !== viewerId && data.read !== true;
-    }).length;
-    return { lastSenderId, unreadCount };
-  } catch (err) {
-    console.error("getChatReadState error:", err);
-    return {
-      lastSenderId: String(chatData.lastSenderId || ""),
-      unreadCount: 0,
-    };
-  }
+): { lastSenderId: string; unreadCount: number } => {
+  const lastAt = String(chatData.lastAt || "");
+  const lastSenderId = String(chatData.lastSenderId || "");
+  const lastReadAt = String(chatData.lastReadAtBy?.[viewerId] || "");
+  const unreadCount =
+    !!lastAt &&
+    !!lastSenderId &&
+    lastSenderId !== viewerId &&
+    (!lastReadAt || lastReadAt < lastAt)
+      ? 1
+      : 0;
+  return { lastSenderId, unreadCount };
 };
 
 export function buildChatId(uid1: string, uid2: string): string {
   return [uid1, uid2].sort().join("_");
 }
 
+export const assertCanSendChatMessage = async (chatId: string, senderId: string): Promise<void> => {
+  const chatSnap = await getDoc(doc(db, "chats", chatId));
+  if (!chatSnap.exists()) throw new Error("CHAT_NOT_FOUND");
+  const data = chatSnap.data() as Record<string, any>;
+  const participants: string[] = Array.isArray(data.participants) ? data.participants : [];
+  if (!participants.includes(senderId)) throw new Error("NOT_CHAT_PARTICIPANT");
+
+  // Group members can send media/messages freely. For one-to-one chats,
+  // mirror the Firestore rule so a user who was blocked cannot send.
+  if (data.isGroup === true) return;
+  const otherUid = participants.find((uid) => uid !== senderId);
+  if (!otherUid) return;
+  const otherSnap = await getDoc(doc(db, "users", otherUid));
+  const blockedUserIds = (otherSnap.data()?.blockedUserIds || []) as string[];
+  if (blockedUserIds.includes(senderId)) throw new Error("USER_BLOCKED");
+};
+
 export const sendMessage = async (
   chatId: string,
   senderId: string,
   senderName: string,
-  text: string
+  text: string,
+  replyTo?: ChatReply | null,
 ): Promise<void> => {
+  await assertCanSendChatMessage(chatId, senderId);
+  const createdAt = new Date().toISOString();
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
     senderId,
     senderName,
     text,
-    createdAt: new Date().toISOString(),
+    ...(replyTo ? { replyTo } : {}),
+    createdAt,
   });
   await setDoc(
     doc(db, "chats", chatId),
     {
-      participants: chatId.split("_"),
+      participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
       lastMessage: text,
-      lastAt: new Date().toISOString(),
+      lastAt: createdAt,
       lastSenderId: senderId,
     },
     { merge: true }
@@ -1257,7 +1303,7 @@ export const sendMessage = async (
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
     if (otherUid) {
-      const profile = await getUserProfile(otherUid);
+      const profile = await getCachedUserProfile(otherUid);
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
@@ -1295,7 +1341,7 @@ export const sendStoryReply = async (
   await setDoc(
     doc(db, "chats", chatId),
     {
-      participants: chatId.split("_"),
+      participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
       lastMessage: text,
       lastAt: new Date().toISOString(),
       lastSenderId: senderId,
@@ -1305,7 +1351,7 @@ export const sendStoryReply = async (
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
     if (otherUid) {
-      const profile = await getUserProfile(otherUid);
+      const profile = await getCachedUserProfile(otherUid);
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
@@ -1337,6 +1383,7 @@ export const sendCardMessage = async (
   cardLocation?: GeoLocation | null,
   cardLocationLabel?: string,
 ): Promise<void> => {
+  await assertCanSendChatMessage(chatId, senderId);
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
     senderId,
@@ -1353,7 +1400,7 @@ export const sendCardMessage = async (
   await setDoc(
     doc(db, "chats", chatId),
     {
-      participants: chatId.split("_"),
+      participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
       lastMessage: previewText,
       lastAt: new Date().toISOString(),
       lastSenderId: senderId,
@@ -1363,7 +1410,7 @@ export const sendCardMessage = async (
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
     if (otherUid) {
-      const profile = await getUserProfile(otherUid);
+      const profile = await getCachedUserProfile(otherUid);
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
@@ -1508,6 +1555,7 @@ export const sendOrderCardMessage = async (
   senderName: string,
   order: OrderSharePayload,
 ): Promise<void> => {
+  await assertCanSendChatMessage(chatId, senderId);
   const previewText = `📦 طلب بيع: ${order.productTitle}${order.productPrice != null ? ` — ${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : ""}`;
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
@@ -1519,7 +1567,7 @@ export const sendOrderCardMessage = async (
     createdAt: new Date().toISOString(),
   });
   await setDoc(doc(db, "chats", chatId), {
-    participants: chatId.split("_"),
+    participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
     lastMessage: previewText,
     lastAt: new Date().toISOString(),
     lastSenderId: senderId,
@@ -1527,7 +1575,7 @@ export const sendOrderCardMessage = async (
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
     if (otherUid) {
-      const profile = await getUserProfile(otherUid);
+      const profile = await getCachedUserProfile(otherUid);
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
@@ -1540,6 +1588,16 @@ export const sendOrderCardMessage = async (
   } catch (err) {
     console.error("notify on sendOrderCardMessage failed:", err);
   }
+};
+
+const userProfileCache = new Map<string, Promise<UserProfile | null>>();
+const getCachedUserProfile = (userId: string): Promise<UserProfile | null> => {
+  if (!userId) return Promise.resolve(null);
+  const cached = userProfileCache.get(userId);
+  if (cached) return cached;
+  const pending = getUserProfile(userId).catch(() => null);
+  userProfileCache.set(userId, pending);
+  return pending;
 };
 
 export const getUserChats = async (
@@ -1566,17 +1624,26 @@ export const getUserChats = async (
         .map(async (d) => {
           const data = d.data();
           const participants: string[] = data.participants || [];
+          const isGroup = data.isGroup === true;
           const otherUid = participants.find((u) => u !== userId) || "";
-           const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
-           const readState = await getChatReadState(d.id, userId, data);
+          const otherProfile = !isGroup && otherUid && otherUid !== ADMIN_UID
+            ? await getCachedUserProfile(otherUid)
+            : null;
+          const readState = getChatReadState(userId, data);
           return {
             chatId: d.id,
-            otherUserId: otherUid,
-            otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
-            otherPhotoUri: otherProfile?.photoUri || null,
+            otherUserId: isGroup ? "" : otherUid,
+            otherName: isGroup
+              ? data.groupName || "مجموعة"
+              : otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
+            otherPhotoUri: isGroup ? (data.groupPhotoUri || null) : (otherProfile?.photoUri || null),
             lastMessage: data.lastMessage || "",
-             lastAt: data.lastAt || "",
-             ...readState,
+            lastAt: data.lastAt || "",
+            isGroup,
+            groupName: data.groupName || "",
+            groupPhotoUri: data.groupPhotoUri || null,
+            participants,
+            ...readState,
           } as ChatSummary;
         })
     );
@@ -1611,17 +1678,26 @@ export const subscribeToUserChats = (
         .map(async (d) => {
           const data = d.data();
           const participants: string[] = data.participants || [];
+          const isGroup = data.isGroup === true;
           const otherUid = participants.find((u) => u !== userId) || "";
-           const otherProfile = otherUid && otherUid !== ADMIN_UID ? await getUserProfile(otherUid) : null;
-           const readState = await getChatReadState(d.id, userId, data);
+          const otherProfile = !isGroup && otherUid && otherUid !== ADMIN_UID
+            ? await getCachedUserProfile(otherUid)
+            : null;
+          const readState = getChatReadState(userId, data);
           return {
             chatId: d.id,
-            otherUserId: otherUid,
-            otherName: otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
-            otherPhotoUri: otherProfile?.photoUri || null,
+            otherUserId: isGroup ? "" : otherUid,
+            otherName: isGroup
+              ? data.groupName || "مجموعة"
+              : otherUid === ADMIN_UID ? ADMIN_DISPLAY_NAME : otherProfile?.name || "مستخدم فورس",
+            otherPhotoUri: isGroup ? (data.groupPhotoUri || null) : (otherProfile?.photoUri || null),
             lastMessage: data.lastMessage || "",
-             lastAt: data.lastAt || "",
-             ...readState,
+            lastAt: data.lastAt || "",
+            isGroup,
+            groupName: data.groupName || "",
+            groupPhotoUri: data.groupPhotoUri || null,
+            participants,
+            ...readState,
           } as ChatSummary;
         })
     );
@@ -1678,25 +1754,145 @@ export const deleteMessageForEveryone = async (
   });
 };
 
+export const createGroupChat = async (
+  creatorId: string,
+  creatorName: string,
+  memberIds: string[],
+  groupName: string,
+  localPhotoUri?: string | null,
+): Promise<{ chatId: string; groupPhotoUri: string | null }> => {
+  const participants = Array.from(new Set([creatorId, ...memberIds]));
+  if (participants.length < 2) throw new Error("A group requires at least two participants");
+
+  const groupId = `group_${participants.join("_")}_${Date.now()}`;
+  const chatRef = doc(db, "chats", groupId);
+  let groupPhotoUri: string | null = null;
+
+  if (localPhotoUri) {
+    const response = await fetch(localPhotoUri);
+    if (!response.ok) throw new Error("Failed to read group photo");
+    const blob = await response.blob();
+    const storageRef = ref(storage, `chatGroups/${chatRef.id}/cover.jpg`);
+    await uploadBytes(storageRef, blob, { contentType: blob.type || "image/jpeg" });
+    groupPhotoUri = await getDownloadURL(storageRef);
+  }
+
+  await setDoc(chatRef, {
+    participants,
+    isGroup: true,
+    groupName,
+    groupPhotoUri,
+    createdBy: creatorId,
+    createdAt: new Date().toISOString(),
+    lastMessage: `${creatorName} أنشأ المجموعة`,
+    lastAt: new Date().toISOString(),
+    lastSenderId: creatorId,
+    adminIds: [creatorId],
+    moderatorIds: [],
+  });
+
+  return { chatId: chatRef.id, groupPhotoUri };
+};
+
+
+export const getGroupDetails = async (chatId: string): Promise<GroupDetails | null> => {
+  const snap = await getDoc(doc(db, "chats", chatId));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  if (data.isGroup !== true) return null;
+  const participants: string[] = data.participants || [];
+  const adminIds: string[] = data.adminIds || (data.createdBy ? [data.createdBy] : []);
+  const moderatorIds: string[] = data.moderatorIds || [];
+  const members = await Promise.all(participants.map(async (userId) => {
+    const profile = await getUserProfile(userId);
+    const role: GroupMemberProfile["role"] = adminIds.includes(userId) ? "admin" : moderatorIds.includes(userId) ? "moderator" : "member";
+    return { userId, name: profile?.name || "مستخدم فورس", photoUri: profile?.photoUri || null, role };
+  }));
+  return {
+    chatId, groupName: data.groupName || "مجموعة", groupPhotoUri: data.groupPhotoUri || null,
+    participants, createdBy: data.createdBy || adminIds[0] || "", adminIds, moderatorIds, members,
+  };
+};
+
+export const addGroupMembers = async (chatId: string, memberIds: string[]): Promise<void> => {
+  if (!memberIds.length) return;
+  await updateDoc(doc(db, "chats", chatId), { participants: arrayUnion(...memberIds) });
+};
+
+export const removeGroupMember = async (chatId: string, userId: string): Promise<void> => {
+  const chatRef = doc(db, "chats", chatId);
+  const snap = await getDoc(chatRef);
+  if (!snap.exists()) throw new Error("GROUP_NOT_FOUND");
+  const data = snap.data();
+  if (data.createdBy === userId) throw new Error("CANNOT_REMOVE_OWNER");
+  const moderatorIds: string[] = data.moderatorIds || [];
+  await updateDoc(chatRef, {
+    participants: arrayRemove(userId),
+    moderatorIds: moderatorIds.filter((id) => id !== userId),
+  });
+};
+
+export const setGroupModerator = async (chatId: string, userId: string, enabled: boolean): Promise<void> => {
+  const chatRef = doc(db, "chats", chatId);
+  const snap = await getDoc(chatRef);
+  if (!snap.exists()) throw new Error("GROUP_NOT_FOUND");
+  const data = snap.data();
+  const adminIds: string[] = data.adminIds || (data.createdBy ? [data.createdBy] : []);
+  if (adminIds.includes(userId)) return;
+  await updateDoc(chatRef, { moderatorIds: enabled ? arrayUnion(userId) : arrayRemove(userId) });
+};
+
+export const getGroupMedia = async (chatId: string): Promise<ChatMessage[]> => {
+  const snap = await getDocs(collection(db, "chats", chatId, "messages"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage))
+    .filter((m) => !m.deleted && (m.type === "image" || m.type === "video") && !!m.mediaUrl)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+};
+
+export const sendLocationMessage = async (
+  chatId: string,
+  senderId: string,
+  senderName: string,
+  latitude: number,
+  longitude: number,
+): Promise<void> => {
+  await assertCanSendChatMessage(chatId, senderId);
+  const createdAt = new Date().toISOString();
+  const text = "📍 موقع جغرافي";
+  await addDoc(collection(db, "chats", chatId, "messages"), {
+    chatId, senderId, senderName, text, type: "location",
+    latitude, longitude, createdAt,
+  });
+  await setDoc(doc(db, "chats", chatId), {
+    participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
+    lastMessage: text,
+    lastAt: createdAt,
+    lastSenderId: senderId,
+  }, { merge: true });
+};
+
 /**
- * Upload a media file (image or audio) to Storage and send a message.
+ * Upload a media file (image, video, or audio) to Storage and send a message.
  */
 export const sendMediaMessage = async (
   chatId: string,
   senderId: string,
   senderName: string,
-  type: "image" | "audio",
+  type: "image" | "video" | "audio",
   localUri: string,
-  duration?: number
+  duration?: number,
+  replyTo?: ChatReply | null
 ): Promise<void> => {
+  await assertCanSendChatMessage(chatId, senderId);
   const timestamp = Date.now();
-  const ext = type === "audio" ? ".m4a" : ".jpg";
+  const ext = type === "audio" ? ".m4a" : type === "video" ? ".mp4" : ".jpg";
   const filename = `${timestamp}${ext}`;
   const path = `chatMedia/${chatId}/${filename}`;
   const storageRef = ref(storage, path);
 
   const blob = await uriToBlob(localUri);
-  const contentType = type === "audio" ? "audio/mp4" : "image/jpeg";
+  const contentType =
+    type === "audio" ? "audio/mp4" : type === "video" ? "video/mp4" : "image/jpeg";
   await uploadBytes(storageRef, blob, { contentType });
   const mediaUrl = await getDownloadURL(storageRef);
 
@@ -1704,9 +1900,10 @@ export const sendMediaMessage = async (
     chatId,
     senderId,
     senderName,
-    text: type === "image" ? "📷 صورة" : "🎤 رسالة صوتية",
+    text: type === "image" ? "📷 صورة" : type === "video" ? "🎬 فيديو" : "🎤 رسالة صوتية",
     type,
     mediaUrl,
+    ...(replyTo ? { replyTo } : {}),
     createdAt: new Date().toISOString(),
   };
   if (type === "audio" && duration !== undefined) {
@@ -1717,7 +1914,7 @@ export const sendMediaMessage = async (
   await setDoc(
     doc(db, "chats", chatId),
     {
-      participants: chatId.split("_"),
+      participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
       lastMessage: msgData.text,
       lastAt: new Date().toISOString(),
       lastSenderId: senderId,
@@ -1729,7 +1926,7 @@ export const sendMediaMessage = async (
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
     if (otherUid) {
-      const profile = await getUserProfile(otherUid);
+      const profile = await getCachedUserProfile(otherUid);
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
@@ -1756,7 +1953,7 @@ export const subscribeToUserChatLastAts = (
     const activities = await Promise.all(
       snap.docs.map(async (d) => {
         const data = d.data();
-        const readState = await getChatReadState(d.id, userId, data);
+        const readState = getChatReadState(userId, data);
         return {
           lastAt: (data.lastAt as string) || "",
           ...readState,
@@ -1764,6 +1961,38 @@ export const subscribeToUserChatLastAts = (
       }),
     );
     callback(activities);
+  });
+};
+
+export const isUserBlocked = async (blockerId: string, blockedUserId: string): Promise<boolean> => {
+  try {
+    const snap = await getDoc(doc(db, "users", blockerId));
+    return snap.exists() && ((snap.data().blockedUserIds || []) as string[]).includes(blockedUserId);
+  } catch { return false; }
+};
+
+export const setUserBlocked = async (blockerId: string, blockedUserId: string, blocked: boolean): Promise<void> => {
+  if (!blockerId || !blockedUserId || blockerId === blockedUserId) return;
+  await setDoc(doc(db, "users", blockerId), {
+    blockedUserIds: blocked ? arrayUnion(blockedUserId) : arrayRemove(blockedUserId),
+  }, { merge: true });
+};
+
+export const toggleMessageLike = async (chatId: string, messageId: string, userId: string): Promise<boolean> => {
+  const messageRef = doc(db, "chats", chatId, "messages", messageId);
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(messageRef);
+    if (!snap.exists()) throw new Error("MESSAGE_NOT_FOUND");
+    const data = snap.data();
+    const likedBy: string[] = Array.isArray(data.likedBy) ? data.likedBy : [];
+    const alreadyLiked = likedBy.includes(userId);
+    const currentCount = Number(data.likesCount ?? likedBy.length);
+    if (alreadyLiked) {
+      transaction.update(messageRef, { likedBy: arrayRemove(userId), likesCount: Math.max(0, currentCount - 1) });
+      return false;
+    }
+    transaction.update(messageRef, { likedBy: arrayUnion(userId), likesCount: currentCount + 1 });
+    return true;
   });
 };
 
@@ -1932,6 +2161,7 @@ export interface UserProfile {
   balance?: number;
   followCount?: number;
   likesCount?: number;
+  blockedUserIds?: string[];
 }
 
 export interface ProfilePost {
@@ -3386,3 +3616,82 @@ export const ensureUserDocument = async (
     console.error("ensureUserDocument error:", err);
   }
 };
+
+
+// =========================================================
+// Group profile compatibility helpers
+// =========================================================
+
+export async function updateGroupProfile(
+  chatId: string,
+  userId: string,
+  updates: {
+    groupName?: string;
+    groupPhotoUri?: string | null;
+  }
+) {
+  const patch: Record<string, any> = {};
+
+  if (updates.groupName !== undefined) {
+    patch.groupName = updates.groupName.trim();
+  }
+
+  if (updates.groupPhotoUri !== undefined) {
+    patch.groupPhotoUri = updates.groupPhotoUri;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await updateDoc(doc(db, "chats", chatId), patch);
+  }
+}
+
+export async function uploadGroupPhoto(
+  chatId: string,
+  userId: string,
+  uri: string
+): Promise<string> {
+  await updateDoc(doc(db, "chats", chatId), {
+    groupPhotoUri: uri,
+  });
+
+  return uri;
+}
+
+export async function leaveGroup(
+  chatId: string,
+  userId: string
+) {
+  const ref = doc(db, "chats", chatId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    throw new Error("المجموعة غير موجودة");
+  }
+
+  const data = snap.data() as any;
+  const participants = Array.isArray(data.participants)
+    ? data.participants
+    : [];
+
+  const nextParticipants = participants.filter(
+    (id: string) => id !== userId
+  );
+
+  const patch: Record<string, any> = {
+    participants: nextParticipants,
+  };
+
+  if (Array.isArray(data.adminIds)) {
+    patch.adminIds = data.adminIds.filter(
+      (id: string) => id !== userId
+    );
+  }
+
+  if (Array.isArray(data.moderatorIds)) {
+    patch.moderatorIds = data.moderatorIds.filter(
+      (id: string) => id !== userId
+    );
+  }
+
+  await updateDoc(ref, patch);
+}
