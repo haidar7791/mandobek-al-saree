@@ -91,6 +91,39 @@ import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReservationsScreen from "./reservations";
 import { useVideoAudio } from "@/lib/video-audio-context";
 
+const getRelativeTime = (dateValue: string | number | Date) => {
+  const date = new Date(dateValue).getTime();
+  const now = Date.now();
+  const diff = Math.max(0, now - date);
+
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const month = 30 * day;
+  const year = 365 * day;
+
+  if (diff < minute) return "منذ لحظات";
+  if (diff < hour) {
+    const n = Math.floor(diff / minute);
+    return `منذ ${n} ${n === 1 ? "دقيقة" : n === 2 ? "دقيقتين" : n < 11 ? "دقائق" : "دقيقة"}`;
+  }
+  if (diff < day) {
+    const n = Math.floor(diff / hour);
+    return `منذ ${n} ${n === 1 ? "ساعة" : n === 2 ? "ساعتين" : n < 11 ? "ساعات" : "ساعة"}`;
+  }
+  if (diff < month) {
+    const n = Math.floor(diff / day);
+    return `منذ ${n} ${n === 1 ? "يوم" : n === 2 ? "يومين" : n < 11 ? "أيام" : "يوم"}`;
+  }
+  if (diff < year) {
+    const n = Math.floor(diff / month);
+    return `منذ ${n} ${n === 1 ? "شهر" : n === 2 ? "شهرين" : n < 11 ? "أشهر" : "شهر"}`;
+  }
+
+  const n = Math.floor(diff / year);
+  return `منذ ${n} ${n === 1 ? "سنة" : n === 2 ? "سنتين" : n < 11 ? "سنوات" : "سنة"}`;
+};
+
 const C = Colors.light;
 const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgress:${userId}`;
 const HOME_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:homePublishProgress:${userId}`;
@@ -283,6 +316,7 @@ function ProductCard({
   const isFocused = useIsFocused();
   const isVisible = isFocused && isActive;
   const isMine = product.sellerId === userId;
+  const [, forceRelativeTimeUpdate] = useState(0);
   const [likesCount, setLikesCount] = useState(product.likesCount ?? 0);
 
   useEffect(() => {
@@ -310,6 +344,11 @@ function ProductCard({
       },
     ]);
   };
+
+  useEffect(() => {
+    const timer = setInterval(() => forceRelativeTimeUpdate((v) => v + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <View style={styles.productCard}>
@@ -485,8 +524,7 @@ function HomeFeedCard({
           <ProfileAvatar photoUri={post.userPhotoUri} name={post.userName} size={42} disableNavigation />
           <View style={styles.homePostUser}>
             <Text style={styles.homePostName} numberOfLines={1}>{post.userName}</Text>
-            {!!post.description && <Text style={styles.homePostDescriptionHeader} numberOfLines={3}>{post.description}</Text>}
-            <Text style={styles.homePostTime}>{post.createdAt ? new Date(post.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
+            <Text style={styles.homePostTime}>{post.createdAt ? getRelativeTime(post.createdAt) : "منذ لحظات"}</Text>
           </View>
         </TouchableOpacity>
         {isOwner && (
@@ -506,6 +544,10 @@ function HomeFeedCard({
           </Pressable>
         )}
       </View>
+
+      {!!post.description && (
+        <Text style={styles.homePostDescription}>{post.description}</Text>
+      )}
 
       <Pressable onPress={post.mediaType === "video" ? handleMediaPress : post.mediaType === "image" ? handleImagePress : undefined} style={styles.homeMediaPressable}>
         {post.mediaType === "video" ? (
@@ -1945,9 +1987,6 @@ try {
                 ListHeaderComponent={
                   <View style={styles.homeFeedIntro}>
                     <View style={styles.homeFeedHeaderRow}>
-                      <View style={styles.homeFeedIntroText}>
-                        <Text style={styles.homeFeedTitle}>الرئيسية</Text>
-                      </View>
                       <Pressable
                         style={styles.addPostBtn}
                         onPress={handleAddPost}
@@ -2572,9 +2611,9 @@ const styles = StyleSheet.create({
   addPostHeaderText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
   homeFeedContent: { paddingHorizontal: 8, paddingTop: 10 },
   homeFeedIntro: { paddingHorizontal: 8, paddingBottom: 12 },
-  homeFeedHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  homeFeedHeaderRow: { flexDirection: "column", alignItems: "flex-end", gap: 8 },
   homeFeedIntroText: { flex: 1, alignItems: "flex-end" },
-  addPostBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, minHeight: 40 },
+  addPostBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, minHeight: 40 },
   addPostBtnText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#FFF" },
   homeFeedTitle: { fontSize: 19, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
   homeFeedSubtitle: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
@@ -2583,14 +2622,14 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: C.border,
   },
   homePostHeader: { flexDirection: "row-reverse", alignItems: "center", padding: 12, gap: 9 },
-  homePostProfileTouchable: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  homePostProfileTouchable: { flex: 1, flexDirection: "row", alignItems: "center", gap: 0, margin: 0, padding: 0 },
   homePostDelete: { width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(0,0,0,.68)", alignItems: "center", justifyContent: "center" },
   homeMediaPressable: { width: "100%" },
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
-  homePostUser: { flex: 1, alignItems: "flex-end" },
-  homePostName: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
+  homePostUser: { margin: 0, padding: 0 },
+  homePostName: { margin: 0, padding: 0 },
   homePostDescriptionHeader: { fontSize: 14, lineHeight: 21, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
-  homePostTime: { fontSize: 10, fontFamily: "Cairo_400Regular", color: C.textMuted, marginTop: 1 },
+  homePostTime: { margin: 0, padding: 0 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
   homePostDescription: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right", paddingHorizontal: 13, paddingTop: 10 },
