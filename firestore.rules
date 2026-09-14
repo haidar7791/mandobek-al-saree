@@ -6,6 +6,13 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Allow authenticated users to read the followers collection group.
+    // Required by getFollowingProfiles().
+    match /{path=**}/followers/{followerId} {
+      allow read: if request.auth != null;
+    }
+
+
 
     function isSignedIn() {
       return request.auth != null;

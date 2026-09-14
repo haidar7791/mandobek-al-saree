@@ -15,13 +15,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   getUserProfile,
   getProfileEngagementCounts,
-  getFollowingProfiles,
   getArtisanByUserId,
   buildChatId,
+  calcDistanceKm,
   normalizeProfilePosts,
   getIsFollowing,
   followArtisan,
@@ -29,12 +30,12 @@ import {
   getIsLiked,
   likeArtisan,
   unlikeArtisan,
+  type GeoLocation,
   type ProfilePost,
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
 import { ShareModal } from "@/components/ShareModal";
 import FollowersModal from "@/components/FollowersModal";
-import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "@/lib/notifications";
 
@@ -50,12 +51,12 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<{
     name: string; bio?: string; photoUri?: string;
+    location?: GeoLocation | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followCount, setFollowCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
@@ -63,9 +64,10 @@ export default function UserProfileScreen() {
   // null = still resolving, "client" | "admin" = stay here, "artisan" = redirected
   const [resolvedRole, setResolvedRole] = useState<"client" | "artisan" | "admin" | null>(null);
 
+  // Viewer's GPS location (to compute distance + enable directions)
+  const [viewerLocation, setViewerLocation] = useState<GeoLocation | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
   const [followersVisible, setFollowersVisible] = useState(false);
-  const [followingVisible, setFollowingVisible] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -98,29 +100,12 @@ export default function UserProfileScreen() {
             name: p.name,
             bio: p.bio ?? undefined,
             photoUri: p.photoUri ?? undefined,
+            location: p.location ?? null,
           });
           setProfilePosts(normalizeProfilePosts(p));
           const engagement = await getProfileEngagementCounts(userId);
           if (cancelled) return;
           setFollowCount(engagement.followCount);
-
-          try {
-            const followingProfiles = await getFollowingProfiles(userId);
-
-            if (!cancelled) {
-              setFollowingCount(followingProfiles.length);
-            }
-          } catch (followingError) {
-            console.error(
-              "load following count failed:",
-              followingError
-            );
-
-            if (!cancelled) {
-              setFollowingCount(0);
-            }
-          }
-
           setLikesCount(engagement.likesCount);
 
           const viewer = auth.currentUser;
@@ -144,10 +129,41 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
 
+  // Request GPS for the viewer so the stats bar can show distance.
+  useEffect(() => {
+    (async () => {
+      try {
+        // First try saved profile location
+        const me = auth.currentUser;
+        if (me) {
+          const myProfile = await getUserProfile(me.uid);
+          if (myProfile?.location) {
+            setViewerLocation(myProfile.location);
+          }
+        }
+        // Then try live GPS (more accurate, overwrites profile location)
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setViewerLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch {
+        // GPS unavailable — silently skip
+      }
+    })();
+  }, []);
+
   const displayName = profile?.name || nameProp || "مستخدم";
   const photoUri = profile?.photoUri || userPhoto || undefined;
   const initials = displayName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
+  // Distance between viewer and this user's saved location
+  const distance =
+    viewerLocation && profile?.location
+      ? calcDistanceKm(viewerLocation, profile.location)
+      : null;
   const isOwnProfile = auth.currentUser?.uid === userId;
   // A chat can occasionally point to a legacy/system participant with no
   // corresponding user document. Keep chat available, but never write
@@ -176,7 +192,6 @@ export default function UserProfileScreen() {
         getIsFollowing(viewer.uid, userId),
         getProfileEngagementCounts(userId),
       ]);
-
       setIsFollowing(following);
       setFollowCount(engagement.followCount);
       Haptics.selectionAsync();
@@ -248,17 +263,11 @@ export default function UserProfileScreen() {
           )}
           {!loading && (
             <View style={styles.statsRow}>
-              <Pressable
-                style={styles.statItem}
-                onPress={() => setFollowersVisible(true)}
-                disabled={!userId}
-              >
+              <Pressable style={styles.statItem} onPress={() => setFollowersVisible(true)} disabled={!userId}>
                 <Text style={styles.statVal}>{followCount}</Text>
                 <Text style={styles.statLabel}>متابع</Text>
               </Pressable>
-
               <View style={styles.statDiv} />
-
               <Pressable
                 style={styles.statItem}
                 onPress={canFollowProfile ? handleToggleLike : undefined}
@@ -272,17 +281,17 @@ export default function UserProfileScreen() {
                 <Text style={styles.statVal}>{likesCount}</Text>
                 <Text style={styles.statLabel}>إعجاب</Text>
               </Pressable>
-
               <View style={styles.statDiv} />
-
-              <Pressable
-                style={styles.statItem}
-                onPress={() => setFollowingVisible(true)}
-                disabled={!userId}
-              >
-                <Text style={styles.statVal}>{followingCount}</Text>
-                <Text style={styles.statLabel}>أتابعه</Text>
-              </Pressable>
+              <View style={styles.statItem}>
+                <Text style={styles.statVal}>
+                  {distance === null
+                    ? "—"
+                    : distance < 1
+                      ? `${Math.round(distance * 1000)} م`
+                      : `${distance.toFixed(1)} كم`}
+                </Text>
+                <Text style={styles.statLabel}>البُعد</Text>
+              </View>
             </View>
           )}
         </View>
@@ -339,12 +348,6 @@ export default function UserProfileScreen() {
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}
-        profileId={userId}
-        profileName={displayName}
-      />
-      <FollowingModal
-        visible={followingVisible}
-        onClose={() => setFollowingVisible(false)}
         profileId={userId}
         profileName={displayName}
       />

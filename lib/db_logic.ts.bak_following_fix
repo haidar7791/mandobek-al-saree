@@ -2291,23 +2291,15 @@ export const getFollowingProfiles = async (
 ): Promise<FollowerProfile[]> => {
   if (!profileId) return [];
 
-  // followers documents are stored as:
-  // users/{followedUserId}/followers/{followerId}
-  //
-  // The followerId is the document ID, not a field inside the document.
-  // Firestore collectionGroup(documentId()) requires a full document path,
-  // so querying documentId() == profileId is invalid here.
-  //
-  // Keep the existing database structure and resolve the matching follower
-  // documents locally instead of changing follow/unfollow data.
-  const snap = await getDocs(collectionGroup(db, "followers"));
-
-  const matchingFollowers = snap.docs.filter(
-    (followerDoc) => followerDoc.id === profileId
+  const snap = await getDocs(
+    query(
+      collectionGroup(db, "followers"),
+      where(documentId(), "==", profileId)
+    )
   );
 
   const profiles: Array<FollowerProfile | null> = await Promise.all(
-    matchingFollowers.map(async (followerDoc) => {
+    snap.docs.map(async (followerDoc) => {
       const followedUserRef = followerDoc.ref.parent.parent;
       const followedUserId = followedUserRef?.id;
 

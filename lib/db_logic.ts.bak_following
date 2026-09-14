@@ -1,12 +1,10 @@
 import { db, storage, auth } from "./firebase";
 import {
   collection,
-  collectionGroup,
   addDoc,
   getDocs,
   getDoc,
   doc,
-  documentId,
   updateDoc,
   query,
   where,
@@ -2274,78 +2272,6 @@ export type FollowerProfile = {
  * Follower documents intentionally only contain the follower id/timestamp,
  * so the display name and photo come from the current user profile document.
  */
-
-/**
- * Resolve the real accounts followed by a user.
- *
- * Follow source of truth:
- * users/{followedUserId}/followers/{followerId}
- *
- * We inspect the existing followers subcollections and select
- * documents whose follower document id equals profileId.
- * This preserves existing follow data without introducing
- * a separate/duplicated following counter.
- */
-export const getFollowingProfiles = async (
-  profileId: string
-): Promise<FollowerProfile[]> => {
-  if (!profileId) return [];
-
-  // followers documents are stored as:
-  // users/{followedUserId}/followers/{followerId}
-  //
-  // The followerId is the document ID, not a field inside the document.
-  // Firestore collectionGroup(documentId()) requires a full document path,
-  // so querying documentId() == profileId is invalid here.
-  //
-  // Keep the existing database structure and resolve the matching follower
-  // documents locally instead of changing follow/unfollow data.
-  const snap = await getDocs(collectionGroup(db, "followers"));
-
-  const matchingFollowers = snap.docs.filter(
-    (followerDoc) => followerDoc.id === profileId
-  );
-
-  const profiles: Array<FollowerProfile | null> = await Promise.all(
-    matchingFollowers.map(async (followerDoc) => {
-      const followedUserRef = followerDoc.ref.parent.parent;
-      const followedUserId = followedUserRef?.id;
-
-      if (!followedUserId) return null;
-
-      const followedUser = await getUserProfile(followedUserId);
-
-      if (!followedUser) return null;
-
-      return {
-        id: followedUserId,
-        name: followedUser.name || "مستخدم",
-        photoUri: followedUser.photoUri || null,
-        followedAt: followerDoc.data().followedAt,
-      };
-    })
-  );
-
-  return profiles
-    .filter((profile): profile is FollowerProfile => Boolean(profile))
-    .sort((a, b) => {
-      const aTime =
-        a.followedAt?.toMillis?.() ??
-        (typeof a.followedAt?.seconds === "number"
-          ? a.followedAt.seconds * 1000
-          : 0);
-
-      const bTime =
-        b.followedAt?.toMillis?.() ??
-        (typeof b.followedAt?.seconds === "number"
-          ? b.followedAt.seconds * 1000
-          : 0);
-
-      return bTime - aTime;
-    });
-};
-
-
 export const getFollowerProfiles = async (profileId: string): Promise<FollowerProfile[]> => {
   if (!profileId) return [];
   const snap = await getDocs(collection(db, "users", profileId, "followers"));
