@@ -48,6 +48,7 @@ export default function AddProductScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
+      selectionLimit: 5,
       quality: 0.85,
     });
     if (!result.canceled && result.assets.length > 0) {
