@@ -94,7 +94,7 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
           accessibilityState={{ selected: activeTab === "posts" }}
         >
           <Feather name="image" size={17} color={activeTab === "posts" ? C.accent : C.textMuted} />
-          <Text style={[styles.tabText, activeTab === "posts" && styles.tabTextActive]}>معرض الأعمال</Text>
+          
           <View style={[styles.indicator, activeTab === "posts" && styles.indicatorActive]} />
         </Pressable>
         <Pressable
@@ -104,7 +104,7 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
           accessibilityState={{ selected: activeTab === "products" }}
         >
           <Feather name="shopping-bag" size={17} color={activeTab === "products" ? C.accent : C.textMuted} />
-          <Text style={[styles.tabText, activeTab === "products" && styles.tabTextActive]}>المنتجات</Text>
+          
           <View style={[styles.indicator, activeTab === "products" && styles.indicatorActive]} />
         </Pressable>
       </View>
@@ -114,7 +114,7 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
           <ProfilePostFeed
             posts={posts.map((post) => ({ ...post, likesCount: postLikes[post.id] ?? post.likesCount ?? 0 }))}
             showEmptyState
-            title="معرض الأعمال"
+            title=""
             onDoubleTapLike={handleLikePost}
           />
         </View>
