@@ -1586,7 +1586,7 @@ const styles = StyleSheet.create({
     fontSize: 10, fontFamily: "Cairo_600SemiBold",
     color: C.accent, textAlign: "right",
   },
-  msgText: { fontSize: 14, fontFamily: "Cairo_400Regular", lineHeight: 22 },
+  msgText: { fontSize: 13, lineHeight: 21 },
   msgTextMine: { color: "#FFF", textAlign: "left" },
   msgTextTheirs: { color: C.text, textAlign: "right" },
   msgTime: { fontSize: 10, fontFamily: "Cairo_400Regular" },
@@ -1678,7 +1678,7 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1, backgroundColor: "transparent", borderRadius: 16,
     paddingHorizontal: 16, paddingVertical: 10,
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text,
+    fontSize: 13, color: C.text,
     maxHeight: 100,
   },
   sendBtn: { width: 44, height: 44, borderRadius: 14, overflow: "hidden" },
