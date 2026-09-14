@@ -55,6 +55,7 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowingViewer, setIsFollowingViewer] = useState(false);
   const [followCount, setFollowCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
@@ -163,12 +164,14 @@ export default function UserProfileScreen() {
 
           const viewer = auth.currentUser;
           if (viewer && viewer.uid !== userId) {
-            const [following, liked] = await Promise.all([
+            const [following, liked, followsViewer] = await Promise.all([
               getIsFollowing(viewer.uid, userId),
               getIsLiked(viewer.uid, userId),
+              getIsFollowing(userId, viewer.uid),
             ]);
             if (cancelled) return;
             setIsFollowing(following);
+            setIsFollowingViewer(followsViewer);
             setIsLiked(liked);
           }
         }
@@ -351,7 +354,7 @@ export default function UserProfileScreen() {
                         color={isFollowing ? C.accent : "#FFF"}
                       />
                       <Text style={[styles.actionBtnText, isFollowing && { color: C.accent }]}>
-                        {isFollowing ? "مُتابَع" : "متابعة"}
+                        {isFollowing ? "إلغاء المتابعة" : isFollowingViewer ? "رد المتابعة" : "متابعة"}
                       </Text>
                     </>
                   )}
