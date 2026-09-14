@@ -26,6 +26,7 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 type Props = {
+  compact?: boolean;
   product: Product;
   userId: string | null;
   userName?: string;
@@ -40,6 +41,7 @@ type Props = {
  * Keeping the modal and validation here prevents the two surfaces from drifting.
  */
 export default function ProductPurchaseButton({
+  compact = false,
   product,
   userId,
   userName = "المستخدم",
@@ -168,7 +170,7 @@ export default function ProductPurchaseButton({
           ) : (
             <>
               <Ionicons name="cart-outline" size={15} color={C.primary} />
-              <Text style={styles.buttonText}>تفاصيل الشراء</Text>
+              <Text style={styles.publicProfileButtonText}>تفاصيل الشراء</Text>
             </>
           )}
         </LinearGradient>
@@ -243,6 +245,7 @@ const styles = StyleSheet.create({
   button: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, borderRadius: 12, overflow: "hidden" },
   gradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   buttonText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+  publicProfileButtonText: { fontSize: 6, fontFamily: "Cairo_700Bold", color: C.primary },
   disabled: { opacity: 0.6 },
   cancelButton: { backgroundColor: "#DC2626", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   cancelText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },

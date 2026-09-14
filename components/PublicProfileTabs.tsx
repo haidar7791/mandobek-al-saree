@@ -141,26 +141,20 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
                     isVisible={false}
                     onDoubleTapLike={() => handleLikeProduct(product)}
                   />
-                  <View style={styles.productInfo}>
-                    <View style={styles.titleRow}>
-                      <Text style={styles.price}>{product.price.toLocaleString("ar-IQ")} د.ع</Text>
-                      <Text style={styles.title} numberOfLines={2}>{product.title}</Text>
-                    </View>
-                    {product.description ? (
-                      <Text style={styles.description} numberOfLines={2}>{product.description}</Text>
-                    ) : null}
+                  <View style={styles.productBottomRow}>
                     <View style={styles.likesRow}>
-                      <Feather name="heart" size={15} color="#EF4444" />
+                      <Feather name="heart" size={8} color="#EF4444" />
                       <Text style={styles.likesText}>{productLikes[product.id] ?? product.likesCount ?? 0}</Text>
-                      <Text style={styles.likesLabel}>إعجاب</Text>
                     </View>
+
+                    {auth.currentUser?.uid !== product.sellerId && (
+                      <ProductPurchaseButton
+                        compact
+                        product={product}
+                        userId={auth.currentUser?.uid ?? null}
+                      />
+                    )}
                   </View>
-                  {auth.currentUser?.uid !== product.sellerId && (
-                    <ProductPurchaseButton
-                      product={product}
-                      userId={auth.currentUser?.uid ?? null}
-                    />
-                  )}
                 </View>
               ))}
             </View>
@@ -215,12 +209,22 @@ const styles = StyleSheet.create({
   emptyHint: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center" },
   productsList: { gap: 14, flexDirection: "row", flexWrap: "wrap", columnGap: 4, rowGap: 4,},
   productCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.background, borderWidth: 1, borderColor: C.border, width: "32%",},
-  productInfo: { padding: 12, gap: 7 },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
-  title: { flex: 1, fontSize: 15, lineHeight: 22, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  price: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent },
-  description: { fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
-  likesRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5 },
-  likesText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
-  likesLabel: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  productBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  likesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 3,
+  },
+  likesText: {
+    fontSize: 8,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+  },
 });
