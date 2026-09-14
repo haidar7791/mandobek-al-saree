@@ -2637,7 +2637,7 @@ const styles = StyleSheet.create({
   homePostTime: { margin: 0, padding: 0 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
-  homePostDescription: { fontSize: 13, color: C.text, textAlign: "right", paddingHorizontal: 13, paddingTop: 10 },
+  homePostDescription: { fontSize: 13, color: C.text, textAlign: "left", width: "100%", paddingHorizontal: 0, paddingTop: 10 },
   homeActions: { flexDirection: "row-reverse", alignItems: "center", padding: 11, gap: 18 },
   homeAction: { flexDirection: "row", alignItems: "center", gap: 5 },
   homeActionText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
