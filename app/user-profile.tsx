@@ -6,6 +6,7 @@
  * "طلب خدمة" is intentionally absent — clients offer no service.
  */
 import React, { useEffect, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import {
   View, Text, StyleSheet, Pressable, Image, Platform,
   ActivityIndicator, ScrollView,
@@ -15,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { auth } from "../lib/firebase";
+import { auth, db } from "../lib/firebase";
 import {
   getUserProfile,
   getProfileEngagementCounts,
@@ -99,7 +100,44 @@ export default function UserProfileScreen() {
             bio: p.bio ?? undefined,
             photoUri: p.photoUri ?? undefined,
           });
-          setProfilePosts(normalizeProfilePosts(p));
+          const normalizedPosts = normalizeProfilePosts(p);
+
+          // مزامنة عدد الإعجابات من نفس مصدر الرئيسية: /posts
+          try {
+            const postsSnap = await getDocs(
+              query(
+                collection(db, "posts"),
+                where("userId", "==", userId)
+              )
+            );
+
+            const likesByKey = new Map<string, number>();
+
+            postsSnap.docs.forEach((postDoc) => {
+              const data = postDoc.data() as any;
+              const likes = Number(data.likesCount ?? data.likes ?? 0);
+              const postId = String(data.postId || data.id || postDoc.id);
+              const url = String(data.url || data.mediaUrl || data.media?.url || "");
+
+              likesByKey.set(postDoc.id, likes);
+              if (postId) likesByKey.set(postId, likes);
+              if (url) likesByKey.set(url, likes);
+            });
+
+            setProfilePosts(
+              normalizedPosts.map((post) => ({
+                ...post,
+                likesCount:
+                  likesByKey.get(post.id) ??
+                  likesByKey.get(post.url) ??
+                  post.likesCount ??
+                  0,
+              }))
+            );
+          } catch (error) {
+            console.warn("Profile post likes sync failed:", error);
+            setProfilePosts(normalizedPosts);
+          }
           const engagement = await getProfileEngagementCounts(userId);
           if (cancelled) return;
           setFollowCount(engagement.followCount);
