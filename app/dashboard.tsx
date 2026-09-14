@@ -381,7 +381,7 @@ function ProductCard({
         />
       </View>
       <View style={styles.productBody}>
-        <View style={styles.productHeaderRow}>
+        <View style={styles.productInfoStack}>
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => {
@@ -401,21 +401,26 @@ function ProductCard({
               </View>
             )}
           </TouchableOpacity>
+
           <Text style={styles.productTitle} numberOfLines={2}>{product.title}</Text>
+
+          <View style={styles.productPriceLikesRow}>
+            <Text style={styles.productPrice}>
+              <Text style={styles.productPriceLabel}>السعر: </Text>
+              {product.price.toLocaleString("ar-IQ")}{" "}
+              <Text style={styles.productCurrency}>د.ع</Text>
+            </Text>
+
+            <View style={styles.productEngagement}>
+              <Ionicons name="heart" size={15} color="#EF4444" />
+              <Text style={styles.productLikesText}>{likesCount}</Text>
+              <Text style={styles.productLikesLabel}>إعجاب</Text>
+            </View>
+          </View>
         </View>
-        <Text style={styles.productPrice}>
-          <Text style={styles.productPriceLabel}>السعر: </Text>
-          {product.price.toLocaleString("ar-IQ")}{" "}
-          <Text style={styles.productCurrency}>د.ع</Text>
-        </Text>
         {product.description ? (
           <Text style={styles.productDesc} numberOfLines={2}>{product.description}</Text>
         ) : null}
-        <View style={styles.productEngagement}>
-          <Ionicons name="heart" size={15} color="#EF4444" />
-          <Text style={styles.productLikesText}>{likesCount}</Text>
-          <Text style={styles.productLikesLabel}>إعجاب</Text>
-        </View>
       </View>
       {isMine ? (
           <TouchableOpacity
@@ -3033,15 +3038,15 @@ availOnline: { backgroundColor: "#22C55E" },
   soldOverlayText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
   productBody: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 6 },
   // Header row: title (right) ↔ seller name (left)
-  productHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  productInfoStack: {
+    flexDirection: "column",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 3,
   },
   productTitle: {
-    flex: 1, fontSize: 16, fontFamily: "Cairo_700Bold",
-    color: C.text, textAlign: "right",
+    fontSize: 16, fontFamily: "Cairo_700Bold",
+    color: C.text, textAlign: "left",
+    width: "100%",
   },
   productSellerTouchable: {
     flexDirection: "column", alignItems: "flex-start", gap: 3, flexShrink: 0,
@@ -3050,13 +3055,25 @@ availOnline: { backgroundColor: "#22C55E" },
     fontSize: 16, fontFamily: "Cairo_700Bold",
     color: C.accent, textAlign: "left",
   },
-  productPrice: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right" },
+  productPriceLikesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  productPrice: {
+    fontSize: 18, fontFamily: "Cairo_700Bold",
+    color: C.accent, textAlign: "left",
+    flexShrink: 1,
+  },
   productPriceLabel: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   productCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.accent },
   productDesc: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
   productEngagement: {
-    flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 5,
-    paddingTop: 2,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "flex-start", gap: 5,
+    paddingTop: 0,
+    flexShrink: 0,
   },
   productLikesText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
   productLikesLabel: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
