@@ -190,9 +190,8 @@ export default function ProfilePostFeed({
               </Pressable>
 
               <View style={styles.likesRow}>
-                <Ionicons name="heart" size={15} color="#EF4444" />
+                <Ionicons name="heart" size={12} color="#EF4444" />
                 <Text style={styles.likesText}>{post.likesCount ?? 0}</Text>
-                <Text style={styles.likesLabel}>إعجاب</Text>
               </View>
 
               {canDelete && onDelete && (
@@ -314,18 +313,21 @@ const styles = StyleSheet.create({
   },
   likesRow: {
     position: "absolute",
-    left: 10,
-    bottom: 10,
-    flexDirection: "row",
+    right: 6,
+    bottom: 6,
+    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
     borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.62)",
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
-  likesText: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_700Bold" },
-  likesLabel: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontFamily: "Cairo_400Regular" },
+  likesText: {
+    color: "#FFF",
+    fontSize: 10,
+    fontFamily: "Cairo_700Bold",
+  },
   failed: {
     flex: 1,
     alignItems: "center",
