@@ -62,9 +62,18 @@ export default function ProductPurchaseButton({
       return;
     }
     if (auth.currentUser.uid === product.sellerId) return;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedColor("");
     setSelectedSize("");
+
+    // إذا لم يحدد البائع لونًا أو قياسًا، يتم إرسال الطلب مباشرة
+    // بدون فتح نافذة تفاصيل الشراء.
+    if (colors.length === 0 && sizes.length === 0) {
+      submit();
+      return;
+    }
+
     setVisible(true);
   };
 
@@ -170,7 +179,9 @@ export default function ProductPurchaseButton({
           ) : (
             <>
               <Ionicons name="cart-outline" size={15} color={C.primary} />
-              <Text style={styles.publicProfileButtonText}>تفاصيل الشراء</Text>
+              <Text style={styles.publicProfileButtonText}>
+  {colors.length === 0 && sizes.length === 0 ? "شراء الآن" : "تفاصيل الشراء"}
+</Text>
             </>
           )}
         </LinearGradient>

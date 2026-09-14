@@ -90,16 +90,6 @@ export default function AddProductScreen() {
     const validColors = colors.map((c) => c.trim()).filter(Boolean);
     const validSizes = sizes.map((s) => s.trim()).filter(Boolean);
 
-    if (validColors.length === 0) {
-      Alert.alert("اللون مطلوب", "يجب إضافة لون واحد على الأقل للمنتج قبل النشر.");
-      return;
-    }
-
-    if (validSizes.length === 0) {
-      Alert.alert("القياس مطلوب", "يجب إضافة قياس واحد على الأقل للمنتج قبل النشر.");
-      return;
-    }
-
     const user = auth.currentUser;
     if (!user) { router.replace("/" as any); return; }
 
@@ -244,95 +234,86 @@ export default function AddProductScreen() {
               </View>
             </View>
 
-            {/* Description */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>التفاصيل / الوصف <Text style={styles.optional}>(اختياري)</Text></Text>
-              <View style={[styles.inputRow, styles.multilineRow]}>
-                <Feather name="align-left" size={17} color={C.textSecondary} style={{ marginTop: 4 }} />
-                <TextInput
-                  style={[styles.input, styles.multilineInput]}
-                  placeholder="صف حالة المنتج، مواصفاته، سبب البيع..."
-                  placeholderTextColor={C.textMuted}
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                  numberOfLines={4}
-                  textAlign="right"
-                  textAlignVertical="top"
-                  maxLength={400}
-                />
+            {/* Optional Colors & Sizes */}
+            <View style={styles.optionsRow}>
+
+              {/* Colors */}
+              <View style={styles.optionColumn}>
+                <Text style={styles.fieldLabel}>
+                  الألوان <Text style={styles.optional}>(اختياري)</Text>
+                </Text>
+
+                {colors.map((color, index) => (
+                  <View key={index} style={styles.dynamicRow}>
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeColor(index)}
+                      hitSlop={8}
+                    >
+                      <Feather name="x" size={15} color={C.textMuted} />
+                    </TouchableOpacity>
+
+                    <View style={[styles.inputRow, { flex: 1 }]}>
+                      <Feather name="droplet" size={15} color={C.textSecondary} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="مثال: أسود، أبيض..."
+                        placeholderTextColor={C.textMuted}
+                        value={color}
+                        onChangeText={(v) => updateColor(index, v)}
+                        textAlign="right"
+                        maxLength={30}
+                      />
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity style={styles.addMoreBtn} onPress={addColor}>
+                  <Feather name="plus" size={14} color={C.accent} />
+                  <Text style={styles.addMoreText}>إضافة لون</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.charCount}>{description.length}/400</Text>
+
+              {/* Sizes */}
+              <View style={styles.optionColumn}>
+                <Text style={styles.fieldLabel}>
+                  القياسات <Text style={styles.optional}>(اختياري)</Text>
+                </Text>
+
+                {sizes.map((size, index) => (
+                  <View key={index} style={styles.dynamicRow}>
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeSize(index)}
+                      hitSlop={8}
+                    >
+                      <Feather name="x" size={15} color={C.textMuted} />
+                    </TouchableOpacity>
+
+                    <View style={[styles.inputRow, { flex: 1 }]}>
+                      <Feather name="maximize-2" size={15} color={C.textSecondary} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="مثال: XL، L، M..."
+                        placeholderTextColor={C.textMuted}
+                        value={size}
+                        onChangeText={(v) => updateSize(index, v)}
+                        textAlign="right"
+                        maxLength={20}
+                      />
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity style={styles.addMoreBtn} onPress={addSize}>
+                  <Feather name="plus" size={14} color={C.accent} />
+                  <Text style={styles.addMoreText}>إضافة قياس</Text>
+                </TouchableOpacity>
+              </View>
+
+            </View>
             </View>
 
-            {/* Colors */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>
-                الألوان المتاحة <Text style={styles.required}>*</Text>
-              </Text>
-              {colors.map((color, index) => (
-                <View key={index} style={styles.dynamicRow}>
-                  <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => removeColor(index)}
-                    hitSlop={8}
-                  >
-                    <Feather name="x" size={15} color={C.textMuted} />
-                  </TouchableOpacity>
-                  <View style={[styles.inputRow, { flex: 1 }]}>
-                    <Feather name="droplet" size={15} color={C.textSecondary} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder={`مثال: أسود، أبيض، أحمر...`}
-                      placeholderTextColor={C.textMuted}
-                      value={color}
-                      onChangeText={(v) => updateColor(index, v)}
-                      textAlign="right"
-                      maxLength={30}
-                    />
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addMoreBtn} onPress={addColor}>
-                <Feather name="plus" size={14} color={C.accent} />
-                <Text style={styles.addMoreText}>+ إضافة لون آخر</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Sizes */}
-            <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>
-                القياسات المتاحة <Text style={styles.required}>*</Text>
-              </Text>
-              {sizes.map((size, index) => (
-                <View key={index} style={styles.dynamicRow}>
-                  <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => removeSize(index)}
-                    hitSlop={8}
-                  >
-                    <Feather name="x" size={15} color={C.textMuted} />
-                  </TouchableOpacity>
-                  <View style={[styles.inputRow, { flex: 1 }]}>
-                    <Feather name="maximize-2" size={15} color={C.textSecondary} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder={`مثال: XL، L، M، S...`}
-                      placeholderTextColor={C.textMuted}
-                      value={size}
-                      onChangeText={(v) => updateSize(index, v)}
-                      textAlign="right"
-                      maxLength={20}
-                    />
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addMoreBtn} onPress={addSize}>
-                <Feather name="plus" size={14} color={C.accent} />
-                <Text style={styles.addMoreText}>+ إضافة قياس آخر</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
 
           {/* Publish Button */}
           <TouchableOpacity
@@ -434,8 +415,18 @@ const styles = StyleSheet.create({
   multilineInput: { minHeight: 88, paddingVertical: 0 },
   currencyLabel: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
   charCount: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "left" },
+  // Optional color/size fields displayed side-by-side
+  optionsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  optionColumn: {
+    flex: 1,
+    gap: 6,
+  },
   // Dynamic color/size rows
-  dynamicRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  dynamicRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
   removeBtn: {
     width: 30, height: 30, borderRadius: 8,
     backgroundColor: C.inputBg,
