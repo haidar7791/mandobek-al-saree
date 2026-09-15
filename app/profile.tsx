@@ -44,6 +44,7 @@ import {
   deleteProduct,
   type ProfilePost,
   type Product,
+  getFollowingProfiles,
 } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProfilePostFeed from "@/components/ProfilePostFeed";
@@ -51,6 +52,7 @@ import ProfilePostComposerModal, {
   type ProfilePostDraftMedia,
 } from "@/components/ProfilePostComposerModal";
 import FollowersModal from "@/components/FollowersModal";
+import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -72,6 +74,7 @@ export default function ProfileScreen() {
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
   const [followCount, setFollowCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
@@ -87,6 +90,7 @@ export default function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [followersVisible, setFollowersVisible] = useState(false);
+  const [followingVisible, setFollowingVisible] = useState(false);
 
   // ── Edit modal state ───────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -168,6 +172,18 @@ export default function ProfileScreen() {
           setSpecialty(["shovel", "roller", "backhoe"].includes(profile.specialty || "") ? "client" : (profile.specialty || ""));
           setBio(profile.bio || "");
           setFollowCount(engagement.followCount);
+
+          try {
+            const followingProfiles = await getFollowingProfiles(user.uid);
+            setFollowingCount(followingProfiles.length);
+          } catch (followingError) {
+            console.error(
+              "load current profile following count failed:",
+              followingError
+            );
+            setFollowingCount(0);
+          }
+
           setLikesCount(engagement.likesCount);
           setProfilePosts(normalizeProfilePosts(profile));
         }
@@ -535,17 +551,37 @@ export default function ProfileScreen() {
           {/* Bio — plain text, without a heading */}
           {bio ? <Text style={styles.heroBio}>{bio}</Text> : null}
 
-          {/* Stats — followers and likes */}
+          {/* Stats — followers, likes and following */}
           <View style={styles.statsRow}>
-            <Pressable style={styles.statItem} onPress={() => setFollowersVisible(true)}>
+            <Pressable
+              style={styles.statItem}
+              onPress={() => setFollowersVisible(true)}
+            >
               <Text style={styles.statValue}>{followCount}</Text>
               <Text style={styles.statLabel}>متابع</Text>
             </Pressable>
+
             <View style={styles.statDivider} />
+
             <View style={styles.statItem}>
-              <Feather name="heart" size={16} color="rgba(255,255,255,0.8)" />
+              <Feather
+                name="heart"
+                size={16}
+                color="rgba(255,255,255,0.8)"
+              />
               <Text style={styles.statLabel}>{likesCount} إعجاب</Text>
             </View>
+
+            <View style={styles.statDivider} />
+
+            <Pressable
+              style={styles.statItem}
+              onPress={() => setFollowingVisible(true)}
+              disabled={!uid}
+            >
+              <Text style={styles.statValue}>{followingCount}</Text>
+              <Text style={styles.statLabel}>أتابعه</Text>
+            </Pressable>
           </View>
         </View>
       </LinearGradient>
@@ -763,6 +799,13 @@ export default function ProfileScreen() {
         profileName={name}
       />
 
+      <FollowingModal
+        visible={followingVisible}
+        onClose={() => setFollowingVisible(false)}
+        profileId={uid}
+        profileName={name}
+      />
+
       {/* ══════════════════════════════════════════
           EDIT PROFILE MODAL
       ══════════════════════════════════════════ */}
@@ -801,7 +844,7 @@ export default function ProfileScreen() {
                       placeholderTextColor={C.textMuted}
                       value={editName}
                       onChangeText={setEditName}
-                      textAlign="right"
+                      textAlign="left"
                       autoCapitalize="words"
                     />
                   </View>
@@ -817,7 +860,7 @@ export default function ProfileScreen() {
                       placeholderTextColor={C.textMuted}
                       value={editBio}
                       onChangeText={setEditBio}
-                      textAlign="right"
+                      textAlign="left"
                       maxLength={60}
                     />
                     <View style={styles.inputIconWrap}>
@@ -862,7 +905,7 @@ export default function ProfileScreen() {
                       onChangeText={(value) =>
                         setEditPhone(value.replace(/[^0-9]/g, "").slice(0, 11))
                       }
-                      textAlign="right"
+                      textAlign="left"
                       keyboardType="phone-pad"
                       maxLength={11}
                     />
@@ -1515,6 +1558,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 8,
+    marginBottom: 15,
     maxHeight: "92%",
   },
   editForm: {
@@ -1532,7 +1576,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Cairo_700Bold",
     color: C.text,
-    textAlign: "center",
+    textAlign: "left",
     marginBottom: 10,
   },
 
@@ -1542,7 +1586,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Cairo_600SemiBold",
     color: C.text,
-    textAlign: "right",
+    textAlign: "left",
   },
   inputRow: {
     flexDirection: "row",
@@ -1561,7 +1605,7 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_400Regular",
     color: C.text,
     paddingVertical: 9,
-    textAlign: "right",
+    textAlign: "left",
   },
   bioInputRow: {
     backgroundColor: C.inputBg,
@@ -1576,7 +1620,7 @@ const styles = StyleSheet.create({
     color: C.text,
     paddingVertical: 9,
     padding: 0,
-    textAlign: "right",
+    textAlign: "left",
   },
   bioCounter: {
     fontSize: 11,
@@ -1704,7 +1748,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Cairo_400Regular",
     color: C.text,
-    textAlign: "right",
+    textAlign: "left",
   },
 
   // ── Specialty picker sheet ──
@@ -1774,5 +1818,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Cairo_700Bold",
     color: C.primary,
+    textAlign: "left",
   },
 });
