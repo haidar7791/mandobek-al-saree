@@ -252,13 +252,6 @@ function ArtisanCard({
             </View>
           )}
 
-          <View style={styles.cardMidRow}>
-            <StarRating rating={artisan.rating} />
-            <Text style={styles.ratingText}>
-              {artisan.rating > 0 ? artisan.rating.toFixed(1) : "جديد"}{" "}
-              {artisan.reviewCount > 0 && <Text style={styles.reviewCount}>({artisan.reviewCount})</Text>}
-            </Text>
-          </View>
 
           {artisan.bio ? (
             <Text style={styles.artisanBio} numberOfLines={4}>{artisan.bio}</Text>
