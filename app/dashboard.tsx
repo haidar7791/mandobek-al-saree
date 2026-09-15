@@ -886,6 +886,7 @@ const isFocused = useIsFocused();
   const [commentInputOpen, setCommentInputOpen] = useState(false);
   const [commentActionsComment, setCommentActionsComment] = useState<HomeFeedComment | null>(null);
   const [commentToast, setCommentToast] = useState<string | null>(null);
+  const [expandedCommentReplies, setExpandedCommentReplies] = useState<Set<string>>(new Set());
   const commentInputRef = useRef<TextInput>(null);
   const commentToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [homePublishing, setHomePublishing] = useState(false);
@@ -1333,6 +1334,18 @@ const isFocused = useIsFocused();
     setCommentEditingId(null);
     setCommentText("");
     setCommentInputOpen(true);
+  }, []);
+
+  const toggleCommentReplies = useCallback((commentId: string) => {
+    setExpandedCommentReplies((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
   }, []);
 
   const handleDeleteComment = useCallback(async (comment: HomeFeedComment) => {
@@ -2358,75 +2371,264 @@ try {
                   <View style={styles.commentsState}><Ionicons name="chatbubble-ellipses-outline" size={35} color={C.textMuted} /><Text style={styles.commentsStateText}>لا توجد تعليقات بعد</Text></View>
                 )
               }
-              renderItem={({ item }) => (
-                <View
-                  style={[
-                    styles.commentRow,
-                    item.parentCommentId && styles.commentReplyRow,
-                  ]}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    onPress={() => router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any)}
-                  >
-                    <ProfileAvatar photoUri={item.userPhotoUri} name={item.userName} size={38} disableNavigation />
-                  </TouchableOpacity>
-                  <Pressable
-                    style={styles.commentBody}
-                    onLongPress={() => {
-                      if (item.userId !== auth.currentUser?.uid) return;
+              renderItem={({ item }) => {
+              const isReply = Boolean(item.parentCommentId);
+
+              // الردود ستظهر داخل التعليق الأب فقط.
+              if (isReply) return null;
+
+              const replies = comments.filter(
+                (reply) => reply.parentCommentId === item.id
+              );
+
+              const repliesExpanded = expandedCommentReplies.has(item.id);
+
+              return (
+                <View style={styles.commentThread}>
+                  <View style={styles.commentRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/user-profile",
+                          params: {
+                            userId: item.userId,
+                            userName: item.userName,
+                          },
+                        } as any)
+                      }
+                    >
+                      <ProfileAvatar
+                        photoUri={item.userPhotoUri}
+                        name={item.userName}
+                        size={38}
+                        disableNavigation
+                      />
+                    </TouchableOpacity>
+
+                    <Pressable
+                      style={styles.commentBody}
+                      onLongPress={() => {
+                        if (item.userId !== auth.currentUser?.uid) return;
                         setCommentActionsComment(item);
-                    }}
-                  >
-                    <View style={styles.commentMetaRow}>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any)}
-                      >
-                        <Text style={styles.commentUserName} numberOfLines={1}>{item.userName}</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.commentTime}>{item.createdAt ? new Date(item.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
-                    </View>
-                    <Text style={styles.commentText}>{item.text}</Text>
-
-                    <View style={styles.commentActionsRow}>
-                      <Pressable
-                        style={styles.commentActionButton}
-                        onPress={() => handleLikeComment(item)}
-                        hitSlop={6}
-                        accessibilityRole="button"
-                        accessibilityLabel={item.isLiked ? "إلغاء إعجاب التعليق" : "الإعجاب بالتعليق"}
-                      >
-                        <Feather
-                          name="heart"
-                          size={15}
-                          color={item.isLiked ? "#e53935" : C.textMuted}
-                        />
-                        {Number(item.likesCount ?? 0) > 0 && (
+                      }}
+                    >
+                      <View style={styles.commentMetaRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.75}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/user-profile",
+                              params: {
+                                userId: item.userId,
+                                userName: item.userName,
+                              },
+                            } as any)
+                          }
+                        >
                           <Text
-                            style={[
-                              styles.commentActionCount,
-                              item.isLiked && styles.commentActionCountLiked,
-                            ]}
+                            style={styles.commentUserName}
+                            numberOfLines={1}
                           >
-                            {Number(item.likesCount ?? 0)}
+                            {item.userName}
                           </Text>
-                        )}
-                      </Pressable>
+                        </TouchableOpacity>
 
-                      <Pressable
-                        style={styles.commentReplyButton}
-                        onPress={() => handleReplyComment(item)}
-                        hitSlop={6}
-                        accessibilityRole="button"
-                        accessibilityLabel="الرد على التعليق"
-                      >
-                        <Text style={styles.commentReplyText}>رد</Text>
-                      </Pressable>
+                        <Text style={styles.commentTime}>
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleString("ar-IQ")
+                            : "منذ قليل"}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.commentText}>{item.text}</Text>
+
+                      <View style={styles.commentActionsRow}>
+                        <Pressable
+                          style={styles.commentActionButton}
+                          onPress={() => handleLikeComment(item)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            item.isLiked
+                              ? "إلغاء إعجاب التعليق"
+                              : "الإعجاب بالتعليق"
+                          }
+                        >
+                          <Feather
+                            name="heart"
+                            size={15}
+                            color={item.isLiked ? "#e53935" : C.textMuted}
+                          />
+
+                          {Number(item.likesCount ?? 0) > 0 && (
+                            <Text
+                              style={[
+                                styles.commentActionCount,
+                                item.isLiked &&
+                                  styles.commentActionCountLiked,
+                              ]}
+                            >
+                              {Number(item.likesCount ?? 0)}
+                            </Text>
+                          )}
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.commentReplyButton}
+                          onPress={() => handleReplyComment(item)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel="الرد على التعليق"
+                        >
+                          <Text style={styles.commentReplyText}>رد</Text>
+                        </Pressable>
+                      </View>
+
+                      {replies.length > 0 && (
+                        <Pressable
+                          style={styles.commentRepliesToggle}
+                          onPress={() => toggleCommentReplies(item.id)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            repliesExpanded
+                              ? "إخفاء الردود"
+                              : "عرض الردود"
+                          }
+                        >
+                          <View style={styles.commentRepliesLine} />
+                          <Text style={styles.commentRepliesToggleText}>
+                            {repliesExpanded
+                              ? "إخفاء الردود"
+                              : `عرض الردود (${replies.length})`}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </Pressable>
+                  </View>
+
+                  {repliesExpanded && replies.length > 0 && (
+                    <View style={styles.commentRepliesContainer}>
+                      {replies.map((reply) => (
+                        <View
+                          key={reply.id}
+                          style={styles.commentReplyItem}
+                        >
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() =>
+                              router.push({
+                                pathname: "/user-profile",
+                                params: {
+                                  userId: reply.userId,
+                                  userName: reply.userName,
+                                },
+                              } as any)
+                            }
+                          >
+                            <ProfileAvatar
+                              photoUri={reply.userPhotoUri}
+                              name={reply.userName}
+                              size={32}
+                              disableNavigation
+                            />
+                          </TouchableOpacity>
+
+                          <Pressable
+                            style={styles.commentReplyBubble}
+                            onLongPress={() => {
+                              if (reply.userId !== auth.currentUser?.uid) return;
+                              setCommentActionsComment(reply);
+                            }}
+                          >
+                            <View style={styles.commentReplyMetaRow}>
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={() =>
+                                  router.push({
+                                    pathname: "/user-profile",
+                                    params: {
+                                      userId: reply.userId,
+                                      userName: reply.userName,
+                                    },
+                                  } as any)
+                                }
+                              >
+                                <Text
+                                  style={styles.commentReplyUserName}
+                                  numberOfLines={1}
+                                >
+                                  {reply.userName}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <Text style={styles.commentReplyTime}>
+                                {reply.createdAt
+                                  ? new Date(reply.createdAt).toLocaleString("ar-IQ")
+                                  : "منذ قليل"}
+                              </Text>
+                            </View>
+
+                            <Text style={styles.commentReplyTextBody}>
+                              {reply.text}
+                            </Text>
+
+                            <View style={styles.commentActionsRow}>
+                              <Pressable
+                                style={styles.commentActionButton}
+                                onPress={() => handleLikeComment(reply)}
+                                hitSlop={6}
+                                accessibilityRole="button"
+                                accessibilityLabel={
+                                  reply.isLiked
+                                    ? "إلغاء إعجاب الرد"
+                                    : "الإعجاب بالرد"
+                                }
+                              >
+                                <Feather
+                                  name="heart"
+                                  size={14}
+                                  color={
+                                    reply.isLiked
+                                      ? "#e53935"
+                                      : C.textMuted
+                                  }
+                                />
+
+                                {Number(reply.likesCount ?? 0) > 0 && (
+                                  <Text
+                                    style={[
+                                      styles.commentActionCount,
+                                      reply.isLiked &&
+                                        styles.commentActionCountLiked,
+                                    ]}
+                                  >
+                                    {Number(reply.likesCount ?? 0)}
+                                  </Text>
+                                )}
+                              </Pressable>
+
+                              <Pressable
+                                style={styles.commentReplyButton}
+                                onPress={() => handleReplyComment(reply)}
+                                hitSlop={6}
+                                accessibilityRole="button"
+                                accessibilityLabel="الرد على الرد"
+                              >
+                                <Text style={styles.commentReplyText}>
+                                  رد
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </Pressable>
+                        </View>
+                      ))}
                     </View>
-                  </Pressable>
+                  )}
                 </View>
-              )}
+              );
+            }}
             />
 
             {commentEditingId && (
@@ -2504,7 +2706,7 @@ try {
                       style={styles.commentLargeInput}
                       multiline
                       maxLength={500}
-                      textAlign="right"
+                      textAlign="left"
                       autoFocus
                       editable={!commentPosting}
                       returnKeyType="default"
@@ -2830,18 +3032,101 @@ const styles = StyleSheet.create({
   commentsEmptyContent: { flexGrow: 1, justifyContent: "center" },
   commentsState: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 30 },
   commentsStateText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  commentRow: { flexDirection: "row-reverse", alignItems: "flex-start", gap: 9, paddingVertical: 8, paddingHorizontal: 2 },
+  commentRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 8, paddingHorizontal: 2 },
   commentReplyRow: {
     marginStart: 28,
     paddingStart: 10,
     borderStartWidth: 2,
     borderStartColor: C.border,
   },
+
+  commentThread: {
+    width: "100%",
+  },
+
+  commentRepliesToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 7,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+
+  commentRepliesLine: {
+    width: 22,
+    height: 1,
+    backgroundColor: C.border,
+  },
+
+  commentRepliesToggleText: {
+    fontSize: 11,
+    fontFamily: "Cairo_600SemiBold",
+    color: C.accent,
+    textAlign: "left",
+  },
+
+  commentRepliesContainer: {
+    marginStart: 46,
+    paddingStart: 10,
+    marginTop: 3,
+    borderStartWidth: 2,
+    borderStartColor: C.border,
+    gap: 8,
+  },
+
+  commentReplyItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    width: "100%",
+  },
+
+  commentReplyBubble: {
+    flex: 1,
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+
+  commentReplyMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 3,
+  },
+
+  commentReplyUserName: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontFamily: "Cairo_700Bold",
+    color: C.text,
+    textAlign: "left",
+  },
+
+  commentReplyTime: {
+    fontSize: 9,
+    fontFamily: "Cairo_400Regular",
+    color: C.textMuted,
+    textAlign: "left",
+  },
+
+  commentReplyTextBody: {
+    fontSize: 12,
+    lineHeight: 20,
+    fontFamily: "Cairo_400Regular",
+    color: C.text,
+    textAlign: "left",
+  },
   commentBody: { flex: 1, backgroundColor: C.background, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 8 },
-  commentMetaRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
-  commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "left" },
   commentTime: { fontSize: 9, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
+  commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "left" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
   commentActionsRow: {
