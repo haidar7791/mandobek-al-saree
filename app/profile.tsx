@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
@@ -100,6 +100,7 @@ export default function ProfileScreen() {
   const [editSpecialty, setEditSpecialty] = useState("");
   const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const profileLoadedRef = useRef(false);
 
   const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -139,15 +140,25 @@ export default function ProfileScreen() {
       ? ""
       : ALL_SPECIALTIES.find((s) => s.key === specialty)?.label || specialty || "";
 
-  // ── Load profile on screen focus ───────────────────────────────────────────
+  // ── Load profile once while this screen stays mounted ─────────────────────
   useFocusEffect(
     useCallback(() => {
       const user = auth.currentUser;
-      if (!user) { router.replace("/"); return; }
+      if (!user) {
+        router.replace("/");
+        return;
+      }
 
       setUid(user.uid);
+
+      if (profileLoadedRef.current) {
+        return;
+      }
+
+      profileLoadedRef.current = true;
       setPostsLoading(true);
       setProductsLoading(true);
+
       const unsubscribeProducts = subscribeToProducts(
         (allProducts) => {
           setProducts(allProducts.filter((product) => product.sellerId === user.uid));
@@ -164,12 +175,17 @@ export default function ProfileScreen() {
           getUserProfile(user.uid),
           getProfileEngagementCounts(user.uid),
         ]);
+
         if (profile) {
           setName(profile.name || "");
           setPhone(profile.phone || "");
           setPhotoUri(profile.photoUri || null);
           setRole(profile.role || "client");
-          setSpecialty(["shovel", "roller", "backhoe"].includes(profile.specialty || "") ? "client" : (profile.specialty || ""));
+          setSpecialty(
+            ["shovel", "roller", "backhoe"].includes(profile.specialty || "")
+              ? "client"
+              : (profile.specialty || "")
+          );
           setBio(profile.bio || "");
           setFollowCount(engagement.followCount);
 
@@ -187,11 +203,17 @@ export default function ProfileScreen() {
           setLikesCount(engagement.likesCount);
           setProfilePosts(normalizeProfilePosts(profile));
         }
+
         setPostsLoading(false);
+
         const bal = await getBalance(user.uid);
         setBalance(bal);
       };
-      load().catch(() => { setPostsLoading(false); });
+
+      load().catch(() => {
+        setPostsLoading(false);
+        setProductsLoading(false);
+      });
 
       return () => unsubscribeProducts();
     }, [])
@@ -627,7 +649,6 @@ export default function ProfileScreen() {
             size={17}
             color={activeTab === "posts" ? C.accent : C.textMuted}
           />
-          <Text style={[styles.tabText, activeTab === "posts" && styles.tabTextActive]}>معرض أعمالي</Text>
           <View style={[styles.tabIndicator, activeTab === "posts" && styles.tabIndicatorActive]} />
         </Pressable>
 
@@ -645,7 +666,6 @@ export default function ProfileScreen() {
             size={17}
             color={activeTab === "products" ? C.accent : C.textMuted}
           />
-          <Text style={[styles.tabText, activeTab === "products" && styles.tabTextActive]}>منتجاتي</Text>
           <View style={[styles.tabIndicator, activeTab === "products" && styles.tabIndicatorActive]} />
         </Pressable>
       </View>
@@ -672,7 +692,6 @@ export default function ProfileScreen() {
                 deletingPostId={deletingPostId}
                 onDelete={handleDeleteProfilePost}
                 showEmptyState
-                title="معرض أعمالي"
                 actionLabel={profilePostPublishing ? `جارٍ النشر ${Math.round(profilePostPublishProgress * 100)}%` : "إضافة منشور"}
                 onAction={handleAddProfilePost}
                 actionDisabled={uploadingPost || profilePostPublishing}
@@ -682,7 +701,7 @@ export default function ProfileScreen() {
           ) : (
             <View style={styles.card}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>منتجاتي</Text>
+                <View />
                 <Pressable
                   style={[styles.sectionAction, productsLoading && { opacity: 0.55 }]}
                   onPress={() => router.push("/add-product" as any)}
@@ -706,50 +725,41 @@ export default function ProfileScreen() {
               ) : (
                 <View style={styles.productsList}>
                   {products.map((product) => (
-                    <View key={product.id} style={styles.profileProductCard}>
+                    <Pressable
+                      key={product.id}
+                      style={styles.profileProductCard}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        router.replace({
+                          pathname: "/dashboard",
+                          params: { productId: product.id },
+                        } as any);
+                      }}
+                    >
                       <ProductMediaCarousel
                         media={normalizeProductMedia(product.media, product.imageUrl)}
-                        height={220}
+                        height={112}
                         isVisible={false}
-                        showIndicators
+                        showIndicators={false}
                         onDoubleTapLike={async () => false}
                       />
-                      <View style={styles.profileProductInfo}>
-                        <View style={styles.profileProductTitleRow}>
-                          <View style={styles.profileProductPrice}>
-                            <Text style={styles.profileProductPriceText}>{product.price.toLocaleString("ar-IQ")} د.ع</Text>
-                          </View>
-                          <Text style={styles.profileProductTitle} numberOfLines={2}>{product.title}</Text>
-                        </View>
-                        {product.description ? (
-                          <Text style={styles.profileProductDescription} numberOfLines={2}>{product.description}</Text>
-                        ) : null}
-                        <View style={styles.profileProductActions}>
-                          <Pressable
-                            style={styles.profileProductViewBtn}
-                            onPress={() => {
-                              Haptics.selectionAsync();
-                              router.replace({ pathname: "/dashboard", params: { productId: product.id } } as any);
-                            }}
-                          >
-                            <Feather name="eye" size={15} color={C.primary} />
-                            <Text style={styles.profileProductViewText}>عرض في الرئيسية</Text>
-                          </Pressable>
-                          <Pressable
-                            style={styles.profileProductDeleteBtn}
-                            onPress={() => handleDeleteProduct(product)}
-                            disabled={deletingProductId === product.id}
-                          >
-                            {deletingProductId === product.id ? (
-                              <ActivityIndicator size="small" color="#FFF" />
-                            ) : (
-                              <Feather name="trash-2" size={15} color="#FFF" />
-                            )}
-                            <Text style={styles.profileProductDeleteText}>حذف</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    </View>
+
+                      <Pressable
+                        style={styles.profileProductDeleteOverlay}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          handleDeleteProduct(product);
+                        }}
+                        disabled={deletingProductId === product.id}
+                        hitSlop={8}
+                      >
+                        {deletingProductId === product.id ? (
+                          <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                          <Feather name="trash-2" size={13} color="#FFF" />
+                        )}
+                      </Pressable>
+                    </Pressable>
                   ))}
                 </View>
               )}
@@ -1409,17 +1419,17 @@ const styles = StyleSheet.create({
 
   // ── Body ──
   body: {
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    gap: 14,
+    paddingHorizontal: 8,
+    paddingTop: 10,
+    gap: 8,
   },
 
   // ── Cards ──
   card: {
     backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 18,
-    gap: 14,
+    borderRadius: 14,
+    padding: 8,
+    gap: 8,
     shadowColor: C.shadow,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
@@ -1463,8 +1473,33 @@ const styles = StyleSheet.create({
   productsEmpty: { alignItems: "center", paddingVertical: 28, gap: 7 },
   productsEmptyTitle: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
   productsEmptyHint: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center" },
-  productsList: { gap: 14 },
-  profileProductCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.border },
+  productsList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  profileProductCard: {
+    width: "32%",
+    aspectRatio: 1,
+    borderRadius: 9,
+    overflow: "hidden",
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.border,
+    position: "relative",
+  },
+  profileProductDeleteOverlay: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239,68,68,0.9)",
+    zIndex: 10,
+  },
   profileProductInfo: { padding: 12, gap: 9 },
   profileProductTitleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
   profileProductTitle: { flex: 1, fontSize: 16, lineHeight: 24, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },

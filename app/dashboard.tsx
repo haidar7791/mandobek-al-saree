@@ -458,7 +458,7 @@ function ProductCard({
 }
 
 
-function HomeFeedCard({
+const HomeFeedCard = React.memo(function HomeFeedCard({
   post,
   isActive,
   isScreenFocused,
@@ -604,7 +604,7 @@ function HomeFeedCard({
       </View>
     </View>
   );
-}
+});
 
 function HomeVideoViewer({
   posts,

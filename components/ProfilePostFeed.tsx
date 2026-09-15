@@ -205,7 +205,7 @@ export default function ProfilePostFeed({
                   {deletingPostId === post.id ? (
                     <ActivityIndicator size="small" color="#FFF" />
                   ) : (
-                    <Feather name="trash-2" size={17} color="#FFF" />
+                    <Feather name="trash-2" size={10} color="#FFF" />
                   )}
                 </Pressable>
               )}
@@ -302,11 +302,11 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     position: "absolute",
-    top: 10,
-    right: 10,
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    top: 3,
+    left: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.68)",
