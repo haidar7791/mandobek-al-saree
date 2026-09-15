@@ -2436,7 +2436,7 @@ try {
 
                         <Text style={styles.commentTime}>
                           {item.createdAt
-                            ? new Date(item.createdAt).toLocaleString("ar-IQ")
+                            ? getRelativeTime(item.createdAt)
                             : "منذ قليل"}
                         </Text>
                       </View>
@@ -2565,7 +2565,7 @@ try {
 
                               <Text style={styles.commentReplyTime}>
                                 {reply.createdAt
-                                  ? new Date(reply.createdAt).toLocaleString("ar-IQ")
+                                  ? getRelativeTime(reply.createdAt)
                                   : "منذ قليل"}
                               </Text>
                             </View>
@@ -2998,7 +2998,7 @@ const styles = StyleSheet.create({
   homePostTime: { margin: 0, padding: 0 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
-  homePostDescription: { fontSize: 13, color: C.text, textAlign: "left", width: "100%", paddingHorizontal: 0, paddingTop: 10 },
+  homePostDescription: { fontSize: 13, color: C.text, textAlign: "left", width: "100%", paddingHorizontal: 4, paddingTop: 10, fontFamily: undefined },
   homeActions: { flexDirection: "row-reverse", alignItems: "center", padding: 11, gap: 18 },
   homeAction: { flexDirection: "row", alignItems: "center", gap: 5 },
   homeActionText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
@@ -3118,15 +3118,15 @@ const styles = StyleSheet.create({
   commentReplyTextBody: {
     fontSize: 12,
     lineHeight: 20,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "left",
   },
   commentBody: { flex: 1, backgroundColor: C.background, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 8 },
   commentMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "left" },
-  commentTime: { fontSize: 9, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "left" },
+  commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: undefined, color: C.text, textAlign: "left" },
+  commentTime: { fontSize: 9, fontFamily: undefined, color: C.textMuted },
+  commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: undefined, color: C.text, textAlign: "left" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
   commentActionsRow: {
