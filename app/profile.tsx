@@ -490,13 +490,8 @@ export default function ProfileScreen() {
           <Text style={styles.headerTitle}>الملف الشخصي</Text>
           {/* Settings and customer support stay together under the profile header. */}
           <View style={styles.headerTools}>
-            <Pressable onPress={openEditModal} style={styles.headerIcon}>
-              <Feather name="settings" size={20} color={C.accent} />
-              <Text style={styles.headerToolLabel}>الإعدادات</Text>
-            </Pressable>
             <Pressable onPress={() => router.push("/support" as any)} style={styles.headerIcon}>
               <Feather name="headphones" size={19} color={C.accent} />
-              <Text style={styles.headerToolLabel}>خدمة العملاء</Text>
             </Pressable>
           </View>
         </View>
@@ -523,7 +518,12 @@ export default function ProfileScreen() {
           </Pressable>
 
           {/* Name only — NO email/contact line */}
-          <Text style={styles.displayName}>{name || "—"}</Text>
+          <View style={styles.nameEditRow}>
+            <Text style={styles.displayName}>{name || "—"}</Text>
+            <Pressable onPress={openEditModal} style={styles.nameEditButton}>
+              <Feather name="edit-3" size={17} color={C.accent} />
+            </Pressable>
+          </View>
 
           {/* Specialty — client accounts intentionally show no role label here. */}
           {specialty !== "client" && specialtyLabel ? (
@@ -1204,6 +1204,18 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_700Bold",
     color: "#FFF",
     textAlign: "center",
+  },
+  nameEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  nameEditButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   specialtyPill: {
     backgroundColor: "rgba(201,168,76,0.2)",
