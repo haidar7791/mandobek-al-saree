@@ -2738,6 +2738,9 @@ export const addProfilePost = async (
   );
 
   const profile = await getUserProfile(userId);
+  const featuredUntil = profile?.featuredUntil ?? null;
+  const promotedNow = isFeaturedActive({ featuredUntil });
+
   await setDoc(
     doc(db, "posts", `${userId}_${post.id}`),
     {
@@ -2754,6 +2757,9 @@ export const addProfilePost = async (
       sourceType: "profilePost",
       storagePath: post.storagePath ?? null,
       mimeType: post.mimeType ?? null,
+      featuredUntil,
+      priorityScore: promotedNow ? 100 : 0,
+      isPromoted: promotedNow,
     },
     { merge: true }
   );
@@ -2880,45 +2886,311 @@ export const getHomeFeedPosts = async (
   pageSize = 10,
   cursor: any | null = null,
 ): Promise<HomeFeedPage> => {
-  // Dedicated feed source: query only the content documents needed for the
-  // current page. The Home screen requests the next page as the user scrolls.
-  const constraints: any[] = [
+  const safePageSize = Math.max(1, pageSize);
+
+  /*
+   * Smart Home Feed:
+   * - Keep the existing chronological cursor for stable pagination.
+   * - Fetch a wider recent candidate pool.
+   * - Add promoted posts separately so an old promoted post can re-enter
+   *   the feed even when it is no longer inside the newest chronological page.
+   * - Rank locally using promotion, freshness, engagement and diversity.
+   */
+
+  const recentConstraints: any[] = [
     orderBy("createdAt", "desc"),
-    limit(Math.max(1, pageSize)),
+    limit(Math.max(30, safePageSize * 3)),
   ];
-  if (cursor) constraints.splice(1, 0, startAfter(cursor));
 
-  const feedQuery = query(collection(db, "posts"), ...constraints);
-  const snap = await getDocs(feedQuery);
-  const posts: HomeFeedPost[] = [];
+  if (cursor) {
+    recentConstraints.splice(1, 0, startAfter(cursor));
+  }
 
-  snap.forEach((postDoc) => {
+  const recentSnap = await getDocs(
+    query(collection(db, "posts"), ...recentConstraints)
+  );
+
+  const promotedSnap = await getDocs(
+    query(
+      collection(db, "posts"),
+      where("isPromoted", "==", true),
+      limit(20)
+    )
+  );
+
+  const candidateDocs = new Map<string, any>();
+
+  recentSnap.docs.forEach((docSnap) => {
+    candidateDocs.set(docSnap.id, docSnap);
+  });
+
+  promotedSnap.docs.forEach((docSnap) => {
+    candidateDocs.set(docSnap.id, docSnap);
+  });
+
+  const now = Date.now();
+
+  const candidates: Array<
+    HomeFeedPost & {
+      featuredActive: boolean;
+      priorityScore: number;
+      engagementScore: number;
+      freshnessScore: number;
+    }
+  > = [];
+
+  candidateDocs.forEach((postDoc) => {
     const data = postDoc.data() as any;
+
     const userId = String(data.userId || data.ownerId || "");
     const postId = String(data.postId || data.id || postDoc.id);
-    const url = String(data.url || data.mediaUrl || data.media?.url || "");
+    const url = String(
+      data.url || data.mediaUrl || data.media?.url || ""
+    );
+
     const rawType = data.mediaType || data.type || data.media?.type;
-    const mediaType: "image" | "video" = rawType === "video" ? "video" : "image";
+    const mediaType: "image" | "video" =
+      rawType === "video" ? "video" : "image";
+
     if (!userId || !url) return;
 
-    posts.push({
+    const createdAt = toIsoString(data.createdAt);
+    const createdMs = new Date(createdAt).getTime();
+
+    const featuredUntil = data.featuredUntil ?? null;
+
+    const featuredActive =
+      data.isPromoted === true &&
+      !!featuredUntil &&
+      new Date(featuredUntil).getTime() > now;
+
+    const priorityScore = Number(data.priorityScore ?? 0);
+
+    const likesCount = Number(
+      data.likesCount ?? data.likes ?? 0
+    );
+
+    const commentsCount = Number(
+      data.commentsCount ?? data.comments ?? 0
+    );
+
+    /*
+     * Freshness:
+     * New content gets a strong score, while older content gradually
+     * loses points instead of disappearing completely.
+     */
+    const ageHours = Math.max(
+      0,
+      (now - createdMs) / (1000 * 60 * 60)
+    );
+
+    const freshnessScore =
+      40 / (1 + ageHours / 24);
+
+    /*
+     * Engagement:
+     * Logarithmic scaling prevents one viral post from completely
+     * dominating the feed.
+     */
+    const engagementScore =
+      Math.log1p(Math.max(0, likesCount)) * 4 +
+      Math.log1p(Math.max(0, commentsCount)) * 6;
+
+    candidates.push({
       id: postDoc.id,
       userId,
-      userName: String(data.userName || data.ownerName || data.authorName || "مستخدم"),
-      userPhotoUri: data.userPhotoUri || data.ownerPhotoUri || data.authorPhotoUri || data.photoUri || null,
-      createdAt: toIsoString(data.createdAt),
+      userName: String(
+        data.userName ||
+          data.ownerName ||
+          data.authorName ||
+          "مستخدم"
+      ),
+      userPhotoUri:
+        data.userPhotoUri ||
+        data.ownerPhotoUri ||
+        data.authorPhotoUri ||
+        data.photoUri ||
+        null,
+      createdAt,
       url,
       mediaType,
-      description: String(data.description || data.caption || data.text || ""),
-      likesCount: Number(data.likesCount ?? data.likes ?? 0),
-      commentsCount: Number(data.commentsCount ?? data.comments ?? 0),
+      description: String(
+        data.description ||
+          data.caption ||
+          data.text ||
+          ""
+      ),
+      likesCount,
+      commentsCount,
+      featuredActive,
+      priorityScore,
+      engagementScore,
+      freshnessScore,
     });
   });
 
+  /*
+   * Base score.
+   *
+   * Promotion is important, but it is intentionally not given an
+   * unlimited score. This keeps the feed dynamic instead of turning
+   * it into a list containing only promoted posts.
+   */
+  const scored = candidates.map((post) => {
+    const promotionScore = post.featuredActive
+      ? 55 + Math.min(20, post.priorityScore / 5)
+      : 0;
+
+    const videoBonus = post.mediaType === "video" ? 3 : 0;
+
+    const smallVariation =
+      ((post.id.charCodeAt(0) || 0) % 7) * 0.35;
+
+    return {
+      post,
+      score:
+        promotionScore +
+        post.freshnessScore +
+        post.engagementScore +
+        videoBonus +
+        smallVariation,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  /*
+   * Diversity-aware selection.
+   *
+   * Avoid:
+   * - the same user appearing repeatedly
+   * - too many videos/images in a row
+   * - all promoted posts being placed together
+   */
+  const selected: HomeFeedPost[] = [];
+  const selectedIds = new Set<string>();
+  const userCounts = new Map<string, number>();
+
+  let promotedCount = 0;
+  let videoCount = 0;
+
+  const target = safePageSize;
+
+  while (selected.length < target && scored.length > 0) {
+    let bestIndex = -1;
+    let bestAdjustedScore = -Infinity;
+
+    for (let i = 0; i < scored.length; i++) {
+      const item = scored[i];
+      const post = item.post;
+
+      if (selectedIds.has(post.id)) continue;
+
+      const sameUserCount =
+        userCounts.get(post.userId) ?? 0;
+
+      let adjustedScore = item.score;
+
+      /*
+       * Strong penalty for repeated authors.
+       */
+      if (sameUserCount >= 2) {
+        adjustedScore -= 45;
+      } else if (sameUserCount === 1) {
+        adjustedScore -= 16;
+      }
+
+      /*
+       * Avoid long runs of the same media type.
+       */
+      if (selected.length > 0) {
+        const previous = selected[selected.length - 1];
+
+        if (previous.mediaType === post.mediaType) {
+          adjustedScore -= 7;
+        }
+      }
+
+      /*
+       * Keep promoted posts visible without allowing them
+       * to occupy the entire first page.
+       */
+      if (post.featuredActive) {
+        if (promotedCount >= Math.max(2, Math.ceil(target * 0.4))) {
+          adjustedScore -= 30;
+        }
+
+        /*
+         * Do not place several promoted posts back-to-back.
+         */
+        if (
+          selected.length > 0 &&
+          selected[selected.length - 1].userId === post.userId
+        ) {
+          adjustedScore -= 35;
+        }
+      }
+
+      /*
+       * Encourage video discovery without flooding the feed.
+       */
+      if (post.mediaType === "video") {
+        if (videoCount >= Math.ceil(target * 0.5)) {
+          adjustedScore -= 18;
+        }
+      }
+
+      if (adjustedScore > bestAdjustedScore) {
+        bestAdjustedScore = adjustedScore;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex === -1) break;
+
+    const chosen = scored[bestIndex].post;
+
+    selected.push(chosen);
+    selectedIds.add(chosen.id);
+
+    userCounts.set(
+      chosen.userId,
+      (userCounts.get(chosen.userId) ?? 0) + 1
+    );
+
+    if (chosen.featuredActive) {
+      promotedCount += 1;
+    }
+
+    if (chosen.mediaType === "video") {
+      videoCount += 1;
+    }
+
+    scored.splice(bestIndex, 1);
+  }
+
+  /*
+   * If diversity rules leave anything missing, fill the remaining
+   * positions from the highest-scoring candidates.
+   */
+  if (selected.length < target) {
+    for (const item of scored) {
+      if (selected.length >= target) break;
+      if (selectedIds.has(item.post.id)) continue;
+
+      selected.push(item.post);
+      selectedIds.add(item.post.id);
+    }
+  }
+
   return {
-    posts,
-    lastDoc: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
-    hasMore: snap.docs.length === Math.max(1, pageSize),
+    posts: selected.slice(0, safePageSize),
+    lastDoc: recentSnap.docs.length
+      ? recentSnap.docs[recentSnap.docs.length - 1]
+      : null,
+    hasMore:
+      recentSnap.docs.length ===
+      Math.max(30, safePageSize * 3),
   };
 };
 

@@ -16,7 +16,7 @@ import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
 import {
   PROMOTION_PLANS,
-  promoteArtisan,
+  promoteUser,
   getArtisanByUserId,
   getBalance,
   isFeaturedActive,
@@ -70,10 +70,6 @@ export default function PromoteScreen() {
   const featured = artisan ? isFeaturedActive(artisan) : false;
 
   const handlePay = () => {
-    if (!artisan) {
-      Alert.alert("خطأ", "يجب أن يكون لديك ملف صاحب اختصاص مكتمل أولاً");
-      return;
-    }
     if (balance < plan.cost) {
       Alert.alert(
         "رصيد غير كافٍ",
@@ -97,12 +93,12 @@ export default function PromoteScreen() {
             if (!user || !artisan) return;
             setPaying(true);
             try {
-              const result = await promoteArtisan(user.uid, artisan.id, plan.days, plan.cost);
+              const result = await promoteUser(user.uid, plan.days, plan.cost);
               if (result.ok) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 Alert.alert(
                   "تم تفعيل الترويج 🎉",
-                  `حسابك الآن يظهر في أعلى نتائج البحث حتى ${formatExpiry(result.until)}.`
+                  `تم تفعيل الترويج لحسابك ومنشوراتك ومنتجاتك${artisan ? " وخدماتك" : ""} حتى ${formatExpiry(result.until)}.`
                 );
                 await load();
               } else if (result.reason === "no_balance") {
