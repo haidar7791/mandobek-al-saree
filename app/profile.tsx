@@ -591,7 +591,7 @@ export default function ProfileScreen() {
         <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => router.push("/wallet" as any)}>
           <MaterialCommunityIcons name="wallet-outline" size={17} color={C.accent} />
           <Text style={[styles.controlBtnText, styles.walletAmountText]} numberOfLines={1}>
-            {balance.toLocaleString("ar-IQ")} د.ع
+            {balance.toLocaleString("en-US")} د.ع
           </Text>
         </Pressable>
 

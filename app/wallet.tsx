@@ -38,7 +38,7 @@ export type WalletRequestType = "deposit" | "withdrawal";
 export type WalletRequestStatus = "pending" | "approved" | "rejected";
 
 function formatCurrency(amount: number): string {
-  return `${amount.toLocaleString("ar-IQ")} د.ع`;
+  return `${amount.toLocaleString("en-US")} د.ع`;
 }
 
 const STATUS_CONFIG: Record<
@@ -302,7 +302,7 @@ export default function WalletScreen() {
           <View style={styles.balanceRight}>
             <Text style={styles.balanceLabel}>الرصيد الحالي</Text>
             <Text style={styles.balanceValue}>
-              {balance.toLocaleString("ar-IQ")}{" "}
+              {balance.toLocaleString("en-US")}{" "}
               <Text style={styles.balanceCurrency}>د.ع</Text>
             </Text>
           </View>

@@ -77,7 +77,7 @@ export default function PromoteScreen() {
     if (balance < plan.cost) {
       Alert.alert(
         "رصيد غير كافٍ",
-        `سعر الباقة ${plan.cost.toLocaleString("ar-IQ")} د.ع بينما رصيدك ${balance.toLocaleString("ar-IQ")} د.ع. يرجى شحن المحفظة أولاً.`,
+        `سعر الباقة ${plan.cost.toLocaleString("en-US")} د.ع بينما رصيدك ${balance.toLocaleString("en-US")} د.ع. يرجى شحن المحفظة أولاً.`,
         [
           { text: "إلغاء", style: "cancel" },
           { text: "شحن المحفظة", onPress: () => router.push("/wallet" as any) },
@@ -87,7 +87,7 @@ export default function PromoteScreen() {
     }
     Alert.alert(
       "تأكيد الدفع",
-      `سيتم خصم ${plan.cost.toLocaleString("ar-IQ")} د.ع لتفعيل الترويج لمدة ${plan.label}.`,
+      `سيتم خصم ${plan.cost.toLocaleString("en-US")} د.ع لتفعيل الترويج لمدة ${plan.label}.`,
       [
         { text: "إلغاء", style: "cancel" },
         {
@@ -164,7 +164,7 @@ export default function PromoteScreen() {
         <View style={styles.balanceCard}>
           <Feather name="credit-card" size={18} color={C.accent} />
           <Text style={styles.balanceLabel}>رصيد المحفظة</Text>
-          <Text style={styles.balanceValue}>{balance.toLocaleString("ar-IQ")} د.ع</Text>
+          <Text style={styles.balanceValue}>{balance.toLocaleString("en-US")} د.ع</Text>
         </View>
 
         <View style={styles.benefits}>
@@ -198,7 +198,7 @@ export default function PromoteScreen() {
                 </View>
                 <View style={{ flex: 1, alignItems: "flex-end" }}>
                   <Text style={styles.planLabel}>{p.label}</Text>
-                  <Text style={styles.planCost}>{p.cost.toLocaleString("ar-IQ")} د.ع</Text>
+                  <Text style={styles.planCost}>{p.cost.toLocaleString("en-US")} د.ع</Text>
                 </View>
               </Pressable>
             );
@@ -212,7 +212,7 @@ export default function PromoteScreen() {
         >
           <LinearGradient colors={[C.accent, C.accentLight]} style={styles.payGrad}>
             <Text style={styles.payText}>
-              {paying ? "جارٍ الدفع..." : `تفعيل الترويج (${plan.cost.toLocaleString("ar-IQ")} د.ع)`}
+              {paying ? "جارٍ الدفع..." : `تفعيل الترويج (${plan.cost.toLocaleString("en-US")} د.ع)`}
             </Text>
             <Feather name="zap" size={16} color={C.primary} />
           </LinearGradient>
