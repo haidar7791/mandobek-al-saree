@@ -270,8 +270,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   headerTextGroup: { flex: 1, alignItems: "flex-end" },
-  headerTitle: { fontSize: 20, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
-  headerSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)", textAlign: "right" },
+  headerTitle: { fontSize: 20, fontFamily: undefined, color: "#FFF", textAlign: "right" },
+  headerSub: { fontSize: 12, fontFamily: undefined, color: "rgba(255,255,255,0.6)", textAlign: "right" },
   headerIcon: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.15)",
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "#FDECEA", borderRadius: 10, padding: 14,
   },
-  errorBannerText: { flex: 1, fontSize: 13, fontFamily: "Cairo_400Regular", color: "#C0392B", textAlign: "right" },
+  errorBannerText: { flex: 1, fontSize: 13, fontFamily: undefined, color: "#C0392B", textAlign: "right" },
   card: {
     backgroundColor: C.card, borderRadius: 20, padding: 22, gap: 18,
     shadowColor: C.shadow, shadowOffset: { width: 0, height: 4 },
@@ -294,9 +294,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-  cardTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  cardTitle: { fontSize: 17, fontFamily: undefined, color: C.text, textAlign: "right" },
   fieldWrap: { gap: 6 },
-  fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  fieldLabel: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "right" },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 12,
@@ -305,14 +305,14 @@ const styles = StyleSheet.create({
   },
   inputFocused: { borderColor: C.accent, backgroundColor: "#FFF" },
   inputIcon: { width: 28, alignItems: "center" },
-  input: { flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular", color: C.text, paddingVertical: 13, textAlign: "right" },
+  input: { flex: 1, fontSize: 14, fontFamily: undefined, color: C.text, paddingVertical: 13, textAlign: "right" },
   eyeBtn: { padding: 6 },
   submitBtn: { borderRadius: 14, overflow: "hidden", marginTop: 6 },
   submitGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 15, paddingHorizontal: 24, gap: 8,
   },
-  submitText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  submitText: { fontSize: 16, fontFamily: undefined, color: C.primary },
   btnDisabled: { opacity: 0.6 },
 
   // ── Success state ──
@@ -325,12 +325,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.12)",
     alignItems: "center", justifyContent: "center", marginBottom: 8,
   },
-  successTitle: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center" },
-  successSub: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center", lineHeight: 22 },
+  successTitle: { fontSize: 20, fontFamily: undefined, color: C.text, textAlign: "center" },
+  successSub: { fontSize: 14, fontFamily: undefined, color: C.textSecondary, textAlign: "center", lineHeight: 22 },
   loginBtn: { borderRadius: 14, overflow: "hidden", marginTop: 16, width: "100%" },
   loginGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 15, paddingHorizontal: 24, gap: 8,
   },
-  loginBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  loginBtnText: { fontSize: 16, fontFamily: undefined, color: C.primary },
 });

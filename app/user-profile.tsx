@@ -440,13 +440,13 @@ const styles = StyleSheet.create({
     borderWidth: 3, borderColor: C.accent,
     alignItems: "center", justifyContent: "center", marginBottom: 12,
   },
-  initialsText: { fontSize: 32, fontFamily: "Cairo_700Bold", color: C.accent },
+  initialsText: { fontSize: 32, fontFamily: undefined, color: C.accent },
   name: {
-    fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF",
+    fontSize: 22, fontFamily: undefined, color: "#FFF",
     textAlign: "center", marginTop: 12, marginBottom: 6,
   },
   heroBio: {
-    fontSize: 13, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.7)",
+    fontSize: 13, fontFamily: undefined, color: "rgba(255,255,255,0.7)",
     textAlign: "center", lineHeight: 20, marginBottom: 16, paddingHorizontal: 8,
   },
   statsRow: {
@@ -456,8 +456,8 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   statItem: { flex: 1, alignItems: "center", gap: 3 },
-  statVal: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  statVal: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
+  statLabel: { fontSize: 10, fontFamily: undefined, color: "rgba(255,255,255,0.6)" },
   statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
   actionRow: {
     flexDirection: "row", gap: 8, paddingHorizontal: 16,
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 5, paddingVertical: 13, borderRadius: 12,
   },
-  actionBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF", includeFontPadding: false },
+  actionBtnText: { fontSize: 13, fontFamily: undefined, color: "#FFF", includeFontPadding: false },
   chatBtn: { backgroundColor: "#2563EB" },
   shareBtn: { backgroundColor: "rgba(201,168,76,0.1)", borderWidth: 1, borderColor: "rgba(201,168,76,0.35)" },
   followBtn: { backgroundColor: "#0F172A" },

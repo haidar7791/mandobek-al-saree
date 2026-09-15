@@ -330,7 +330,7 @@ export default function WalletScreen() {
             </View>
             <View style={styles.bannerText}>
               <Text style={styles.bannerTitle}>رصيد المحفظة يُستخدم لدفع رسوم الإعلانات داخل فورس</Text>
-              <Text style={{ fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right", marginBottom: 4 }}>للإيداع، حوّل المبلغ إلى:</Text>
+              <Text style={{ fontSize: 12, fontFamily: undefined, color: C.textSecondary, textAlign: "right", marginBottom: 4 }}>للإيداع، حوّل المبلغ إلى:</Text>
               <View style={styles.bannerRow}>
                 <MaterialCommunityIcons name="cellphone" size={14} color={C.textSecondary} />
                 <Text style={styles.bannerAccount}>
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   headerTitle: {
-    flex: 1, fontSize: 18, fontFamily: "Cairo_700Bold",
+    flex: 1, fontSize: 18, fontFamily: undefined,
     color: "#FFF", textAlign: "center",
   },
   headerIcon: {
@@ -556,14 +556,14 @@ const styles = StyleSheet.create({
   },
   balanceRight: { flex: 1, alignItems: "flex-end" },
   balanceLabel: {
-    fontSize: 11, fontFamily: "Cairo_400Regular",
+    fontSize: 11, fontFamily: undefined,
     color: "rgba(255,255,255,0.6)", textAlign: "right",
   },
   balanceValue: {
-    fontSize: 24, fontFamily: "Cairo_700Bold",
+    fontSize: 24, fontFamily: undefined,
     color: C.accent, textAlign: "right",
   },
-  balanceCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular" },
+  balanceCurrency: { fontSize: 13, fontFamily: undefined },
   pendingChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(245,158,11,0.15)",
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(245,158,11,0.25)",
   },
   pendingChipText: {
-    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: "#F59E0B",
+    fontSize: 11, fontFamily: undefined, color: "#F59E0B",
   },
   scrollContent: { paddingHorizontal: 16, paddingTop: 18, gap: 16 },
   transferBanner: {
@@ -589,18 +589,18 @@ const styles = StyleSheet.create({
   },
   bannerText: { flex: 1, gap: 6, alignItems: "flex-end" },
   bannerTitle: {
-    fontSize: 13, fontFamily: "Cairo_700Bold",
+    fontSize: 13, fontFamily: undefined,
     color: C.text, textAlign: "right",
   },
   bannerRow: {
     flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end",
   },
   bannerAccount: {
-    fontSize: 12, fontFamily: "Cairo_400Regular",
+    fontSize: 12, fontFamily: undefined,
     color: C.textSecondary, textAlign: "right",
   },
   bannerNum: {
-    fontFamily: "Cairo_700Bold", color: C.accent,
+    fontFamily: undefined, color: C.accent,
   },
   copyBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4, paddingHorizontal: 7,
   },
   copyBtnText: {
-    fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary,
+    fontSize: 10, fontFamily: undefined, color: C.primary,
   },
   superKeyBadge: {
     width: 18, height: 18, borderRadius: 5,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: C.inputBg },
   tabText: {
-    fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary,
+    fontSize: 14, fontFamily: undefined, color: C.textSecondary,
   },
   formCard: {
     backgroundColor: C.card, borderRadius: 18, padding: 18, gap: 16,
@@ -641,7 +641,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   formTitle: {
-    flex: 1, fontSize: 17, fontFamily: "Cairo_700Bold",
+    flex: 1, fontSize: 17, fontFamily: undefined,
     color: C.text, textAlign: "right",
   },
   uploadBtn: {
@@ -650,11 +650,11 @@ const styles = StyleSheet.create({
     justifyContent: "center", gap: 8, backgroundColor: "rgba(201,168,76,0.04)",
   },
   uploadText: {
-    fontSize: 14, fontFamily: "Cairo_600SemiBold",
+    fontSize: 14, fontFamily: undefined,
     color: C.text, textAlign: "center",
   },
   uploadSub: {
-    fontSize: 11, fontFamily: "Cairo_400Regular",
+    fontSize: 11, fontFamily: undefined,
     color: C.textMuted, textAlign: "center",
   },
   imagePreviewWrap: { borderRadius: 14, overflow: "hidden", position: "relative" },
@@ -672,7 +672,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5, paddingHorizontal: 10,
   },
   changeImageText: {
-    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.primary,
+    fontSize: 11, fontFamily: undefined, color: C.primary,
   },
   note24h: {
     flexDirection: "row", alignItems: "flex-start", gap: 8,
@@ -681,17 +681,17 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(245,158,11,0.2)",
   },
   note24hText: {
-    flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 12, fontFamily: undefined,
     color: C.text, textAlign: "right", lineHeight: 20,
   },
   submitBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     borderRadius: 13, paddingVertical: 15, gap: 8,
   },
-  submitText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  submitText: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
   historySection: { gap: 10 },
   historyTitle: {
-    fontSize: 15, fontFamily: "Cairo_700Bold",
+    fontSize: 15, fontFamily: undefined,
     color: C.text, textAlign: "right",
   },
 });
@@ -707,22 +707,22 @@ const histStyles = StyleSheet.create({
     borderRadius: 8, paddingVertical: 5, paddingHorizontal: 9,
     alignSelf: "flex-start",
   },
-  statusText: { fontSize: 11, fontFamily: "Cairo_600SemiBold" },
+  statusText: { fontSize: 11, fontFamily: undefined },
   info: { flex: 1, alignItems: "flex-end", gap: 4 },
   typeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   typeBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
     borderRadius: 6, paddingVertical: 3, paddingHorizontal: 7,
   },
-  typeText: { fontSize: 11, fontFamily: "Cairo_600SemiBold" },
-  amount: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text },
-  account: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-  date: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  typeText: { fontSize: 11, fontFamily: undefined },
+  amount: { fontSize: 16, fontFamily: undefined, color: C.text },
+  account: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
+  date: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
 });
 
 const formStyles = StyleSheet.create({
   fieldWrap: { gap: 7 },
-  label: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
+  label: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "right" },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 12,
@@ -732,7 +732,7 @@ const formStyles = StyleSheet.create({
   inputFocused: { borderColor: C.accent, backgroundColor: "#FFF" },
   iconBox: { width: 26, alignItems: "center" },
   input: {
-    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 14, fontFamily: undefined,
     color: C.text, paddingVertical: 13, textAlign: "right",
   },
 });

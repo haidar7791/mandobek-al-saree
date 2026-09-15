@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 9, gap: 8,
   },
   input: {
-    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 14, fontFamily: undefined,
     color: C.text, padding: 0,
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 40 },
@@ -425,15 +425,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.1)",
     alignItems: "center", justifyContent: "center",
   },
-  emptyTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
-  emptySub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center" },
+  emptyTitle: { fontSize: 18, fontFamily: undefined, color: C.text },
+  emptySub: { fontSize: 13, fontFamily: undefined, color: C.textSecondary, textAlign: "center" },
   list: { padding: 14, gap: 8, paddingBottom: 40 },
   resultsCount: {
-    fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted,
+    fontSize: 11, fontFamily: undefined, color: C.textMuted,
     textAlign: "right", marginBottom: 8,
   },
   sectionLabel: {
-    fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text,
+    fontSize: 13, fontFamily: undefined, color: C.text,
     textAlign: "right", marginTop: 10, marginBottom: 4,
   },
   rowCard: {
@@ -449,18 +449,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-  artisanInitialsText: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.accent },
+  artisanInitialsText: { fontSize: 20, fontFamily: undefined, color: C.accent },
   rowInfo: { flex: 1, gap: 3, alignItems: "flex-end" },
   nameRow: { flexDirection: "row-reverse", alignItems: "center", gap: 6 },
-  rowName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
-  rowSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
-  priceText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent },
+  rowName: { fontSize: 15, fontFamily: undefined, color: C.text },
+  rowSub: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
+  priceText: { fontSize: 13, fontFamily: undefined, color: C.accent },
   featuredBadge: {
     flexDirection: "row", alignItems: "center", gap: 3,
     backgroundColor: C.accent, borderRadius: 8,
     paddingHorizontal: 7, paddingVertical: 2,
   },
-  featuredText: { fontSize: 9, fontFamily: "Cairo_700Bold", color: C.primary },
+  featuredText: { fontSize: 9, fontFamily: undefined, color: C.primary },
   availDot: { width: 10, height: 10, borderRadius: 5 },
   productThumb: { width: 60, height: 60, borderRadius: 12 },
   thumbFallback: { backgroundColor: C.inputBg, alignItems: "center", justifyContent: "center" },
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239,68,68,0.1)", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 4,
   },
-  soldText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: "#EF4444" },
+  soldText: { fontSize: 11, fontFamily: undefined, color: "#EF4444" },
 
   // ── Product Detail Modal ──────────────────────────────────────────────────
   modalOverlay: {
@@ -511,22 +511,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   detailSoldBannerText: {
-    fontSize: 14, fontFamily: "Cairo_700Bold", color: "#fff",
+    fontSize: 14, fontFamily: undefined, color: "#fff",
   },
   detailBody: {
     padding: 20, gap: 10,
   },
   detailTitle: {
-    fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right",
+    fontSize: 20, fontFamily: undefined, color: C.text, textAlign: "right",
   },
   detailPrice: {
-    fontSize: 22, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right",
+    fontSize: 22, fontFamily: undefined, color: C.accent, textAlign: "right",
   },
   detailCurrency: {
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    fontSize: 14, fontFamily: undefined, color: C.textSecondary,
   },
   detailDesc: {
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    fontSize: 14, fontFamily: undefined, color: C.textSecondary,
     textAlign: "right", lineHeight: 22,
   },
   detailSellerRow: {
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 6,
   },
   detailSellerName: {
-    fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text,
+    fontSize: 14, fontFamily: undefined, color: C.text,
   },
   detailBuyBtn: {
     flexDirection: "row",
@@ -563,6 +563,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.border,
   },
   detailBuyBtnText: {
-    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
+    fontSize: 15, fontFamily: undefined, color: C.primary,
   },
 });

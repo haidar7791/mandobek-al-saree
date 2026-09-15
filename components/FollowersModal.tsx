@@ -171,8 +171,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   headerCopy: { flex: 1, alignItems: "flex-end", gap: 2 },
-  title: { color: C.text, fontSize: 19, fontFamily: "Cairo_700Bold" },
-  subtitle: { color: C.textMuted, fontSize: 11, fontFamily: "Cairo_400Regular" },
+  title: { color: C.text, fontSize: 19, fontFamily: undefined },
+  subtitle: { color: C.textMuted, fontSize: 11, fontFamily: undefined },
   closeButton: {
     width: 36,
     height: 36,
@@ -206,10 +206,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: C.accent,
   },
-  avatarText: { color: C.accent, fontSize: 15, fontFamily: "Cairo_700Bold" },
+  avatarText: { color: C.accent, fontSize: 15, fontFamily: undefined },
   rowCopy: { flex: 1, alignItems: "flex-end", gap: 1 },
-  name: { color: C.text, fontSize: 14, fontFamily: "Cairo_700Bold", textAlign: "right" },
-  rowHint: { color: C.textMuted, fontSize: 10, fontFamily: "Cairo_400Regular" },
+  name: { color: C.text, fontSize: 14, fontFamily: undefined, textAlign: "right" },
+  rowHint: { color: C.textMuted, fontSize: 10, fontFamily: undefined },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 28 },
   emptyIcon: {
     width: 54,
@@ -219,6 +219,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(201,168,76,0.12)",
   },
-  emptyTitle: { color: C.text, fontSize: 15, fontFamily: "Cairo_700Bold" },
-  helperText: { color: C.textMuted, fontSize: 12, fontFamily: "Cairo_400Regular", textAlign: "center" },
+  emptyTitle: { color: C.text, fontSize: 15, fontFamily: undefined },
+  helperText: { color: C.textMuted, fontSize: 12, fontFamily: undefined, textAlign: "center" },
 });

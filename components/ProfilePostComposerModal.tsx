@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 17,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "right",
   },
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 11,
     color: C.text,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     textAlignVertical: "top",
     marginBottom: 10,
   },
@@ -240,6 +240,6 @@ const styles = StyleSheet.create({
   publishText: {
     color: "#FFF",
     fontSize: 13,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
 });

@@ -560,9 +560,9 @@ export default function StoryViewerScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
   loadingRoot: { flex: 1, backgroundColor: "#000", alignItems: "center", justifyContent: "center", gap: 16 },
-  errorText: { color: "rgba(255,255,255,0.65)", fontSize: 15, fontFamily: "Cairo_400Regular", textAlign: "center" },
+  errorText: { color: "rgba(255,255,255,0.65)", fontSize: 15, fontFamily: undefined, textAlign: "center" },
   retryBtn: { backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 10, borderRadius: 20 },
-  retryBtnText: { color: "#FFF", fontFamily: "Cairo_700Bold", fontSize: 14 },
+  retryBtnText: { color: "#FFF", fontFamily: undefined, fontSize: 14 },
 
   // Video error overlay
   videoErrorOverlay: {

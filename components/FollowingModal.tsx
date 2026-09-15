@@ -274,13 +274,13 @@ const styles = StyleSheet.create({
   title: {
     color: C.text,
     fontSize: 19,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
 
   subtitle: {
     color: C.textMuted,
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
   },
 
   closeButton: {
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: C.accent,
     fontSize: 15,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
 
   rowCopy: {
@@ -349,14 +349,14 @@ const styles = StyleSheet.create({
   name: {
     color: C.text,
     fontSize: 14,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     textAlign: "right",
   },
 
   rowHint: {
     color: C.textMuted,
     fontSize: 10,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
   },
 
   center: {
@@ -379,13 +379,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: C.text,
     fontSize: 15,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
 
   helperText: {
     color: C.textMuted,
     fontSize: 12,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     textAlign: "center",
   },
 });

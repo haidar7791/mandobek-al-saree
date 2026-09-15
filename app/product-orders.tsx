@@ -784,8 +784,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   headerText: { flex: 1, alignItems: "flex-end" },
-  headerTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
-  headerSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)", textAlign: "right" },
+  headerTitle: { fontSize: 18, fontFamily: undefined, color: "#FFF", textAlign: "right" },
+  headerSub: { fontSize: 12, fontFamily: undefined, color: "rgba(255,255,255,0.6)", textAlign: "right" },
   headerIcon: {
     width: 42, height: 42, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.18)",
@@ -803,14 +803,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2, borderBottomColor: "transparent",
   },
   tabBtnActive: { borderBottomColor: C.accent },
-  tabText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textMuted },
+  tabText: { fontSize: 14, fontFamily: undefined, color: C.textMuted },
   tabTextActive: { color: C.accent },
   tabBadge: {
     backgroundColor: C.accent, borderRadius: 8,
     minWidth: 18, height: 18, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 5,
   },
-  tabBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+  tabBadgeText: { fontSize: 10, fontFamily: undefined, color: C.primary },
 
   // ── Header select button ──
   selectModeBtn: {
@@ -827,9 +827,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
   selectAllBtn: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
-  selectAllText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.text },
-  selectAllCount: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  selectHint: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  selectAllText: { fontSize: 14, fontFamily: undefined, color: C.text },
+  selectAllCount: { fontSize: 12, fontFamily: undefined, color: C.textMuted },
+  selectHint: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
 
   // ── Selectable card wrapper ──
   selectableWrapper: {
@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
   },
-  bottomBarCount: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  bottomBarCount: { fontSize: 15, fontFamily: undefined, color: C.text },
   bottomBarActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   shareSelectedBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#2563EB", borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
   deleteSelectedBtn: {
@@ -878,19 +878,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#EF4444", borderRadius: 12,
     paddingHorizontal: 20, paddingVertical: 12,
   },
-  deleteSelectedText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  deleteSelectedText: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
 
   // ── Misc ──
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  emptyTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text },
-  emptySub: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "center" },
+  emptyTitle: { fontSize: 17, fontFamily: undefined, color: C.text },
+  emptySub: { fontSize: 13, fontFamily: undefined, color: C.textSecondary, textAlign: "center" },
   listContent: { padding: 16, gap: 12 },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", gap: 8,
     marginBottom: 4, justifyContent: "flex-end",
   },
   pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
-  sectionHeaderText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
+  sectionHeaderText: { fontSize: 13, fontFamily: undefined, color: C.text },
 
   // ── Card ──
   card: {
@@ -916,7 +916,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   productInfo: { flex: 1, gap: 6, alignItems: "flex-end" },
-  productTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  productTitle: { fontSize: 16, fontFamily: undefined, color: C.text, textAlign: "right" },
 
   // Price pill
   pricePill: {
@@ -925,8 +925,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(22,163,74,0.1)",
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
   },
-  pricePillText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: "#16A34A" },
-  pricePillCurrency: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: "#16A34A" },
+  pricePillText: { fontSize: 16, fontFamily: undefined, color: "#16A34A" },
+  pricePillCurrency: { fontSize: 12, fontFamily: undefined, color: "#16A34A" },
 
   // Divider
   divider: { height: 1, backgroundColor: C.border, marginVertical: 2 },
@@ -942,27 +942,27 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(201,168,76,0.25)",
   },
   personMeta: { flex: 1, alignItems: "flex-end" },
-  personRoleLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  personName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  personRoleLabel: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
+  personName: { fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "right" },
 
   // Status badge
   statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { fontSize: 12, fontFamily: "Cairo_600SemiBold" },
-  dateText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  statusText: { fontSize: 12, fontFamily: undefined },
+  dateText: { fontSize: 11, fontFamily: undefined, color: C.textMuted, textAlign: "right" },
 
   // Phone / location rows
   phoneRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
-  phoneText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  phoneText: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
 
   // Detail rows (color / size / phone)
   detailRow: {
     flexDirection: "row-reverse", alignItems: "center", gap: 4,
   },
   detailLabel: {
-    fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary, textAlign: "right",
+    fontSize: 12, fontFamily: undefined, color: C.textSecondary, textAlign: "right",
   },
   detailValue: {
-    fontSize: 12, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right",
+    fontSize: 12, fontFamily: undefined, color: C.text, textAlign: "right",
   },
 
   // Full-width contact button
@@ -972,7 +972,7 @@ const styles = StyleSheet.create({
     gap: 8, paddingVertical: 14,
   },
   contactBtnText: {
-    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary,
+    fontSize: 15, fontFamily: undefined, color: C.primary,
   },
 
   // Side-by-side action buttons row (sale card)
@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.accent,
   },
   shareBtnText: {
-    fontSize: 14, fontFamily: "Cairo_700Bold", color: C.primary,
+    fontSize: 14, fontFamily: undefined, color: C.primary,
   },
   contactBtnHalf: { flex: 1, borderRadius: 14, overflow: "hidden" },
   locationBtnHalf: {
@@ -995,7 +995,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.07)",
   },
   locationBtnText: {
-    fontSize: 15, fontFamily: "Cairo_700Bold", color: C.accent,
+    fontSize: 15, fontFamily: undefined, color: C.accent,
   },
 
   // Actions (accept / reject)
@@ -1006,12 +1006,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: "rgba(239,68,68,0.4)",
     backgroundColor: "rgba(239,68,68,0.06)", borderRadius: 12,
   },
-  rejectBtnText: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: "#EF4444" },
+  rejectBtnText: { fontSize: 14, fontFamily: undefined, color: "#EF4444" },
   acceptBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
   acceptGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: 12,
   },
-  acceptBtnText: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  acceptBtnText: { fontSize: 14, fontFamily: undefined, color: "#FFF" },
   btnDisabled: { opacity: 0.6 },
 });

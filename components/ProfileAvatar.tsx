@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   },
   initials: {
     fontSize: 14,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
   },
 });

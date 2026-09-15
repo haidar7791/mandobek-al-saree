@@ -69,6 +69,7 @@ import {
   addProfilePostComment,
   togglePostCommentLike,
   replyToPostComment,
+  uploadCommentImage,
   updateProfilePostComment,
   deleteProfilePostComment,
   getIsFollowing,
@@ -880,6 +881,7 @@ const isFocused = useIsFocused();
   const [comments, setComments] = useState<HomeFeedComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [commentImageUri, setCommentImageUri] = useState<string | null>(null);
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
   const [commentReplyingTo, setCommentReplyingTo] = useState<HomeFeedComment | null>(null);
@@ -1211,8 +1213,9 @@ const isFocused = useIsFocused();
     const text = commentText.trim();
     const editingId = commentEditingId;
     const replyingTo = commentReplyingTo;
+    const imageUri = commentImageUri;
 
-    if (!post || !text || commentPosting) return;
+    if ((!post || (!text && !imageUri)) || commentPosting) return;
 
     setCommentPosting(true);
     try {
@@ -1246,7 +1249,20 @@ const isFocused = useIsFocused();
           )
         );
       } else {
-        const added = await addProfilePostComment(post.id, text);
+        let uploadedImage: { url: string; storagePath: string } | null = null;
+        if (imageUri) {
+          const uid = auth.currentUser?.uid;
+          if (uid) {
+            uploadedImage = await uploadCommentImage(post.id, uid, imageUri);
+          }
+        }
+
+        const added = await addProfilePostComment(
+          post.id,
+          text,
+          uploadedImage?.url || null,
+          uploadedImage?.storagePath || null
+        );
 
         setComments((prev) => [added, ...prev]);
 
@@ -1265,6 +1281,7 @@ const isFocused = useIsFocused();
       setCommentEditingId(null);
       setCommentReplyingTo(null);
       setCommentText("");
+      setCommentImageUri(null);
       setCommentInputOpen(false);
     } catch (e: any) {
       const title = editingId
@@ -2358,7 +2375,7 @@ try {
             </View>
 
             <FlatList
-              data={comments}
+              data={comments.filter((comment) => !comment.parentCommentId)}
               keyExtractor={(item) => item.id}
               style={styles.commentsList}
               contentContainerStyle={comments.length ? styles.commentsListContent : styles.commentsEmptyContent}
@@ -2373,9 +2390,6 @@ try {
               }
               renderItem={({ item }) => {
               const isReply = Boolean(item.parentCommentId);
-
-              // الردود ستظهر داخل التعليق الأب فقط.
-              if (isReply) return null;
 
               const replies = comments.filter(
                 (reply) => reply.parentCommentId === item.id
@@ -2441,7 +2455,20 @@ try {
                         </Text>
                       </View>
 
-                      <Text style={styles.commentText}>{item.text}</Text>
+                      {!!item.text && (
+                        <Text style={styles.commentText}>{item.text}</Text>
+                      )}
+
+                      {!!item.imageUrl && (
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          style={[
+                            styles.commentImage,
+                            isReply && styles.commentReplyImage,
+                          ]}
+                          resizeMode="cover"
+                        />
+                      )}
 
                       <View style={styles.commentActionsRow}>
                         <Pressable
@@ -2510,39 +2537,14 @@ try {
 
                   {repliesExpanded && replies.length > 0 && (
                     <View style={styles.commentRepliesContainer}>
-                      {replies.map((reply) => (
-                        <View
-                          key={reply.id}
-                          style={styles.commentReplyItem}
-                        >
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() =>
-                              router.push({
-                                pathname: "/user-profile",
-                                params: {
-                                  userId: reply.userId,
-                                  userName: reply.userName,
-                                },
-                              } as any)
-                            }
-                          >
-                            <ProfileAvatar
-                              photoUri={reply.userPhotoUri}
-                              name={reply.userName}
-                              size={32}
-                              disableNavigation
-                            />
-                          </TouchableOpacity>
+                      {replies.map((reply) => {
+                        const nestedReplies = comments.filter(
+                          (child) => child.parentCommentId === reply.id
+                        );
 
-                          <Pressable
-                            style={styles.commentReplyBubble}
-                            onLongPress={() => {
-                              if (reply.userId !== auth.currentUser?.uid) return;
-                              setCommentActionsComment(reply);
-                            }}
-                          >
-                            <View style={styles.commentReplyMetaRow}>
+                        return (
+                          <View key={reply.id} style={styles.commentReplyGroup}>
+                            <View style={styles.commentReplyItem}>
                               <TouchableOpacity
                                 activeOpacity={0.75}
                                 onPress={() =>
@@ -2555,75 +2557,152 @@ try {
                                   } as any)
                                 }
                               >
-                                <Text
-                                  style={styles.commentReplyUserName}
-                                  numberOfLines={1}
-                                >
-                                  {reply.userName}
-                                </Text>
+                                <ProfileAvatar
+                                  photoUri={reply.userPhotoUri}
+                                  name={reply.userName}
+                                  size={32}
+                                  disableNavigation
+                                />
                               </TouchableOpacity>
 
-                              <Text style={styles.commentReplyTime}>
-                                {reply.createdAt
-                                  ? getRelativeTime(reply.createdAt)
-                                  : "منذ قليل"}
-                              </Text>
-                            </View>
-
-                            <Text style={styles.commentReplyTextBody}>
-                              {reply.text}
-                            </Text>
-
-                            <View style={styles.commentActionsRow}>
                               <Pressable
-                                style={styles.commentActionButton}
-                                onPress={() => handleLikeComment(reply)}
-                                hitSlop={6}
-                                accessibilityRole="button"
-                                accessibilityLabel={
-                                  reply.isLiked
-                                    ? "إلغاء إعجاب الرد"
-                                    : "الإعجاب بالرد"
-                                }
+                                style={styles.commentReplyBubble}
+                                onLongPress={() => {
+                                  if (reply.userId !== auth.currentUser?.uid) return;
+                                  setCommentActionsComment(reply);
+                                }}
                               >
-                                <Feather
-                                  name="heart"
-                                  size={14}
-                                  color={
-                                    reply.isLiked
-                                      ? "#e53935"
-                                      : C.textMuted
-                                  }
-                                />
-
-                                {Number(reply.likesCount ?? 0) > 0 && (
-                                  <Text
-                                    style={[
-                                      styles.commentActionCount,
-                                      reply.isLiked &&
-                                        styles.commentActionCountLiked,
-                                    ]}
+                                <View style={styles.commentReplyMetaRow}>
+                                  <TouchableOpacity
+                                    activeOpacity={0.75}
+                                    onPress={() =>
+                                      router.push({
+                                        pathname: "/user-profile",
+                                        params: {
+                                          userId: reply.userId,
+                                          userName: reply.userName,
+                                        },
+                                      } as any)
+                                    }
                                   >
-                                    {Number(reply.likesCount ?? 0)}
-                                  </Text>
-                                )}
-                              </Pressable>
+                                    <Text
+                                      style={styles.commentReplyUserName}
+                                      numberOfLines={1}
+                                    >
+                                      {reply.userName}
+                                    </Text>
+                                  </TouchableOpacity>
 
-                              <Pressable
-                                style={styles.commentReplyButton}
-                                onPress={() => handleReplyComment(reply)}
-                                hitSlop={6}
-                                accessibilityRole="button"
-                                accessibilityLabel="الرد على الرد"
-                              >
-                                <Text style={styles.commentReplyText}>
-                                  رد
+                                  <Text style={styles.commentReplyTime}>
+                                    {reply.createdAt
+                                      ? getRelativeTime(reply.createdAt)
+                                      : "منذ قليل"}
+                                  </Text>
+                                </View>
+
+                                <Text style={styles.commentReplyTextBody}>
+                                  {reply.text}
                                 </Text>
+
+                                <View style={styles.commentActionsRow}>
+                                  <Pressable
+                                    style={styles.commentActionButton}
+                                    onPress={() => handleLikeComment(reply)}
+                                    hitSlop={6}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={
+                                      reply.isLiked
+                                        ? "إلغاء إعجاب الرد"
+                                        : "الإعجاب بالرد"
+                                    }
+                                  >
+                                    <Feather
+                                      name="heart"
+                                      size={14}
+                                      color={
+                                        reply.isLiked
+                                          ? "#e53935"
+                                          : C.textMuted
+                                      }
+                                    />
+
+                                    {Number(reply.likesCount ?? 0) > 0 && (
+                                      <Text
+                                        style={[
+                                          styles.commentActionCount,
+                                          reply.isLiked &&
+                                            styles.commentActionCountLiked,
+                                        ]}
+                                      >
+                                        {Number(reply.likesCount ?? 0)}
+                                      </Text>
+                                    )}
+                                  </Pressable>
+
+                                  <Pressable
+                                    style={styles.commentReplyButton}
+                                    onPress={() => handleReplyComment(reply)}
+                                    hitSlop={6}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="الرد على الرد"
+                                  >
+                                    <Text style={styles.commentReplyText}>
+                                      رد
+                                    </Text>
+                                  </Pressable>
+                                </View>
                               </Pressable>
                             </View>
-                          </Pressable>
-                        </View>
-                      ))}
+
+                            {nestedReplies.length > 0 && (
+                              <View style={styles.nestedRepliesContainer}>
+                                {nestedReplies.map((nested) => (
+                                  <View
+                                    key={nested.id}
+                                    style={styles.nestedReplyItem}
+                                  >
+                                    <ProfileAvatar
+                                      photoUri={nested.userPhotoUri}
+                                      name={nested.userName}
+                                      size={28}
+                                      disableNavigation
+                                    />
+
+                                    <View style={styles.nestedReplyBubble}>
+                                      <Text
+                                        style={styles.commentReplyUserName}
+                                        numberOfLines={1}
+                                      >
+                                        {nested.userName}
+                                      </Text>
+
+                                      <Text
+                                        style={styles.commentReplyTextBody}
+                                      >
+                                        {nested.text}
+                                      </Text>
+
+                                      <Pressable
+                                        style={styles.commentReplyButton}
+                                        onPress={() =>
+                                          handleReplyComment(nested)
+                                        }
+                                        hitSlop={6}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="الرد على الرد"
+                                      >
+                                        <Text style={styles.commentReplyText}>
+                                          رد
+                                        </Text>
+                                      </Pressable>
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
@@ -2687,9 +2766,49 @@ try {
                         <Text style={styles.commentEmoji}>{emoji}</Text>
                       </Pressable>
                     ))}
-                    <Feather name="image" size={19} color={C.textMuted} />
+                    <Pressable
+                      onPress={async () => {
+                        if (commentPosting) return;
+                        const result = await ImagePicker.launchImageLibraryAsync({
+                          mediaTypes: ["images"],
+                          allowsMultipleSelection: false,
+                          quality: 0.9,
+                        });
+                        if (result.canceled || !result.assets?.[0]?.uri) return;
+                        setCommentImageUri(result.assets[0].uri);
+                      }}
+                      disabled={commentPosting}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="إضافة صورة"
+                    >
+                      <Feather
+                        name="image"
+                        size={19}
+                        color={commentImageUri ? C.accent : C.textMuted}
+                      />
+                    </Pressable>
                     <Feather name="at-sign" size={19} color={C.textMuted} />
                   </View>
+                  {!!commentImageUri && (
+                    <View style={styles.commentSelectedImageWrap}>
+                      <Image
+                        source={{ uri: commentImageUri }}
+                        style={styles.commentSelectedImage}
+                        resizeMode="cover"
+                      />
+                      <Pressable
+                        style={styles.commentSelectedImageRemove}
+                        onPress={() => setCommentImageUri(null)}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel="إزالة الصورة"
+                      >
+                        <Feather name="x" size={13} color="#FFF" />
+                      </Pressable>
+                    </View>
+                  )}
+
                   <View style={styles.commentInputRow}>
                     <TextInput
                       ref={commentInputRef}
@@ -2712,8 +2831,8 @@ try {
                       returnKeyType="default"
                     />
                     <Pressable
-                      style={[styles.commentInputSend, (!commentText.trim() || commentPosting) && styles.commentSendDisabled]}
-                      disabled={!commentText.trim() || commentPosting}
+                      style={[styles.commentInputSend, (!commentText.trim() && !commentImageUri || commentPosting) && styles.commentSendDisabled]}
+                      disabled={(!commentText.trim() && !commentImageUri) || commentPosting}
                       onPress={handleSubmitComment}
                       accessibilityRole="button"
                       accessibilityLabel="إرسال التعليق"
@@ -2974,15 +3093,15 @@ const styles = StyleSheet.create({
     backgroundColor: C.accent, borderRadius: 10,
     paddingHorizontal: 10, paddingVertical: 8, marginTop: 2,
   },
-  addPostHeaderText: { fontSize: 11, fontFamily: "Cairo_700Bold", color: C.primary },
+  addPostHeaderText: { fontSize: 11, fontFamily: undefined, color: C.primary },
   homeFeedContent: { paddingHorizontal: 8, paddingTop: 10 },
   homeFeedIntro: { paddingHorizontal: 8, paddingBottom: 12 },
   homeFeedHeaderRow: { flexDirection: "column", alignItems: "flex-end", gap: 8 },
   homeFeedIntroText: { flex: 1, alignItems: "flex-end" },
   addPostBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, minHeight: 40 },
-  addPostBtnText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  homeFeedTitle: { fontSize: 19, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
-  homeFeedSubtitle: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
+  addPostBtnText: { fontSize: 12, fontFamily: undefined, color: "#FFF" },
+  homeFeedTitle: { fontSize: 19, fontFamily: undefined, color: C.text, textAlign: "right" },
+  homeFeedSubtitle: { fontSize: 12, fontFamily: undefined, color: C.textSecondary, marginTop: 2, textAlign: "right" },
   homePostCard: {
     backgroundColor: C.card, borderRadius: 14, marginBottom: 14, overflow: "hidden",
     borderWidth: 1, borderColor: C.border,
@@ -2994,14 +3113,14 @@ const styles = StyleSheet.create({
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
   homePostUser: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flex: 1, margin: 0, padding: 0 },
   homePostName: { fontSize: 16, margin: 0, padding: 0 },
-  homePostDescriptionHeader: { fontSize: 14, lineHeight: 21, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2, textAlign: "right" },
+  homePostDescriptionHeader: { fontSize: 14, lineHeight: 21, fontFamily: undefined, color: C.textSecondary, marginTop: 2, textAlign: "right" },
   homePostTime: { margin: 0, padding: 0 },
   homeMedia: { width: "100%", height: 390, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   homePlay: { width: 62, height: 62, borderRadius: 31, backgroundColor: "rgba(0,0,0,.45)", alignItems: "center", justifyContent: "center" },
   homePostDescription: { fontSize: 13, color: C.text, textAlign: "left", width: "100%", paddingHorizontal: 4, paddingTop: 10, fontFamily: undefined },
   homeActions: { flexDirection: "row-reverse", alignItems: "center", padding: 11, gap: 18 },
   homeAction: { flexDirection: "row", alignItems: "center", gap: 5 },
-  homeActionText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  homeActionText: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
   likedCountText: { color: "#EF4444" },
   reelsRoot: { flex: 1, backgroundColor: "#000" },
   reelPage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height, backgroundColor: "#000" },
@@ -3015,23 +3134,23 @@ const styles = StyleSheet.create({
   reelAvatarWrap: { position: "relative", width: 54, height: 54, alignItems: "center", justifyContent: "center" },
   reelFollowBadge: { position: "absolute", right: -3, bottom: -2, width: 21, height: 21, borderRadius: 11, backgroundColor: C.accent, borderWidth: 2, borderColor: "#FFF", alignItems: "center", justifyContent: "center" },
   reelFollowBadgeFollowing: { backgroundColor: "#22C55E" },
-  reelFollowBadgeText: { color: "#FFF", fontSize: 14, lineHeight: 17, fontFamily: "Cairo_700Bold" },
-  reelName: { color: "#FFF", fontSize: 11, fontFamily: "Cairo_700Bold", textAlign: "center", maxWidth: 68 },
-  reelDescriptionBottom: { color: "#FFF", fontSize: 12, lineHeight: 19, fontFamily: "Cairo_400Regular", textAlign: "right", marginRight: 82, marginLeft: 8, marginBottom: 78 },
+  reelFollowBadgeText: { color: "#FFF", fontSize: 14, lineHeight: 17, fontFamily: undefined },
+  reelName: { color: "#FFF", fontSize: 11, fontFamily: undefined, textAlign: "center", maxWidth: 68 },
+  reelDescriptionBottom: { color: "#FFF", fontSize: 12, lineHeight: 19, fontFamily: undefined, textAlign: "right", marginRight: 82, marginLeft: 8, marginBottom: 78 },
   reelAction: { alignItems: "center", gap: 2 },
-  reelCount: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
+  reelCount: { color: "#FFF", fontSize: 12, fontFamily: undefined },
   commentBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.55)", justifyContent: "flex-end", paddingBottom: 0, marginBottom: 0 },
   commentSheetKeyboard: { width: "100%", paddingBottom: 0, marginBottom: 0 },
   commentSheet: { position: "relative", backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 0, marginBottom: 0, bottom: 0, height: "80%", overflow: "hidden" },
   commentHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginBottom: 9 },
   commentHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 8 },
-  commentTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentTitle: { fontSize: 17, fontFamily: undefined, color: C.text, textAlign: "right" },
   commentCloseBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
   commentsList: { flex: 1, minHeight: 0 },
   commentsListContent: { paddingTop: 4, paddingBottom: 64, gap: 2 },
   commentsEmptyContent: { flexGrow: 1, justifyContent: "center" },
   commentsState: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 30 },
-  commentsStateText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
+  commentsStateText: { fontSize: 12, fontFamily: undefined, color: C.textMuted },
   commentRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 8, paddingHorizontal: 2 },
   commentReplyRow: {
     marginStart: 28,
@@ -3061,11 +3180,31 @@ const styles = StyleSheet.create({
 
   commentRepliesToggleText: {
     fontSize: 11,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.accent,
     textAlign: "left",
   },
 
+  commentReplyGroup: {
+    width: "100%",
+  },
+  nestedRepliesContainer: {
+    marginLeft: 40,
+    marginTop: 4,
+    gap: 5,
+  },
+  nestedReplyItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+  },
+  nestedReplyBubble: {
+    flex: 1,
+    backgroundColor: C.background,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
   commentRepliesContainer: {
     marginStart: 46,
     paddingStart: 10,
@@ -3103,14 +3242,14 @@ const styles = StyleSheet.create({
   commentReplyUserName: {
     flexShrink: 1,
     fontSize: 11,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "left",
   },
 
   commentReplyTime: {
     fontSize: 9,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "left",
   },
@@ -3128,7 +3267,7 @@ const styles = StyleSheet.create({
   commentTime: { fontSize: 9, fontFamily: undefined, color: C.textMuted },
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: undefined, color: C.text, textAlign: "left" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
-  commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  commentEditCancelText: { fontSize: 10, fontFamily: undefined, color: C.accent },
   commentActionsRow: {
     flexDirection: "row-reverse",
     alignItems: "center",
@@ -3158,36 +3297,70 @@ const styles = StyleSheet.create({
   },
   commentComposer: { position: "absolute", left: 0, right: 0, bottom: 40, flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 0, marginTop: 0, marginBottom: 0 },
   commentComposerFakeInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
-  commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "right" },
   commentComposerSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
   commentSendDisabled: { opacity: 0.45 },
   commentInputOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.42)", zIndex: 20 },
   commentInputKeyboard: { flex: 1, justifyContent: "flex-end" },
   commentInputSheet: { position: "relative", bottom: 0, backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 14, paddingBottom: 0, marginBottom: 0, minHeight: 245 },
   commentInputHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 3, paddingBottom: 8 },
-  commentInputTitle: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  commentInputTitle: { fontSize: 16, fontFamily: undefined, color: C.text, textAlign: "right" },
   commentInputClose: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.background },
   commentEmojiRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border },
   commentEmojiButton: { width: 34, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: C.background },
   commentEmoji: { fontSize: 18 },
+  commentSelectedImageWrap: {
+    position: "relative",
+    alignSelf: "flex-start",
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  commentSelectedImage: {
+    width: 76,
+    height: 76,
+    borderRadius: 12,
+    backgroundColor: C.background,
+  },
+  commentSelectedImageRemove: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.68)",
+  },
+  commentImage: {
+    width: 180,
+    height: 180,
+    borderRadius: 12,
+    marginTop: 7,
+    backgroundColor: C.background,
+  },
+  commentReplyImage: {
+    width: 145,
+    height: 145,
+  },
   commentInputRow: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8, paddingTop: 11 },
-  commentLargeInput: { flex: 1, minHeight: 108, maxHeight: 190, borderWidth: 1, borderColor: C.accent, backgroundColor: C.background, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: "Cairo_400Regular", fontSize: 14, lineHeight: 23, textAlignVertical: "top" },
+  commentLargeInput: { flex: 1, minHeight: 108, maxHeight: 190, borderWidth: 1, borderColor: C.accent, backgroundColor: C.background, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 11, color: C.text, fontFamily: undefined, fontSize: 14, lineHeight: 23, textAlignVertical: "top" },
   commentInputSend: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   commentOptionsOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,.28)", justifyContent: "flex-end", zIndex: 30 },
   commentOptionsSheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 8, paddingHorizontal: 18, paddingBottom: 0, marginBottom: 0 },
-  commentOptionsTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "center", paddingVertical: 8 },
+  commentOptionsTitle: { fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "center", paddingVertical: 8 },
   commentOptionsRow: { flexDirection: "row-reverse", justifyContent: "space-around", paddingTop: 8 },
   commentOption: { alignItems: "center", gap: 6, minWidth: 78 },
   commentOptionIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.background, alignItems: "center", justifyContent: "center" },
   commentDeleteIcon: { backgroundColor: "rgba(239,68,68,.1)" },
-  commentOptionText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  commentOptionText: { fontSize: 11, fontFamily: undefined, color: C.textSecondary },
   commentDeleteText: { color: "#EF4444" },
   commentToast: { position: "absolute", alignSelf: "center", flexDirection: "row-reverse", alignItems: "center", gap: 6, paddingHorizontal: 15, paddingVertical: 9, borderRadius: 20, backgroundColor: "rgba(25,25,25,.94)", zIndex: 50 },
-  commentToastText: { color: "#FFF", fontSize: 12, fontFamily: "Cairo_600SemiBold" },
+  commentToastText: { color: "#FFF", fontSize: 12, fontFamily: undefined },
 
   headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
   headerIconLabel: {
-    fontSize: 10, fontFamily: "Cairo_600SemiBold",
+    fontSize: 10, fontFamily: undefined,
     color: "rgba(255,255,255,0.85)", textAlign: "center",
   },
   featuredBadgeRow: {
@@ -3199,7 +3372,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
     alignSelf: "flex-end",
   },
-  featuredBadgeText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: "#0D1B3E" },
+  featuredBadgeText: { fontSize: 10, fontFamily: undefined, color: "#0D1B3E" },
   headerIconBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -3219,7 +3392,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   promoteHeaderBtnText: {
-    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent,
+    fontSize: 13, fontFamily: undefined, color: C.accent,
   },
   searchCircleBtn: {
     width: 40, height: 40, borderRadius: 20,
@@ -3259,7 +3432,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: "center",
     fontSize: 11,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.textSecondary,
   },
   mainCategoryTabs: {
@@ -3285,7 +3458,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: "center",
     fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.textSecondary,
   },
   categoryTabs: {
@@ -3300,20 +3473,20 @@ const styles = StyleSheet.create({
   catTabActive: {
     backgroundColor: C.accent, borderColor: C.accent,
   },
-  catTabText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  catTabText: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
   catTabTextActive: { color: C.primary },
   listContent: { padding: 16, gap: 12 },
   listHeader: {
     flexDirection: "row", alignItems: "center",
     justifyContent: "space-between", marginBottom: 4,
   },
-  listCount: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  listCount: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
   sortedBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  sortedText: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.accent },
+  sortedText: { fontSize: 11, fontFamily: undefined, color: C.accent },
   artisanCard: {
     backgroundColor: C.card, borderRadius: 16, padding: 14,
     flexDirection: "row", alignItems: "center", gap: 12,
@@ -3326,7 +3499,7 @@ const styles = StyleSheet.create({
     width: 58, height: 58, borderRadius: 14,
     alignItems: "center", justifyContent: "center", overflow: "hidden",
   },
-  initialsText: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.accent },
+  initialsText: { fontSize: 20, fontFamily: undefined, color: C.accent },
   availDot: {
     position: "absolute", bottom: 2, right: 2,
     width: 12, height: 12, borderRadius: 6,
@@ -3336,29 +3509,29 @@ availOnline: { backgroundColor: "#22C55E" },
   availOffline: { backgroundColor: "#9CA3AF" },
   cardBody: { flex: 1, gap: 4 },
   cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  artisanName: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, flex: 1, textAlign: "right" },
+  artisanName: { fontSize: 15, fontFamily: undefined, color: C.text, flex: 1, textAlign: "right" },
   specialtyBadge: {
     backgroundColor: "rgba(13,27,62,0.07)", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  specialtyText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.primary },
+  specialtyText: { fontSize: 11, fontFamily: undefined, color: C.primary },
   cardMidRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "flex-end" },
-  ratingText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.text },
-  reviewCount: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  artisanBio: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  ratingText: { fontSize: 12, fontFamily: undefined, color: C.text },
+  reviewCount: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
+  artisanBio: { fontSize: 12, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
   cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   distancePill: {
     flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: "rgba(201,168,76,0.1)", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  distanceText: { fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent },
-  availText: { fontSize: 11, fontFamily: "Cairo_400Regular" },
+  distanceText: { fontSize: 11, fontFamily: undefined, color: C.accent },
+  availText: { fontSize: 11, fontFamily: undefined },
   availOnlineText: { color: "#22C55E" },
   availOfflineText: { color: C.textMuted },
   emptyState: { alignItems: "center", paddingTop: 60, gap: 12 },
-  emptyTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
-  emptySubtitle: { fontSize: 14, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  emptyTitle: { fontSize: 18, fontFamily: undefined, color: C.text },
+  emptySubtitle: { fontSize: 14, fontFamily: undefined, color: C.textSecondary },
   badge: {
     position: "absolute",
     top: -5,
@@ -3376,7 +3549,7 @@ availOnline: { backgroundColor: "#22C55E" },
   },
   badgeText: {
     fontSize: 9,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
     lineHeight: 11,
   },
@@ -3475,7 +3648,7 @@ availOnline: { backgroundColor: "#22C55E" },
   },
   addProductBtnText: {
     fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.accent,
   },
 
@@ -3486,7 +3659,7 @@ availOnline: { backgroundColor: "#22C55E" },
     backgroundColor: C.background,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  productsBarTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
+  productsBarTitle: { fontSize: 15, fontFamily: undefined, color: C.text },
   productsBtnsGroup: { flexDirection: "row", gap: 8, alignItems: "center" },
   ordersBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
@@ -3494,7 +3667,7 @@ availOnline: { backgroundColor: "#22C55E" },
     paddingHorizontal: 11, paddingVertical: 6,
     borderWidth: 1, borderColor: "rgba(201,168,76,0.3)",
   },
-  ordersBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  ordersBtnText: { fontSize: 12, fontFamily: undefined, color: C.accent },
 
   // ── Product cards ──
   productsContent: { paddingTop: 12 },
@@ -3512,7 +3685,7 @@ availOnline: { backgroundColor: "#22C55E" },
     backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center", justifyContent: "center",
   },
-  soldOverlayText: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  soldOverlayText: { fontSize: 18, fontFamily: undefined, color: "#FFF" },
   productBody: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 6 },
   // Header row: title (right) ↔ seller name (left)
   productInfoStack: {
@@ -3521,7 +3694,7 @@ availOnline: { backgroundColor: "#22C55E" },
     gap: 3,
   },
   productTitle: {
-    fontSize: 16, fontFamily: "Cairo_700Bold",
+    fontSize: 16, fontFamily: undefined,
     color: C.text, textAlign: "left",
     width: "100%",
   },
@@ -3529,7 +3702,7 @@ availOnline: { backgroundColor: "#22C55E" },
     flexDirection: "column", alignItems: "flex-start", gap: 3, flexShrink: 0,
   },
   productSellerName: {
-    fontSize: 16, fontFamily: "Cairo_700Bold",
+    fontSize: 16, fontFamily: undefined,
     color: C.accent, textAlign: "left",
   },
   productPriceLikesRow: {
@@ -3539,33 +3712,33 @@ availOnline: { backgroundColor: "#22C55E" },
     width: "100%",
   },
   productPrice: {
-    fontSize: 18, fontFamily: "Cairo_700Bold",
+    fontSize: 18, fontFamily: undefined,
     color: C.accent, textAlign: "left",
     flexShrink: 1,
   },
-  productPriceLabel: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
-  productCurrency: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.accent },
-  productDesc: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  productPriceLabel: { fontSize: 14, fontFamily: undefined, color: C.textSecondary },
+  productCurrency: { fontSize: 13, fontFamily: undefined, color: C.accent },
+  productDesc: { fontSize: 13, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
   productEngagement: {
     flexDirection: "row", alignItems: "center",
     justifyContent: "flex-start", gap: 5,
     paddingTop: 0,
     flexShrink: 0,
   },
-  productLikesText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.text },
-  productLikesLabel: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textSecondary },
+  productLikesText: { fontSize: 13, fontFamily: undefined, color: C.text },
+  productLikesLabel: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
   productFeaturedBadge: {
     flexDirection: "row", alignItems: "center", gap: 3,
     backgroundColor: C.accent, borderRadius: 7,
     paddingHorizontal: 7, paddingVertical: 2,
   },
-  productFeaturedText: { fontSize: 10, fontFamily: "Cairo_700Bold", color: C.primary },
+  productFeaturedText: { fontSize: 10, fontFamily: undefined, color: C.primary },
   buyBtn: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, borderRadius: 12, overflow: "hidden" },
   buyBtnGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 13, gap: 6,
   },
-  buyBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+  buyBtnText: { fontSize: 15, fontFamily: undefined, color: C.primary },
 
   // Delete button (seller view)
   deleteBtn: { backgroundColor: "transparent" },
@@ -3574,7 +3747,7 @@ availOnline: { backgroundColor: "#22C55E" },
     paddingVertical: 13, gap: 6,
     backgroundColor: "#EF4444", borderRadius: 12,
   },
-  deleteBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  deleteBtnText: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
 
   // Cancel-order button (buyer with pending order)
   cancelOrderBtn: { backgroundColor: "transparent" },
@@ -3583,7 +3756,7 @@ availOnline: { backgroundColor: "#22C55E" },
     paddingVertical: 13, gap: 6,
     backgroundColor: "#F59E0B", borderRadius: 12,
   },
-  cancelOrderBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  cancelOrderBtnText: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
 
   // ── Buy Details Modal ──
   buyModalOverlay: {
@@ -3598,28 +3771,28 @@ availOnline: { backgroundColor: "#22C55E" },
     backgroundColor: C.border, alignSelf: "center", marginBottom: 8,
   },
   buyModalTitle: {
-    fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text,
+    fontSize: 18, fontFamily: undefined, color: C.text,
     textAlign: "center",
   },
   buyModalProductName: {
-    fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary,
+    fontSize: 14, fontFamily: undefined, color: C.textSecondary,
     textAlign: "right",
   },
   buyModalPriceText: {
-    fontSize: 20, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "right",
+    fontSize: 20, fontFamily: undefined, color: C.accent, textAlign: "right",
   },
   buyModalCurrency: {
-    fontSize: 14, fontFamily: "Cairo_400Regular", color: C.accent,
+    fontSize: 14, fontFamily: undefined, color: C.accent,
   },
   buyModalSection: { gap: 8 },
   buyModalSectionLabel: {
-    fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right",
+    fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "right",
   },
   buyModalOptional: {
-    fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted,
+    fontSize: 11, fontFamily: undefined, color: C.textMuted,
   },
   buyModalRequired: {
-    fontSize: 13, fontFamily: "Cairo_700Bold", color: "#4BFF8A",
+    fontSize: 13, fontFamily: undefined, color: "#4BFF8A",
   },
   chipRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
   chip: {
@@ -3627,7 +3800,7 @@ availOnline: { backgroundColor: "#22C55E" },
     borderWidth: 1.5, borderColor: C.border, backgroundColor: C.inputBg,
   },
   chipActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.12)" },
-  chipText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  chipText: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
   chipTextActive: { color: C.accent },
   buyModalConfirmBtn: { borderRadius: 12, overflow: "hidden", marginTop: 4 },
 

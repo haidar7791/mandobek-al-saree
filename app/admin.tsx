@@ -240,13 +240,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 26,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFFFFF",
     textAlign: "center",
   },
   subtitle: {
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "rgba(255,255,255,0.5)",
     textAlign: "center",
   },
@@ -272,14 +272,14 @@ const styles = StyleSheet.create({
   },
   warningText: {
     fontSize: 12,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "#F59E0B",
     textAlign: "right",
   },
   fieldWrap: { gap: 6 },
   fieldLabel: {
     fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: "rgba(255,255,255,0.8)",
     textAlign: "right",
   },
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "#FFFFFF",
     paddingVertical: 13,
     textAlign: "right",
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   },
   loginBtnText: {
     fontSize: 16,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
   },
   btnDisabled: { opacity: 0.6 },
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   },
   secureText: {
     fontSize: 12,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "rgba(255,255,255,0.35)",
   },
 });

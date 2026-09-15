@@ -260,10 +260,10 @@ const styles = StyleSheet.create({
   },
   root: { gap: 10 },
   sectionHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  title: { color: C.text, fontSize: 16, fontFamily: "Cairo_700Bold", textAlign: "right" },
+  title: { color: C.text, fontSize: 16, fontFamily: undefined, textAlign: "right" },
   actionButton: { flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.accent, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#FFF8EC" },
   actionButtonDisabled: { opacity: 0.55 },
-  actionButtonText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
+  actionButtonText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   list: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
   likesText: {
     color: "#FFF",
     fontSize: 10,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
   failed: {
     flex: 1,
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   failedText: {
     color: C.textMuted,
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
   },
   empty: {
     alignItems: "center",
@@ -348,12 +348,12 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.textSecondary,
   },
   emptyHint: {
     fontSize: 12,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "center",
   },

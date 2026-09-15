@@ -2712,6 +2712,22 @@ export const uploadProfilePostMedia = async (
   }
 };
 
+export const uploadCommentImage = async (
+  postId: string,
+  userId: string,
+  localUri: string
+): Promise<{ url: string; storagePath: string; mimeType: string }> => {
+  const blob = await uriToBlob(localUri);
+  const storagePath = `profile-posts/${userId}/comments/${postId}-${Date.now()}.jpg`;
+  const storageRef = ref(storage, storagePath);
+  await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+  return {
+    url: await getDownloadURL(storageRef),
+    storagePath,
+    mimeType: "image/jpeg",
+  };
+};
+
 export const addProfilePost = async (
   userId: string,
   post: ProfilePost
@@ -2863,6 +2879,8 @@ export interface HomeFeedComment {
   isLiked?: boolean;
   parentCommentId?: string | null;
   parentCommentUserId?: string | null;
+  imageUrl?: string | null;
+  imageStoragePath?: string | null;
 }
 
 function toIsoString(value: any): string {
@@ -3374,10 +3392,13 @@ export const togglePostCommentLike = async (
 export const replyToPostComment = async (
   postId: string,
   parentCommentId: string,
-  text: string
+  text: string,
+  imageUrl?: string | null,
+  imageStoragePath?: string | null
 ): Promise<HomeFeedComment> => {
   const viewer = auth.currentUser;
   const cleanText = text.trim();
+  const cleanImageUrl = imageUrl ? String(imageUrl) : "";
 
   if (!viewer || !cleanText) {
     throw new Error("بيانات الرد غير مكتملة");
@@ -3409,6 +3430,8 @@ export const replyToPostComment = async (
     likesCount: 0,
     parentCommentId,
     parentCommentUserId: String(parentData.userId || ""),
+    ...(cleanImageUrl ? { imageUrl: cleanImageUrl } : {}),
+    ...(imageStoragePath ? { imageStoragePath: String(imageStoragePath) } : {}),
   };
 
   const replyRef = await addDoc(
@@ -3445,13 +3468,23 @@ export const replyToPostComment = async (
     isLiked: false,
     parentCommentId,
     parentCommentUserId: parentOwnerId,
+    imageUrl: imageUrl ? String(imageUrl) : null,
+    imageStoragePath: imageStoragePath ? String(imageStoragePath) : null,
   };
 };
 
-export const addProfilePostComment = async (postId: string, text: string): Promise<HomeFeedComment> => {
+export const addProfilePostComment = async (
+  postId: string,
+  text: string,
+  imageUrl?: string | null,
+  imageStoragePath?: string | null
+): Promise<HomeFeedComment> => {
   const viewer = auth.currentUser;
   const cleanText = text.trim();
-  if (!viewer || !cleanText) throw new Error("بيانات التعليق غير مكتملة");
+  const cleanImageUrl = imageUrl ? String(imageUrl) : "";
+  if (!viewer || (!cleanText && !cleanImageUrl)) {
+    throw new Error("بيانات التعليق غير مكتملة");
+  }
 
   const profile = await getUserProfile(viewer.uid);
   const comment = {
@@ -3460,6 +3493,8 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
     userPhotoUri: profile?.photoUri || null,
     text: cleanText,
     createdAt: serverTimestamp(),
+    ...(cleanImageUrl ? { imageUrl: cleanImageUrl } : {}),
+    ...(imageStoragePath ? { imageStoragePath: String(imageStoragePath) } : {}),
   };
   const commentRef = await addDoc(collection(db, "posts", postId, "comments"), comment);
 
@@ -3493,6 +3528,8 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
     isLiked: false,
     parentCommentId: null,
     parentCommentUserId: null,
+    imageUrl: imageUrl ? String(imageUrl) : null,
+    imageStoragePath: imageStoragePath ? String(imageStoragePath) : null,
   };
 };
 

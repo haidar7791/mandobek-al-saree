@@ -184,8 +184,8 @@ const styles = StyleSheet.create({
     gap: 3,
     position: "relative",
   },
-  tabText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textMuted },
-  tabTextActive: { color: C.primary, fontFamily: "Cairo_700Bold" },
+  tabText: { fontSize: 13, fontFamily: undefined, color: C.textMuted },
+  tabTextActive: { color: C.primary, fontFamily: undefined },
   indicator: {
     position: "absolute",
     bottom: 0,
@@ -205,8 +205,8 @@ const styles = StyleSheet.create({
   },
   loading: { minHeight: 180, alignItems: "center", justifyContent: "center" },
   empty: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: 7 },
-  emptyTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text },
-  emptyHint: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center" },
+  emptyTitle: { fontSize: 15, fontFamily: undefined, color: C.text },
+  emptyHint: { fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "center" },
   productsList: { gap: 14, flexDirection: "row", flexWrap: "wrap", columnGap: 4, rowGap: 4,},
   productCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.background, borderWidth: 1, borderColor: C.border, width: "32%",},
   productBottomRow: {
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
   },
   likesText: {
     fontSize: 8,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.text,
   },
 });

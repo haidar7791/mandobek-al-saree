@@ -357,8 +357,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   headerText: { flex: 1, alignItems: "flex-end" },
-  headerTitle: { fontSize: 19, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "left" },
-  headerSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)", textAlign: "left" },
+  headerTitle: { fontSize: 19, fontFamily: undefined, color: "#FFF", textAlign: "left" },
+  headerSub: { fontSize: 12, fontFamily: undefined, color: "rgba(255,255,255,0.6)", textAlign: "left" },
   headerIcon: {
     width: 42, height: 42, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.18)",
@@ -377,18 +377,18 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 10, gap: 6,
   },
-  changeImageText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: "#FFF", textAlign: "left" },
+  changeImageText: { fontSize: 13, fontFamily: undefined, color: "#FFF", textAlign: "left" },
   imagePlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   imagePlaceholderIcon: {
     width: 64, height: 64, borderRadius: 18,
     backgroundColor: "rgba(201,168,76,0.1)",
     alignItems: "center", justifyContent: "center",
   },
-  imagePlaceholderText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "right" },
-  imagePlaceholderSub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },
+  imagePlaceholderText: { fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "right" },
+  imagePlaceholderSub: { fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "right" },
   mediaCount: {
     marginTop: -8, fontSize: 11,
-    fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "left",
+    fontFamily: undefined, color: C.textMuted, textAlign: "left",
   },
   card: {
     backgroundColor: C.card, borderRadius: 18, padding: 20, gap: 18,
@@ -396,9 +396,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08, shadowRadius: 10, elevation: 3,
   },
   fieldWrap: { gap: 6 },
-  fieldLabel: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.text, textAlign: "left" },
+  fieldLabel: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "left" },
   required: { color: "#EF4444" },
-  optional: { color: C.textMuted, fontFamily: "Cairo_400Regular", fontSize: 11, textAlign: "left" },
+  optional: { color: C.textMuted, fontFamily: undefined, fontSize: 11, textAlign: "left" },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 12,
@@ -407,12 +407,12 @@ const styles = StyleSheet.create({
   },
   multilineRow: { alignItems: "flex-start", paddingVertical: 10 },
   input: {
-    flex: 1, fontSize: 14, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 14, fontFamily: undefined,
     color: C.text, paddingVertical: 11, textAlign: "left",
   },
   multilineInput: { minHeight: 88, paddingVertical: 0 },
-  currencyLabel: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent, textAlign: "left" },
-  charCount: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "left" },
+  currencyLabel: { fontSize: 12, fontFamily: undefined, color: C.accent, textAlign: "left" },
+  charCount: { fontSize: 11, fontFamily: undefined, color: C.textMuted, textAlign: "left" },
   // Optional color/size fields displayed side-by-side
   optionsRow: {
     flexDirection: "row",
@@ -434,12 +434,12 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 6,
     paddingVertical: 8, paddingHorizontal: 4,
   },
-  addMoreText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent, textAlign: "left" },
+  addMoreText: { fontSize: 13, fontFamily: undefined, color: C.accent, textAlign: "left" },
   publishBtn: { borderRadius: 16, overflow: "hidden" },
   publishGradient: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 16, gap: 10,
   },
-  publishBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary, textAlign: "left" },
+  publishBtnText: { fontSize: 16, fontFamily: undefined, color: C.primary, textAlign: "left" },
   btnDisabled: { opacity: 0.6 },
 });

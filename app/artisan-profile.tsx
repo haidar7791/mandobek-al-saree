@@ -434,7 +434,7 @@ export default function ArtisanProfileScreen() {
             <Text style={modalStyles.cardTitle}>تأكيد طلب الخدمة</Text>
             <Text style={modalStyles.cardMsg}>
               هل تريد تأكيد طلب الخدمة من{"\n"}
-              <Text style={{ fontFamily: "Cairo_700Bold", color: C.accent }}>{artisan.name}</Text>؟
+              <Text style={{ fontFamily: undefined, color: C.accent }}>{artisan.name}</Text>؟
             </Text>
             {userLocation && (
               <View style={modalStyles.locationNote}>
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     borderWidth: 3, borderColor: C.accent,
     alignItems: "center", justifyContent: "center",
   },
-  photoInitials: { fontSize: 32, fontFamily: "Cairo_700Bold", color: C.accent },
+  photoInitials: { fontSize: 32, fontFamily: undefined, color: C.accent },
   availDot: {
     position: "absolute", bottom: 3, right: 3,
     width: 14, height: 14, borderRadius: 7,
@@ -537,14 +537,14 @@ const styles = StyleSheet.create({
   dotOffline: { backgroundColor: "#9CA3AF" },
 
   // Name + specialty + bio
-  heroName: { fontSize: 22, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "center", marginBottom: 6 },
+  heroName: { fontSize: 22, fontFamily: undefined, color: "#FFF", textAlign: "center", marginBottom: 6 },
   specialtyPill: {
     backgroundColor: "rgba(201,168,76,0.2)", borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 4, marginBottom: 10,
   },
-  specialtyPillText: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  specialtyPillText: { fontSize: 13, fontFamily: undefined, color: C.accent },
   heroBio: {
-    fontSize: 13, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.7)",
+    fontSize: 13, fontFamily: undefined, color: "rgba(255,255,255,0.7)",
     textAlign: "center", lineHeight: 20, marginBottom: 16, paddingHorizontal: 8,
   },
 
@@ -556,8 +556,8 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   statItem: { flex: 1, alignItems: "center", gap: 3 },
-  statVal: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
-  statLabel: { fontSize: 10, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  statVal: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
+  statLabel: { fontSize: 10, fontFamily: undefined, color: "rgba(255,255,255,0.6)" },
   statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.2)" },
 
   // ── Row 1: three equal buttons ─────────────────────────────────────────────
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
     gap: 5, paddingVertical: 13, borderRadius: 12,
   },
   actionBtnText: {
-    fontSize: 13, fontFamily: "Cairo_700Bold", color: "#FFF",
+    fontSize: 13, fontFamily: undefined, color: "#FFF",
     includeFontPadding: false,
   },
 
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.06)",
   },
   shareBtn: { backgroundColor: "rgba(201,168,76,0.1)", borderWidth: 1, borderColor: "rgba(201,168,76,0.35)" },
-  mapBtnText: { fontSize: 13, fontFamily: "Cairo_700Bold", color: C.accent, includeFontPadding: false },
+  mapBtnText: { fontSize: 13, fontFamily: undefined, color: C.accent, includeFontPadding: false },
 
   // ── Row 2: full-width book button ───────────────────────────────────────────
   bookRow: { paddingHorizontal: 16, paddingTop: 8 },
@@ -600,12 +600,12 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 15, gap: 10,
   },
-  bookBtnText: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.primary },
+  bookBtnText: { fontSize: 16, fontFamily: undefined, color: C.primary },
 
   // Scroll body
   scrollContent: { padding: 16, gap: 16 },
   section: { gap: 10 },
-  sectionTitle: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  sectionTitle: { fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "right" },
   portfolioRow: { gap: 10, paddingVertical: 4 },
   portfolioImg: { width: 140, height: 140, borderRadius: 14, backgroundColor: C.inputBg },
 
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   locationNoteText: {
-    flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 12, fontFamily: undefined,
     color: C.textSecondary, textAlign: "right",
   },
 });
@@ -637,9 +637,9 @@ const modalStyles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  cardTitle: { fontSize: 18, fontFamily: "Cairo_700Bold", color: C.text },
+  cardTitle: { fontSize: 18, fontFamily: undefined, color: C.text },
   cardMsg: {
-    fontSize: 15, fontFamily: "Cairo_400Regular", color: C.textSecondary,
+    fontSize: 15, fontFamily: undefined, color: C.textSecondary,
     textAlign: "center", lineHeight: 26,
   },
   locationNote: {
@@ -648,7 +648,7 @@ const modalStyles = StyleSheet.create({
     width: "100%",
   },
   locationNoteText: {
-    flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular",
+    flex: 1, fontSize: 12, fontFamily: undefined,
     color: C.textSecondary, textAlign: "right",
   },
   actions: { flexDirection: "row", gap: 10, width: "100%", marginTop: 4 },
@@ -657,11 +657,11 @@ const modalStyles = StyleSheet.create({
     borderWidth: 1.5, borderColor: C.border,
     alignItems: "center", justifyContent: "center",
   },
-  cancelText: { fontSize: 15, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
+  cancelText: { fontSize: 15, fontFamily: undefined, color: C.textSecondary },
   confirmBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
   confirmGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingVertical: 13, gap: 8,
   },
-  confirmText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+  confirmText: { fontSize: 15, fontFamily: undefined, color: C.primary },
 });

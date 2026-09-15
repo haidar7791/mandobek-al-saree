@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   bannerOnline: { backgroundColor: "#16A34A" },
   bannerText: {
     color: "#FFF",
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     fontSize: 13,
     textAlign: "center",
   },

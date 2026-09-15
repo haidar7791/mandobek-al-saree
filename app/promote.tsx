@@ -119,7 +119,7 @@ export default function PromoteScreen() {
   if (loading) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
-        <Text style={{ fontFamily: "Cairo_400Regular", color: C.textSecondary }}>
+        <Text style={{ fontFamily: undefined, color: C.textSecondary }}>
           جارٍ التحميل...
         </Text>
       </View>
@@ -233,8 +233,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  title: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
-  sub: { fontSize: 12, fontFamily: "Cairo_400Regular", color: "rgba(255,255,255,0.6)" },
+  title: { fontSize: 18, fontFamily: undefined, color: "#FFF", textAlign: "right" },
+  sub: { fontSize: 12, fontFamily: undefined, color: "rgba(255,255,255,0.6)" },
   iconBadge: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.18)",
@@ -250,24 +250,24 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: "rgba(34,197,94,0.18)", alignItems: "center", justifyContent: "center",
   },
-  activeTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: "#16A34A" },
-  activeSub: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.text, marginTop: 2 },
-  activeNote: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textSecondary, marginTop: 2 },
+  activeTitle: { fontSize: 14, fontFamily: undefined, color: "#16A34A" },
+  activeSub: { fontSize: 12, fontFamily: undefined, color: C.text, marginTop: 2 },
+  activeNote: { fontSize: 11, fontFamily: undefined, color: C.textSecondary, marginTop: 2 },
   balanceCard: {
     flexDirection: "row", alignItems: "center", gap: 10,
     backgroundColor: C.card, borderRadius: 12, padding: 14,
   },
-  balanceLabel: { flex: 1, fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.textSecondary, textAlign: "right" },
-  balanceValue: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text },
+  balanceLabel: { flex: 1, fontSize: 13, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
+  balanceValue: { fontSize: 16, fontFamily: undefined, color: C.text },
   benefits: {
     backgroundColor: C.card, borderRadius: 14, padding: 14, gap: 10,
   },
-  benefitsTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  benefitsTitle: { fontSize: 14, fontFamily: undefined, color: C.text, textAlign: "right" },
   benefitItem: {
     flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "flex-end",
   },
-  benefitText: { fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
-  plansTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  benefitText: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "right" },
+  plansTitle: { fontSize: 14, fontFamily: undefined, color: C.text, textAlign: "right" },
   plans: { gap: 8 },
   plan: {
     flexDirection: "row", alignItems: "center", gap: 12,
@@ -282,16 +282,16 @@ const styles = StyleSheet.create({
   },
   radioActive: { borderColor: C.accent },
   radioDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent },
-  planLabel: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text },
-  planCost: { fontSize: 13, fontFamily: "Cairo_600SemiBold", color: C.accent, marginTop: 2 },
+  planLabel: { fontSize: 14, fontFamily: undefined, color: C.text },
+  planCost: { fontSize: 13, fontFamily: undefined, color: C.accent, marginTop: 2 },
   payBtn: { borderRadius: 14, overflow: "hidden", marginTop: 4 },
   payGrad: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, paddingVertical: 14,
   },
-  payText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: C.primary },
+  payText: { fontSize: 15, fontFamily: undefined, color: C.primary },
   disclaimer: {
-    fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted,
+    fontSize: 11, fontFamily: undefined, color: C.textMuted,
     textAlign: "center", marginTop: 4, lineHeight: 18,
   },
 });

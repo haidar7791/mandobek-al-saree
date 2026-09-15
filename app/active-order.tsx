@@ -179,7 +179,7 @@ export default function ActiveOrderScreen() {
   if (!request) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
-        <Text style={{ fontFamily: "Cairo_400Regular", color: C.textSecondary }}>
+        <Text style={{ fontFamily: undefined, color: C.textSecondary }}>
           جارٍ التحميل...
         </Text>
       </View>
@@ -347,8 +347,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  title: { fontSize: 18, fontFamily: "Cairo_700Bold", color: "#FFF", textAlign: "right" },
-  sub: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  title: { fontSize: 18, fontFamily: undefined, color: "#FFF", textAlign: "right" },
+  sub: { fontSize: 12, fontFamily: undefined, color: C.accent },
   iconBadge: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: "rgba(201,168,76,0.18)",
@@ -360,10 +360,10 @@ const styles = StyleSheet.create({
     backgroundColor: C.card, borderRadius: 14, padding: 14,
   },
   peerLeft: { flex: 1, alignItems: "flex-end", gap: 3 },
-  peerLabel: { fontSize: 11, fontFamily: "Cairo_400Regular", color: C.textMuted },
-  peerName: { fontSize: 16, fontFamily: "Cairo_700Bold", color: C.text },
+  peerLabel: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
+  peerName: { fontSize: 16, fontFamily: undefined, color: C.text },
   specialty: {
-    fontSize: 11, fontFamily: "Cairo_600SemiBold", color: C.accent,
+    fontSize: 11, fontFamily: undefined, color: C.accent,
     backgroundColor: "rgba(201,168,76,0.12)", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 2, marginTop: 4,
   },
@@ -373,9 +373,9 @@ const styles = StyleSheet.create({
     backgroundColor: C.primary, alignItems: "center", justifyContent: "center",
   },
   section: { gap: 8 },
-  sectionTitle: { fontSize: 14, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  sectionTitle: { fontSize: 14, fontFamily: undefined, color: C.text, textAlign: "right" },
   sectionBody: {
-    fontSize: 13, fontFamily: "Cairo_400Regular", color: C.text,
+    fontSize: 13, fontFamily: undefined, color: C.text,
     textAlign: "right", lineHeight: 22,
     backgroundColor: C.card, borderRadius: 12, padding: 12,
   },
@@ -388,13 +388,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.12)", borderRadius: 12,
     paddingHorizontal: 10, paddingVertical: 5,
   },
-  distanceText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  distanceText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   mapBtnRow: { flexDirection: "row", gap: 8 },
   mapBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     backgroundColor: "rgba(201,168,76,0.12)", borderRadius: 10, paddingVertical: 9,
   },
-  mapBtnText: { fontSize: 12, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  mapBtnText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   actions: { gap: 10, marginTop: 6 },
   bigBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -403,6 +403,6 @@ const styles = StyleSheet.create({
   bigBtnGreen: { backgroundColor: "#22C55E" },
   bigBtnBlue: { backgroundColor: "#3B82F6" },
   bigBtnRed: { backgroundColor: "#EF4444" },
-  bigBtnText: { fontSize: 15, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  bigBtnText: { fontSize: 15, fontFamily: undefined, color: "#FFF" },
   bigBtnDisabled: { opacity: 0.75 },
 });

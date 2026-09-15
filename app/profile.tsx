@@ -849,7 +849,7 @@ export default function ProfileScreen() {
                       <Feather name="user" size={17} color={C.textSecondary} />
                     </View>
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, { textAlign: "left" }]}
                       placeholder="أدخل اسمك الكامل"
                       placeholderTextColor={C.textMuted}
                       value={editName}
@@ -865,7 +865,7 @@ export default function ProfileScreen() {
                   <Text style={styles.fieldLabel}>النبذة الشخصية (اختياري)</Text>
                   <View style={styles.inputRow}>
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, { textAlign: "left" }]}
                       placeholder="اكتب نبذة مختصرة عنك..."
                       placeholderTextColor={C.textMuted}
                       value={editBio}
@@ -1186,13 +1186,13 @@ const styles = StyleSheet.create({
   },
   logoutHeaderText: {
     fontSize: 13,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#EF4444",
   },
   headerTitle: {
     flex: 1,
     fontSize: 18,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
     textAlign: "center",
   },
@@ -1209,7 +1209,7 @@ const styles = StyleSheet.create({
   headerToolLabel: {
     color: C.accent,
     fontSize: 10,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
   avatarSection: { alignItems: "center", gap: 8 },
   avatarWrap: {
@@ -1254,7 +1254,7 @@ const styles = StyleSheet.create({
   cameraBtnGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   displayName: {
     fontSize: 18,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
     textAlign: "center",
   },
@@ -1279,13 +1279,13 @@ const styles = StyleSheet.create({
   },
   specialtyPillText: {
     fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.accent,
   },
   heroBio: {
     maxWidth: "92%",
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "rgba(255,255,255,0.72)",
     textAlign: "center",
     lineHeight: 20,
@@ -1308,12 +1308,12 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 15,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
   },
   statLabel: {
     fontSize: 10,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: "rgba(255,255,255,0.65)",
   },
   statDivider: {
@@ -1344,7 +1344,7 @@ const styles = StyleSheet.create({
   controlBtnText: {
     flexShrink: 1,
     fontSize: 11,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#FFF",
     textAlign: "center",
   },
@@ -1366,7 +1366,7 @@ const styles = StyleSheet.create({
   addImageControlText: {
     flexShrink: 1,
     fontSize: 11,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.accent,
     textAlign: "center",
   },
@@ -1397,12 +1397,12 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.textMuted,
   },
   tabTextActive: {
     color: C.primary,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
   },
   tabIndicator: {
     position: "absolute",
@@ -1452,13 +1452,13 @@ const styles = StyleSheet.create({
   settingsRowText: { flex: 1, alignItems: "flex-end" },
   settingsRowLabel: {
     fontSize: 14,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "right",
   },
   settingsRowSub: {
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textSecondary,
     textAlign: "right",
   },
@@ -1466,13 +1466,13 @@ const styles = StyleSheet.create({
 
   // ── Admin / Logout ──
   sectionHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  sectionTitle: { fontSize: 17, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  sectionTitle: { fontSize: 17, fontFamily: undefined, color: C.text, textAlign: "right" },
   sectionAction: { flexDirection: "row-reverse", alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.accent, backgroundColor: "#FFF8EC", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
-  sectionActionText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
+  sectionActionText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   productsLoading: { paddingVertical: 30, alignItems: "center" },
   productsEmpty: { alignItems: "center", paddingVertical: 28, gap: 7 },
-  productsEmptyTitle: { fontSize: 14, fontFamily: "Cairo_600SemiBold", color: C.textSecondary },
-  productsEmptyHint: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "center" },
+  productsEmptyTitle: { fontSize: 14, fontFamily: undefined, color: C.textSecondary },
+  productsEmptyHint: { fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "center" },
   productsList: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1502,15 +1502,15 @@ const styles = StyleSheet.create({
   },
   profileProductInfo: { padding: 12, gap: 9 },
   profileProductTitleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
-  profileProductTitle: { flex: 1, fontSize: 16, lineHeight: 24, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
+  profileProductTitle: { flex: 1, fontSize: 16, lineHeight: 24, fontFamily: undefined, color: C.text, textAlign: "right" },
   profileProductPrice: { backgroundColor: "#FFF8EC", borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
-  profileProductPriceText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.accent },
-  profileProductDescription: { fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.textSecondary, textAlign: "right" },
+  profileProductPriceText: { fontSize: 12, fontFamily: undefined, color: C.accent },
+  profileProductDescription: { fontSize: 12, lineHeight: 20, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
   profileProductActions: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
   profileProductViewBtn: { flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 10 },
-  profileProductViewText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: C.primary },
+  profileProductViewText: { fontSize: 12, fontFamily: undefined, color: C.primary },
   profileProductDeleteBtn: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#EF4444", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-  profileProductDeleteText: { fontSize: 12, fontFamily: "Cairo_700Bold", color: "#FFF" },
+  profileProductDeleteText: { fontSize: 12, fontFamily: undefined, color: "#FFF" },
 
   adminBtn: {
     flexDirection: "row",
@@ -1538,7 +1538,7 @@ const styles = StyleSheet.create({
   adminText: {
     flex: 1,
     fontSize: 15,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: "#fff",
     textAlign: "right",
   },
@@ -1568,13 +1568,13 @@ const styles = StyleSheet.create({
   logoutText: {
     flex: 1,
     fontSize: 15,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.danger,
     textAlign: "right",
   },
   versionNote: {
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "center",
     marginTop: 4,
@@ -1609,7 +1609,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 16,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "left",
     marginBottom: 10,
@@ -1619,7 +1619,7 @@ const styles = StyleSheet.create({
   fieldWrap: { gap: 4, marginBottom: 8 },
   fieldLabel: {
     fontSize: 13,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "left",
   },
@@ -1637,7 +1637,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.text,
     paddingVertical: 9,
     textAlign: "left",
@@ -1651,7 +1651,7 @@ const styles = StyleSheet.create({
   },
   bioInput: {
     fontSize: 14,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.text,
     paddingVertical: 9,
     padding: 0,
@@ -1659,7 +1659,7 @@ const styles = StyleSheet.create({
   },
   bioCounter: {
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "left",
   },
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
   },
   inlineVerifyBtnText: {
     fontSize: 12,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#fff",
   },
   inlineVerifiedBadge: {
@@ -1691,7 +1691,7 @@ const styles = StyleSheet.create({
   },
   inlineVerifiedText: {
     fontSize: 12,
-    fontFamily: "Cairo_600SemiBold",
+    fontFamily: undefined,
     color: C.success,
   },
   inputDivider: {
@@ -1727,19 +1727,19 @@ const styles = StyleSheet.create({
   },
   otpModalTitle: {
     fontSize: 18,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "center",
   },
   otpModalSub: {
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textSecondary,
     textAlign: "center",
     lineHeight: 22,
   },
   otpPhoneHighlight: {
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.primary,
     fontSize: 14,
   },
@@ -1750,7 +1750,7 @@ const styles = StyleSheet.create({
   },
   otpCancelText: {
     fontSize: 13,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
   },
   verifyBtn: {
@@ -1762,7 +1762,7 @@ const styles = StyleSheet.create({
   },
   verifyBtnText: {
     fontSize: 14,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: "#fff",
   },
 
@@ -1781,7 +1781,7 @@ const styles = StyleSheet.create({
   specialtyPickerValue: {
     flex: 1,
     fontSize: 14,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "left",
   },
@@ -1803,7 +1803,7 @@ const styles = StyleSheet.create({
   },
   spCategoryHeader: {
     fontSize: 14,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "right",
     marginTop: 10,
@@ -1824,19 +1824,19 @@ const styles = StyleSheet.create({
   },
   spOptionLabel: {
     fontSize: 14,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.text,
     textAlign: "right",
   },
   spOptionLabelActive: {
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.primary,
   },
 
   // ── Save button ──
   phoneValidationHint: {
     fontSize: 11,
-    fontFamily: "Cairo_400Regular",
+    fontFamily: undefined,
     color: C.textMuted,
     textAlign: "right",
     marginTop: 2,
@@ -1851,7 +1851,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     fontSize: 15,
-    fontFamily: "Cairo_700Bold",
+    fontFamily: undefined,
     color: C.primary,
     textAlign: "left",
   },

@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(201,168,76,0.06)",
   },
   boxFilled: { borderColor: C.accent, backgroundColor: "#FFF" },
-  char: { fontSize: 20, fontFamily: "Cairo_700Bold", color: C.text },
+  char: { fontSize: 20, fontFamily: undefined, color: C.text },
   hidden: {
     position: "absolute",
     opacity: 0,
