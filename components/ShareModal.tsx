@@ -58,43 +58,118 @@ export function ShareModal({
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!visible) {
-      setChats([]); setSearchResults([]); setSearchText(""); return;
+    if (!visible || !searchText.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
     }
-    const user = auth.currentUser;
-    if (!user) return;
-    setLoadingChats(true);
-    getUserChats(user.uid, user.email).then((c) => {
-      setChats(c.slice(0, 12));
-    }).finally(() => setLoadingChats(false));
-  }, [visible]);
 
-  useEffect(() => {
-    if (!visible || !searchText.trim()) { setSearchResults([]); setSearching(false); return; }
     const timer = setTimeout(async () => {
       const user = auth.currentUser;
       if (!user) return;
+
       setSearching(true);
-      try { setSearchResults(await searchUsersForSharing(searchText, user.uid)); }
-      catch { setSearchResults([]); }
-      finally { setSearching(false); }
+
+      try {
+        setSearchResults(await searchUsersForSharing(searchText, user.uid));
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
     }, 250);
+
     return () => clearTimeout(timer);
   }, [searchText, visible]);
 
   const handleExternalShare = async () => {
     try {
-      let links = "";
-      if (deepLinkPath) {
-        const httpsLink = `${PUBLIC_SHARE_BASE_URL}/${deepLinkPath.replace(/^\//, "")}`;
-        links = `\n\n🔗 ${httpsLink}`;
-      }
       if (orderCards?.length) {
-        links = orderCards.map((o) => `\n\n📦 ${o.productTitle}\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`).join("");
+        const finalShareText = orderCards.map((o) => {
+          const lines: string[] = [];
+
+          const productLink =
+            `${PUBLIC_SHARE_BASE_URL}/product/${o.productId}`;
+
+          // وضع رابط المنتج أولاً يساعد تطبيقات المشاركة
+          // على إنشاء معاينة الرابط وصورة المنتج تلقائياً.
+          lines.push(productLink);
+          lines.push("");
+          lines.push(`اسم المنتج: ${o.productTitle || "غير محدد"}`);
+
+          if (o.productPrice !== undefined && o.productPrice !== null) {
+            lines.push(
+              `سعر المنتج: ${Number(o.productPrice).toLocaleString("ar-IQ")} د.ع`
+            );
+          }
+
+          lines.push(`اللون: ${o.selectedColor || "غير محدد"}`);
+          lines.push(`المقاس: ${o.selectedSize || "غير محدد"}`);
+
+          lines.push(`اسم المشتري: ${o.buyerName || "غير محدد"}`);
+          lines.push(`هاتف المشتري: ${o.buyerPhone || "غير متوفر"}`);
+
+          lines.push(`اسم البائع: ${o.sellerName || "غير محدد"}`);
+          lines.push(`هاتف البائع: ${o.sellerPhone || "غير متوفر"}`);
+
+          if (o.buyerLocation?.lat != null && o.buyerLocation?.lng != null) {
+            const { lat, lng } = o.buyerLocation;
+            lines.push(
+              `موقع المشتري: https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+            );
+          } else {
+            lines.push("موقع المشتري: غير متوفر");
+          }
+
+          if (o.sellerLocation?.lat != null && o.sellerLocation?.lng != null) {
+            const { lat, lng } = o.sellerLocation;
+            lines.push(
+              `موقع البائع: https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+            );
+          } else {
+            lines.push("موقع البائع: غير متوفر");
+          }
+
+          if (o.createdAt) {
+            lines.push(
+              `تاريخ الطلب: ${new Date(o.createdAt).toLocaleString("ar-IQ")}`
+            );
+          }
+
+          return lines.join("\n");
+        }).join("\n\n--------------------\n\n");
+
+        await Share.share({
+          message: finalShareText,
+          title: title || "مشاركة الطلب",
+        });
+
+        onShared?.();
+        return;
       }
-      await Share.share({ message: shareText + links, title: title || "مشاركة" });
+
+      let finalShareText = shareText || shareMessage || "";
+
+      if (deepLinkPath) {
+        const httpsLink =
+          `${PUBLIC_SHARE_BASE_URL}/${deepLinkPath.replace(/^\//, "")}`;
+
+        finalShareText = finalShareText
+          ? `${httpsLink}\n\n${finalShareText}`
+          : httpsLink;
+      }
+
+      await Share.share({
+        message: finalShareText,
+        title: title || "مشاركة",
+      });
+
       onShared?.();
-    } catch {}
+    } catch (error: any) {
+      if (error?.message) {
+        Alert.alert("المشاركة", error.message);
+      }
+    }
   };
 
   const sendToRecipient = async (recipient: { chatId?: string; otherUserId?: string; otherName: string }) => {
@@ -108,7 +183,36 @@ export function ShareModal({
       const myProfile = await getUserProfile(user.uid);
       const senderName = myProfile?.name || "مستخدم";
       if (orderCards?.length) {
-        for (const order of orderCards) await sendOrderCardMessage(chatId, user.uid, senderName, order);
+        for (const order of orderCards) {
+          const safeOrder: OrderSharePayload = {
+            orderId: String(order.orderId || ""),
+            productId: String(order.productId || ""),
+            productTitle: String(order.productTitle || "غير محدد"),
+            productImageUrl: String(order.productImageUrl || ""),
+            productPrice:
+              order.productPrice !== undefined && order.productPrice !== null
+                ? Number(order.productPrice)
+                : undefined,
+            selectedColor: order.selectedColor ?? undefined,
+            selectedSize: order.selectedSize ?? undefined,
+            buyerId: String(order.buyerId || ""),
+            buyerName: String(order.buyerName || "غير محدد"),
+            buyerPhone: String(order.buyerPhone || ""),
+            buyerLocation: order.buyerLocation ?? null,
+            sellerId: String(order.sellerId || ""),
+            sellerName: String(order.sellerName || "غير محدد"),
+            sellerPhone: String(order.sellerPhone || ""),
+            sellerLocation: order.sellerLocation ?? null,
+            createdAt: String(order.createdAt || new Date().toISOString()),
+          };
+
+          await sendOrderCardMessage(
+            chatId,
+            user.uid,
+            senderName,
+            safeOrder,
+          );
+        }
       } else if (cardRoute) {
         await sendCardMessage(
           chatId,
@@ -209,6 +313,7 @@ export function ShareModal({
 }
 
 const styles = StyleSheet.create({
+
   modalRoot: { flex: 1, justifyContent: "flex-end" },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 14, maxHeight: "88%" },

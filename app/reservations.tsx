@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -39,6 +40,7 @@ import {
   type ServiceRequest,
   type ServiceRequestStatus,
   type ProductOrder,
+  type OrderSharePayload,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
 
@@ -80,6 +82,156 @@ function statusColor(status: ServiceRequestStatus): string {
     default:
       return C.textMuted;
   }
+}
+
+
+function ProductOrderShareButton({
+  order,
+}: {
+  order: ProductOrder;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [payload, setPayload] = useState<OrderSharePayload | null>(null);
+
+  const openShare = async () => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      Alert.alert("تنبيه", "يجب تسجيل الدخول أولاً");
+      return;
+    }
+
+    try {
+      const sellerProfile = await getUserProfile(currentUser.uid);
+      const raw = order as any;
+
+      const productMedia = Array.isArray(raw.productMedia)
+        ? raw.productMedia
+        : [];
+
+      const firstMedia = productMedia[0];
+
+      const productImageUrl = String(
+        raw.productImageUrl ||
+        (typeof firstMedia === "string"
+          ? firstMedia
+          : firstMedia?.url) ||
+        ""
+      );
+
+      const sharePayload: OrderSharePayload = {
+        orderId: String(raw.id || ""),
+        productId: String(raw.productId || ""),
+        productTitle: String(raw.productTitle || "منتج"),
+        productImageUrl,
+
+        productPrice:
+          raw.productPrice != null
+            ? Number(raw.productPrice)
+            : undefined,
+
+        selectedColor:
+          raw.selectedColor
+            ? String(raw.selectedColor)
+            : undefined,
+
+        selectedSize:
+          raw.selectedSize
+            ? String(raw.selectedSize)
+            : undefined,
+
+        buyerId: String(raw.buyerId || ""),
+        buyerName: String(raw.buyerName || "غير محدد"),
+        buyerPhone: String(raw.buyerPhone || ""),
+
+        buyerLocation: raw.buyerLocation || null,
+
+        sellerId: String(
+          raw.sellerId || currentUser.uid
+        ),
+
+        sellerName: String(
+          raw.sellerName ||
+          sellerProfile?.name ||
+          "غير محدد"
+        ),
+
+        sellerPhone: String(
+          raw.sellerPhone ||
+          (sellerProfile as any)?.phone ||
+          ""
+        ),
+
+        sellerLocation: raw.sellerLocation || null,
+
+        createdAt: String(
+          raw.createdAt ||
+          new Date().toISOString()
+        ),
+      };
+
+      setPayload(sharePayload);
+      setVisible(true);
+    } catch (error) {
+      console.error(
+        "Order share preparation error:",
+        error
+      );
+      Alert.alert(
+        "خطأ",
+        "تعذّر تجهيز بطاقة الطلب للمشاركة"
+      );
+    }
+  };
+
+  return (
+    <>
+      <TouchableOpacity
+        style={[
+          styles.poContactBtn,
+          styles.poActionHalf,
+        ]}
+        activeOpacity={0.85}
+        onPress={openShare}
+      >
+        <Feather
+          name="share-2"
+          size={16}
+          color="#FFF"
+        />
+        <Text style={styles.poContactBtnText}>
+          مشاركة
+        </Text>
+      </TouchableOpacity>
+
+      {payload ? (
+        <ShareModal
+          visible={visible}
+          onClose={() => setVisible(false)}
+          shareText={`📦 بطاقة طلب شراء\n🛍️ ${payload.productTitle}`}
+          shareMessage={`📦 بطاقة طلب شراء: ${payload.productTitle}`}
+          title="مشاركة بطاقة الطلب"
+          cardImage={payload.productImageUrl}
+          cardTitle={payload.productTitle}
+          cardDetails={[
+            payload.productPrice != null
+              ? `${Number(payload.productPrice).toLocaleString("ar-IQ")} د.ع`
+              : "السعر غير محدد",
+            payload.selectedColor
+              ? `اللون: ${payload.selectedColor}`
+              : "",
+            payload.selectedSize
+              ? `المقاس: ${payload.selectedSize}`
+              : "",
+            payload.buyerName
+              ? `المشتري: ${payload.buyerName}`
+              : "",
+          ].filter(Boolean)}
+          orderCards={[payload]}
+        />
+      ) : null}
+    </>
+  );
 }
 
 function RequestCard({
@@ -906,7 +1058,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                     </View>
                   )}
 
-                  {/* Chat + Location buttons (seller view) */}
+                  {/* Chat + Location + Share buttons (seller view) */}
                   <View style={styles.poActionRow}>
                     <TouchableOpacity
                       style={[styles.poContactBtn, styles.poActionHalf]}
@@ -916,6 +1068,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                       <Feather name="message-circle" size={16} color="#FFF" />
                       <Text style={styles.poContactBtnText}>دردشة</Text>
                     </TouchableOpacity>
+
                     <TouchableOpacity
                       style={[styles.poLocationBtn, styles.poActionHalf]}
                       activeOpacity={0.85}
@@ -932,6 +1085,8 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                       <Feather name="map-pin" size={16} color={C.accent} />
                       <Text style={styles.poLocationBtnText}>الموقع</Text>
                     </TouchableOpacity>
+
+                    <ProductOrderShareButton order={order} />
                   </View>
                 </View>
               </Animated.View>
