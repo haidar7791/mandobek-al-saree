@@ -48,6 +48,7 @@ import {
   type Product,
   type ProductMedia,
   getSpecialtyLabel,
+  getCategoryForSpecialty,
   ALL_SPECIALTIES,
   isFeaturedActive,
   subscribeToUserChatLastAts,
@@ -1404,6 +1405,34 @@ const isFocused = useIsFocused();
   // Contextual search — filters products (الرئيسية) and artisans (specialty tabs)
   const [searchQuery, setSearchQuery] = useState("");
 
+  // عند البحث باسم تخصص، انتقل تلقائيًا إلى فئة ذلك التخصص.
+  // مثال: مندوب ← توصيل، سباك ← منزل، ميكانيكي ← سيارات.
+  useEffect(() => {
+    if (activeCategory !== "services") return;
+
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return;
+
+    const specialtyMatch = ALL_SPECIALTIES.find((item) => {
+      const label = item.label.toLowerCase();
+      const key = item.key.toLowerCase();
+
+      return label === q || label.includes(q) || key === q || key.includes(q);
+    });
+
+    if (!specialtyMatch) return;
+
+    const targetCategory = getCategoryForSpecialty(specialtyMatch.key);
+
+    if (targetCategory !== activeServiceCategory) {
+      setActiveServiceCategory(targetCategory);
+    }
+  }, [
+    activeCategory,
+    activeServiceCategory,
+    searchQuery,
+  ]);
+
   // ── Stories ───────────────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [myStories, setMyStories] = useState<Story[]>([]);
@@ -1672,16 +1701,21 @@ try {
       );
       result = result.filter((a) => a.category === activeServiceCategory);
     }
-    // Contextual text search — name, profession, or phone number
+    // Contextual service search — search by displayed specialty label
+    // as well as name, specialty key, bio, or phone number.
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (a) =>
+      result = result.filter((a) => {
+        const specialtyLabel = getSpecialtyLabel(a.specialty || "").toLowerCase();
+
+        return (
           a.name?.toLowerCase().includes(q) ||
+          specialtyLabel.includes(q) ||
           a.specialty?.toLowerCase().includes(q) ||
           a.bio?.toLowerCase().includes(q) ||
           a.phone?.includes(q)
-      );
+        );
+      });
     }
 
     if (userLocation) {
