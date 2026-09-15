@@ -2853,6 +2853,10 @@ export interface HomeFeedComment {
   userPhotoUri: string | null;
   text: string;
   createdAt: string;
+  likesCount?: number;
+  isLiked?: boolean;
+  parentCommentId?: string | null;
+  parentCommentUserId?: string | null;
 }
 
 function toIsoString(value: any): string {
@@ -2989,18 +2993,187 @@ export const toggleProfilePostLike = async (postId: string): Promise<boolean> =>
 
 export const getPostComments = async (postId: string): Promise<HomeFeedComment[]> => {
   const snap = await getDocs(collection(db, "posts", postId, "comments"));
-  const comments = snap.docs.map((commentDoc) => {
-    const data = commentDoc.data() as any;
-    return {
-      id: commentDoc.id,
-      userId: String(data.userId || ""),
-      userName: String(data.userName || "مستخدم"),
-      userPhotoUri: data.userPhotoUri || null,
-      text: String(data.text || ""),
-      createdAt: toIsoString(data.createdAt),
-    };
-  });
+  const viewer = auth.currentUser;
+
+  const comments = await Promise.all(
+    snap.docs.map(async (commentDoc) => {
+      const data = commentDoc.data() as any;
+
+      let isLiked = false;
+
+      if (viewer) {
+        const likeRef = doc(
+          db,
+          "posts",
+          postId,
+          "comments",
+          commentDoc.id,
+          "likes",
+          viewer.uid
+        );
+
+        const likeSnap = await getDoc(likeRef);
+        isLiked = likeSnap.exists();
+      }
+
+      return {
+        id: commentDoc.id,
+        userId: String(data.userId || ""),
+        userName: String(data.userName || "مستخدم"),
+        userPhotoUri: data.userPhotoUri || null,
+        text: String(data.text || ""),
+        createdAt: toIsoString(data.createdAt),
+        likesCount: Math.max(0, Number(data.likesCount ?? 0)),
+        isLiked,
+        parentCommentId: data.parentCommentId
+          ? String(data.parentCommentId)
+          : null,
+        parentCommentUserId: data.parentCommentUserId
+          ? String(data.parentCommentUserId)
+          : null,
+      };
+    })
+  );
+
   return comments.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+};
+
+
+
+export const togglePostCommentLike = async (
+  postId: string,
+  commentId: string
+): Promise<boolean> => {
+  const viewer = auth.currentUser;
+  if (!viewer) throw new Error("تسجيل الدخول مطلوب");
+
+  const commentRef = doc(db, "posts", postId, "comments", commentId);
+  const likeRef = doc(commentRef, "likes", viewer.uid);
+
+  const [commentSnap, likeSnap] = await Promise.all([
+    getDoc(commentRef),
+    getDoc(likeRef),
+  ]);
+
+  if (!commentSnap.exists()) {
+    throw new Error("التعليق غير موجود");
+  }
+
+  const currentLikes = Math.max(
+    0,
+    Number((commentSnap.data() as any).likesCount ?? 0)
+  );
+
+  if (likeSnap.exists()) {
+    await deleteDoc(likeRef);
+    await updateDoc(commentRef, {
+      likesCount: Math.max(0, currentLikes - 1),
+    });
+    return false;
+  }
+
+  await setDoc(likeRef, {
+    userId: viewer.uid,
+    createdAt: serverTimestamp(),
+  });
+
+  await updateDoc(commentRef, {
+    likesCount: currentLikes + 1,
+  });
+
+  const commentData = commentSnap.data() as any;
+  const commentOwnerId = String(commentData.userId || "");
+
+  if (commentOwnerId && commentOwnerId !== viewer.uid) {
+    void createActivityNotification({
+      recipientId: commentOwnerId,
+      actorId: viewer.uid,
+      type: "like",
+      title: "إعجاب جديد",
+      body: "أعجب بتعليقك",
+      entityId: postId,
+      entityType: "post",
+    });
+  }
+
+  return true;
+};
+
+export const replyToPostComment = async (
+  postId: string,
+  parentCommentId: string,
+  text: string
+): Promise<HomeFeedComment> => {
+  const viewer = auth.currentUser;
+  const cleanText = text.trim();
+
+  if (!viewer || !cleanText) {
+    throw new Error("بيانات الرد غير مكتملة");
+  }
+
+  const parentRef = doc(
+    db,
+    "posts",
+    postId,
+    "comments",
+    parentCommentId
+  );
+
+  const parentSnap = await getDoc(parentRef);
+
+  if (!parentSnap.exists()) {
+    throw new Error("التعليق الأصلي غير موجود");
+  }
+
+  const parentData = parentSnap.data() as any;
+  const profile = await getUserProfile(viewer.uid);
+
+  const reply = {
+    userId: viewer.uid,
+    userName: profile?.name || viewer.displayName || "مستخدم",
+    userPhotoUri: profile?.photoUri || null,
+    text: cleanText,
+    createdAt: serverTimestamp(),
+    likesCount: 0,
+    parentCommentId,
+    parentCommentUserId: String(parentData.userId || ""),
+  };
+
+  const replyRef = await addDoc(
+    collection(db, "posts", postId, "comments"),
+    reply
+  );
+
+  await updateDoc(doc(db, "posts", postId), {
+    commentsCount: increment(1),
+  }).catch(() => undefined);
+
+  const parentOwnerId = String(parentData.userId || "");
+
+  if (parentOwnerId && parentOwnerId !== viewer.uid) {
+    void createActivityNotification({
+      recipientId: parentOwnerId,
+      actorId: viewer.uid,
+      type: "comment",
+      title: "رد جديد",
+      body: "قام بالرد على تعليقك",
+      entityId: postId,
+      entityType: "post",
+    });
+  }
+
+  return {
+    id: replyRef.id,
+    userId: reply.userId,
+    userName: reply.userName,
+    userPhotoUri: reply.userPhotoUri,
+    text: reply.text,
+    createdAt: new Date().toISOString(),
+    likesCount: 0,
+    isLiked: false,
+    parentCommentId,
+    parentCommentUserId: parentOwnerId,
+  };
 };
 
 export const addProfilePostComment = async (postId: string, text: string): Promise<HomeFeedComment> => {
@@ -3044,6 +3217,10 @@ export const addProfilePostComment = async (postId: string, text: string): Promi
     userPhotoUri: comment.userPhotoUri,
     text: comment.text,
     createdAt: new Date().toISOString(),
+    likesCount: 0,
+    isLiked: false,
+    parentCommentId: null,
+    parentCommentUserId: null,
   };
 };
 

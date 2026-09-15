@@ -67,6 +67,8 @@ import {
   removeHomeFeedPost,
   toggleProfilePostLike,
   addProfilePostComment,
+  togglePostCommentLike,
+  replyToPostComment,
   updateProfilePostComment,
   deleteProfilePostComment,
   getIsFollowing,
@@ -880,6 +882,7 @@ const isFocused = useIsFocused();
   const [commentText, setCommentText] = useState("");
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
+  const [commentReplyingTo, setCommentReplyingTo] = useState<HomeFeedComment | null>(null);
   const [commentInputOpen, setCommentInputOpen] = useState(false);
   const [commentActionsComment, setCommentActionsComment] = useState<HomeFeedComment | null>(null);
   const [commentToast, setCommentToast] = useState<string | null>(null);
@@ -1206,27 +1209,83 @@ const isFocused = useIsFocused();
     const post = commentPost;
     const text = commentText.trim();
     const editingId = commentEditingId;
+    const replyingTo = commentReplyingTo;
+
     if (!post || !text || commentPosting) return;
 
     setCommentPosting(true);
     try {
       if (editingId) {
         await updateProfilePostComment(post.id, editingId, text);
-        setComments((prev) => prev.map((comment) => comment.id === editingId ? { ...comment, text } : comment));
+
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === editingId
+              ? { ...comment, text }
+              : comment
+          )
+        );
+      } else if (replyingTo) {
+        const added = await replyToPostComment(
+          post.id,
+          replyingTo.id,
+          text
+        );
+
+        setComments((prev) => [added, ...prev]);
+
+        setHomeFeed((prev) =>
+          prev.map((p) =>
+            p.id === post.id
+              ? {
+                  ...p,
+                  commentsCount: p.commentsCount + 1,
+                }
+              : p
+          )
+        );
       } else {
         const added = await addProfilePostComment(post.id, text);
+
         setComments((prev) => [added, ...prev]);
-        setHomeFeed((prev) => prev.map((p) => p.id === post.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
+
+        setHomeFeed((prev) =>
+          prev.map((p) =>
+            p.id === post.id
+              ? {
+                  ...p,
+                  commentsCount: p.commentsCount + 1,
+                }
+              : p
+          )
+        );
       }
+
       setCommentEditingId(null);
+      setCommentReplyingTo(null);
       setCommentText("");
       setCommentInputOpen(false);
     } catch (e: any) {
-      Alert.alert(editingId ? "تعذر تعديل التعليق" : "تعذر التعليق", e?.message || "حدث خطأ أثناء حفظ التعليق.");
+      const title = editingId
+        ? "تعذر تعديل التعليق"
+        : replyingTo
+          ? "تعذر إرسال الرد"
+          : "تعذر التعليق";
+
+      Alert.alert(
+        title,
+        e?.message || "حدث خطأ أثناء حفظ التعليق."
+      );
     } finally {
       setCommentPosting(false);
     }
-  }, [commentPost, commentText, commentEditingId, commentPosting]);
+  }, [
+    commentPost,
+    commentText,
+    commentEditingId,
+    commentReplyingTo,
+    commentPosting,
+  ]);
 
   const dismissCommentInput = useCallback(async () => {
     if (commentPosting) return;
@@ -1236,8 +1295,45 @@ const isFocused = useIsFocused();
     }
     setCommentInputOpen(false);
     setCommentEditingId(null);
+    setCommentReplyingTo(null);
     setCommentText("");
   }, [commentPosting, commentText, handleSubmitComment]);
+
+  const handleLikeComment = useCallback(async (comment: HomeFeedComment) => {
+    const post = commentPost;
+    if (!post) return;
+
+    try {
+      const liked = await togglePostCommentLike(post.id, comment.id);
+
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === comment.id
+            ? {
+                ...item,
+                isLiked: liked,
+                likesCount: Math.max(
+                  0,
+                  Number(item.likesCount ?? 0) + (liked ? 1 : -1)
+                ),
+              }
+            : item
+        )
+      );
+    } catch (e: any) {
+      Alert.alert(
+        "تعذر الإعجاب",
+        e?.message || "حدث خطأ أثناء الإعجاب بالتعليق."
+      );
+    }
+  }, [commentPost]);
+
+  const handleReplyComment = useCallback((comment: HomeFeedComment) => {
+    setCommentReplyingTo(comment);
+    setCommentEditingId(null);
+    setCommentText("");
+    setCommentInputOpen(true);
+  }, []);
 
   const handleDeleteComment = useCallback(async (comment: HomeFeedComment) => {
     const post = commentPost;
@@ -2036,6 +2132,8 @@ try {
                       setCommentPost(item);
                       setComments([]);
                       setCommentText("");
+                      setCommentEditingId(null);
+                      setCommentReplyingTo(null);
                     }}
                     onShare={() => {
                       Haptics.selectionAsync();
@@ -2208,7 +2306,15 @@ try {
         onLoadMore={loadMoreHomeFeed}
         hasMore={homeHasMore}
         loadingMore={homeLoadingMore}
-         onComment={(item) => { setCommentPost(item); setComments([]); setCommentText(""); setCommentEditingId(null); setCommentInputOpen(false); setCommentActionsComment(null); }}
+         onComment={(item) => {
+          setCommentPost(item);
+          setComments([]);
+          setCommentText("");
+          setCommentEditingId(null);
+          setCommentReplyingTo(null);
+          setCommentInputOpen(false);
+          setCommentActionsComment(null);
+        }}
          onShare={(item) => {
            Haptics.selectionAsync();
            setSharePost(item);
@@ -2253,7 +2359,12 @@ try {
                 )
               }
               renderItem={({ item }) => (
-                <View style={styles.commentRow}>
+                <View
+                  style={[
+                    styles.commentRow,
+                    item.parentCommentId && styles.commentReplyRow,
+                  ]}
+                >
                   <TouchableOpacity
                     activeOpacity={0.75}
                     onPress={() => router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any)}
@@ -2277,6 +2388,42 @@ try {
                       <Text style={styles.commentTime}>{item.createdAt ? new Date(item.createdAt).toLocaleString("ar-IQ") : "منذ قليل"}</Text>
                     </View>
                     <Text style={styles.commentText}>{item.text}</Text>
+
+                    <View style={styles.commentActionsRow}>
+                      <Pressable
+                        style={styles.commentActionButton}
+                        onPress={() => handleLikeComment(item)}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel={item.isLiked ? "إلغاء إعجاب التعليق" : "الإعجاب بالتعليق"}
+                      >
+                        <Feather
+                          name="heart"
+                          size={15}
+                          color={item.isLiked ? "#e53935" : C.textMuted}
+                        />
+                        {Number(item.likesCount ?? 0) > 0 && (
+                          <Text
+                            style={[
+                              styles.commentActionCount,
+                              item.isLiked && styles.commentActionCountLiked,
+                            ]}
+                          >
+                            {Number(item.likesCount ?? 0)}
+                          </Text>
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={styles.commentReplyButton}
+                        onPress={() => handleReplyComment(item)}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel="الرد على التعليق"
+                      >
+                        <Text style={styles.commentReplyText}>رد</Text>
+                      </Pressable>
+                    </View>
                   </Pressable>
                 </View>
               )}
@@ -2315,7 +2462,13 @@ try {
                 <View style={styles.commentInputSheet}>
                   <View style={styles.commentHandle} />
                   <View style={styles.commentInputHeader}>
-                    <Text style={styles.commentInputTitle}>{commentEditingId ? "تعديل التعليق" : "إضافة تعليق"}</Text>
+                    <Text style={styles.commentInputTitle}>
+                      {commentEditingId
+                        ? "تعديل التعليق"
+                        : commentReplyingTo
+                          ? `الرد على ${commentReplyingTo.userName}`
+                          : "إضافة تعليق"}
+                    </Text>
                     <Pressable onPress={dismissCommentInput} style={styles.commentInputClose}>
                       <Feather name="chevron-down" size={21} color={C.textSecondary} />
                     </Pressable>
@@ -2340,7 +2493,13 @@ try {
                       ref={commentInputRef}
                       value={commentText}
                       onChangeText={setCommentText}
-                      placeholder={commentEditingId ? "عدّل تعليقك..." : "اكتب تعليقك هنا..."}
+                      placeholder={
+                        commentEditingId
+                          ? "عدّل تعليقك..."
+                          : commentReplyingTo
+                            ? `اكتب ردك على ${commentReplyingTo.userName}...`
+                            : "اكتب تعليقك هنا..."
+                      }
                       placeholderTextColor={C.textMuted}
                       style={styles.commentLargeInput}
                       multiline
@@ -2672,6 +2831,12 @@ const styles = StyleSheet.create({
   commentsState: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 30 },
   commentsStateText: { fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted },
   commentRow: { flexDirection: "row-reverse", alignItems: "flex-start", gap: 9, paddingVertical: 8, paddingHorizontal: 2 },
+  commentReplyRow: {
+    marginStart: 28,
+    paddingStart: 10,
+    borderStartWidth: 2,
+    borderStartColor: C.border,
+  },
   commentBody: { flex: 1, backgroundColor: C.background, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 8 },
   commentMetaRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
   commentUserName: { flexShrink: 1, fontSize: 12, fontFamily: "Cairo_700Bold", color: C.text, textAlign: "right" },
@@ -2679,6 +2844,33 @@ const styles = StyleSheet.create({
   commentText: { marginTop: 3, fontSize: 12, lineHeight: 20, fontFamily: "Cairo_400Regular", color: C.text, textAlign: "right" },
   commentEditCancel: { alignSelf: "flex-end", paddingHorizontal: 6, paddingVertical: 4 },
   commentEditCancelText: { fontSize: 10, fontFamily: "Cairo_600SemiBold", color: C.accent },
+  commentActionsRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 16,
+    marginTop: 7,
+  },
+  commentActionButton: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 2,
+  },
+  commentActionCount: {
+    fontSize: 12,
+    color: C.textMuted,
+  },
+  commentActionCountLiked: {
+    color: "#e53935",
+  },
+  commentReplyButton: {
+    paddingVertical: 2,
+  },
+  commentReplyText: {
+    fontSize: 12,
+    color: C.textSecondary,
+    fontWeight: "600",
+  },
   commentComposer: { position: "absolute", left: 0, right: 0, bottom: 40, flexDirection: "row-reverse", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 0, marginTop: 0, marginBottom: 0 },
   commentComposerFakeInput: { flex: 1, minHeight: 44, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, borderRadius: 15, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   commentComposerPlaceholder: { flex: 1, fontSize: 12, fontFamily: "Cairo_400Regular", color: C.textMuted, textAlign: "right" },

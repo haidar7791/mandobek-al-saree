@@ -6,13 +6,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow authenticated users to read the followers collection group.
-    // Required by getFollowingProfiles().
-    match /{path=**}/followers/{followerId} {
-      allow read: if request.auth != null;
-    }
 
-
+    // ============================================================
+    // Helpers
+    // ============================================================
 
     function isSignedIn() {
       return request.auth != null;
@@ -24,32 +21,89 @@ service cloud.firestore {
     }
 
     function chatAllowsMessage(chatId) {
-      let chat = get(/databases/$(database)/documents/chats/$(chatId)).data;
+      let chat = get(
+        /databases/$(database)/documents/chats/$(chatId)
+      ).data;
+
       return isSignedIn()
         && request.auth.uid in chat.participants
-        && (chat.isGroup == true
-            || (request.auth.uid == chat.participants[0]
-                && !(request.auth.uid in get(/databases/$(database)/documents/users/$(chat.participants[1])).data.get("blockedUserIds", [])))
-            || (request.auth.uid == chat.participants[1]
-                && !(request.auth.uid in get(/databases/$(database)/documents/users/$(chat.participants[0])).data.get("blockedUserIds", []))));
+        && (
+          chat.isGroup == true
+          ||
+          (
+            request.auth.uid == chat.participants[0]
+            && !(
+              request.auth.uid in
+              get(
+                /databases/$(database)/documents/users/$(chat.participants[1])
+              ).data.get("blockedUserIds", [])
+            )
+          )
+          ||
+          (
+            request.auth.uid == chat.participants[1]
+            && !(
+              request.auth.uid in
+              get(
+                /databases/$(database)/documents/users/$(chat.participants[0])
+              ).data.get("blockedUserIds", [])
+            )
+          )
+        );
     }
 
-    // ── المنشورات الرئيسية والمعرض (Posts / Reels Feed) ──────────────────────────
-    // دعم جلب وإنشاء منشورات الرئيسية مع الإعجابات والتعليقات
+    // ============================================================
+    // Followers collection group
+    // مطلوب لـ getFollowingProfiles()
+    // ============================================================
+
+    match /{path=**}/followers/{followerId} {
+      allow read: if isSignedIn();
+    }
+
+    // ============================================================
+    // المنشورات الرئيسية والمعرض
+    // Posts / Reels Feed
+    // ============================================================
+
     match /posts/{postId} {
+
       allow read, write: if isSignedIn();
 
+      // إعجابات المنشور
       match /likes/{likerId} {
         allow read, write: if isSignedIn();
       }
 
+      // تعليقات المنشور
       match /comments/{commentId} {
+
         allow read, write: if isSignedIn();
+
+        // إعجابات التعليق
+        // مطلوب لـ togglePostCommentLike()
+        // و getPostComments()
+        match /likes/{likerId} {
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
       }
     }
 
-    // ── منشورات الملف الشخصي ومعرض الأعمال (Profile Posts) ──────────────────────
+    // ============================================================
+    // منشورات الملف الشخصي ومعرض الأعمال
+    // Profile Posts
+    // ============================================================
+
     match /profilePosts/{postId} {
+
       allow read, write: if isSignedIn();
 
       match /likes/{likerId} {
@@ -57,72 +111,146 @@ service cloud.firestore {
       }
 
       match /comments/{commentId} {
+
         allow read, write: if isSignedIn();
+
+        // إعجابات تعليقات منشورات الملف الشخصي
+        match /likes/{likerId} {
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
       }
     }
 
-    // ── المستخدمون والملف الشخصي ─────────────────────────────────────────────
+    // ============================================================
+    // المستخدمون والملف الشخصي
+    // ============================================================
+
     match /users/{userId} {
+
       allow read, write: if isSignedIn();
 
+      // المتابعون
       match /followers/{followerId} {
+
         allow read: if isSignedIn();
+
         allow create: if isSignedIn()
           && request.auth.uid == followerId
-          && exists(/databases/$(database)/documents/users/$(userId))
-          && request.resource.data.keys().hasOnly(["followedAt"]);
-        allow delete: if isSignedIn() && request.auth.uid == followerId;
+          && exists(
+            /databases/$(database)/documents/users/$(userId)
+          )
+          && request.resource.data.keys().hasOnly([
+            "followedAt"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == followerId;
+
         allow update: if false;
       }
 
+      // إعجابات الملف الشخصي
       match /likes/{likerId} {
+
         allow read: if isSignedIn();
+
         allow create: if isSignedIn()
           && request.auth.uid == likerId
-          && exists(/databases/$(database)/documents/users/$(userId))
-          && request.resource.data.keys().hasOnly(["likedAt"]);
-        allow delete: if isSignedIn() && request.auth.uid == likerId;
+          && exists(
+            /databases/$(database)/documents/users/$(userId)
+          )
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
         allow update: if false;
       }
 
+      // التقييمات
       match /reviews/{reviewId} {
         allow read, write: if isSignedIn();
       }
 
+      // إعجابات منشورات الملف الشخصي الموجودة داخل users
       match /profilePosts/{postId}/likes/{likerId} {
+
         allow read: if isSignedIn();
+
         allow create: if isSignedIn()
           && request.auth.uid == likerId
-          && request.resource.data.keys().hasOnly(["likedAt", "likerId"]);
-        allow delete: if isSignedIn() && request.auth.uid == likerId;
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
         allow update: if false;
       }
     }
 
-    // فحص وجود الهاتف
+    // ============================================================
+    // فهرس الهاتف
+    // ============================================================
+
     match /phoneIndex/{phone} {
+
       allow get: if true;
+
       allow list: if false;
+
       allow create, update: if isSignedIn()
-        && request.resource.data.keys().hasOnly(["phone", "userId"])
+        && request.resource.data.keys().hasOnly([
+          "phone",
+          "userId"
+        ])
         && request.resource.data.phone == phone;
+
       allow delete: if isAdmin();
     }
 
-    // Activity notifications are private to their recipient. A signed-in
-    // client may create only an activity attributed to its own account.
+    // ============================================================
+    // الإشعارات
+    // ============================================================
+
     match /notifications/{notificationId} {
-      allow read: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+
+      // المستخدم يستطيع قراءة إشعاراته فقط
+      allow read: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid;
+
+      // إنشاء إشعار باسم المستخدم الحالي فقط
       allow create: if isSignedIn()
         && request.resource.data.actorId == request.auth.uid
         && request.resource.data.recipientId != request.auth.uid;
-      allow update: if isSignedIn() && resource.data.recipientId == request.auth.uid
+
+      allow update: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid
         && request.resource.data.recipientId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+
+      allow delete: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid;
     }
 
-    // ── الحرفيون والبائعون ───────────────────────────────────────────────────
+    // ============================================================
+    // الحرفيون والبائعون
+    // ============================================================
+
     match /artisans/{artisanId} {
+
       allow read, write: if isSignedIn();
 
       match /reviews/{reviewId} {
@@ -130,23 +258,36 @@ service cloud.firestore {
       }
     }
 
-    // ── المحفظة ──────────────────────────────────────────────────────────────
+    // ============================================================
+    // المحفظة
+    // ============================================================
+
     match /wallets/{userId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── طلبات المحفظة ────────────────────────────────────────────────────────
+    // ============================================================
+    // طلبات المحفظة
+    // ============================================================
+
     match /walletRequests/{requestId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── سجلات الترويج ────────────────────────────────────────────────────────
+    // ============================================================
+    // سجلات الترويج
+    // ============================================================
+
     match /promotions/{promoId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── المنتجات ─────────────────────────────────────────────────────────────
+    // ============================================================
+    // المنتجات
+    // ============================================================
+
     match /products/{productId} {
+
       allow read, write: if isSignedIn();
 
       match /likes/{likerId} {
@@ -158,33 +299,52 @@ service cloud.firestore {
       }
     }
 
-    // ── القصص (Stories) ──────────────────────────────────────────────────────
+    // ============================================================
+    // القصص
+    // ============================================================
+
     match /stories/{storyId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── طلبات الخدمة ─────────────────────────────────────────────────────────
+    // ============================================================
+    // طلبات الخدمة
+    // ============================================================
+
     match /serviceRequests/{requestId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── المحادثات والرسائل ────────────────────────────────────────────────────
+    // ============================================================
+    // المحادثات والرسائل
+    // ============================================================
+
     match /chats/{chatId} {
+
       allow read, write: if isSignedIn();
 
       match /messages/{messageId} {
+
         allow read: if isSignedIn();
+
         allow create: if chatAllowsMessage(chatId);
+
         allow update, delete: if isSignedIn();
       }
     }
 
-    // ── طلبات شراء المنتجات ───────────────────────────────────────────────────
+    // ============================================================
+    // طلبات شراء المنتجات
+    // ============================================================
+
     match /productOrders/{orderId} {
       allow read, write: if isSignedIn();
     }
 
-    // ── المتابعات والتقييمات ──────────────────────────────────────────────────
+    // ============================================================
+    // المتابعات والتقييمات
+    // ============================================================
+
     match /follows/{followId} {
       allow read, write: if isSignedIn();
     }
@@ -196,7 +356,5 @@ service cloud.firestore {
     match /ratings/{ratingId} {
       allow read, write: if isSignedIn();
     }
-
   }
 }
-
