@@ -1591,8 +1591,30 @@ export const sendOrderCardMessage = async (
   senderName: string,
   order: OrderSharePayload,
 ): Promise<void> => {
+  const chatRef = doc(db, "chats", chatId);
+  const chatSnap = await getDoc(chatRef);
+
+  // إذا لم تكن هناك محادثة سابقة، أنشئها أولاً حتى
+  // يمكن إرسال بطاقة الطلب داخلها.
+  if (!chatSnap.exists()) {
+    const participants = chatId.split("_").filter(Boolean);
+
+    if (participants.length < 2 || !participants.includes(senderId)) {
+      throw new Error("INVALID_CHAT_PARTICIPANTS");
+    }
+
+    await setDoc(chatRef, {
+      participants,
+      isGroup: false,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   await assertCanSendChatMessage(chatId, senderId);
+
   const previewText = `📦 طلب بيع: ${order.productTitle}${order.productPrice != null ? ` — ${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : ""}`;
+  const createdAt = new Date().toISOString();
+
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
     senderId,
@@ -1600,24 +1622,39 @@ export const sendOrderCardMessage = async (
     text: previewText,
     type: "order_card",
     orderCard: order,
-    createdAt: new Date().toISOString(),
+    createdAt,
   });
-  await setDoc(doc(db, "chats", chatId), {
-    participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
-    lastMessage: previewText,
-    lastAt: new Date().toISOString(),
-    lastSenderId: senderId,
-  }, { merge: true });
+
+  await setDoc(
+    chatRef,
+    {
+      participants:
+        (await getDoc(chatRef)).data()?.participants || chatId.split("_"),
+      lastMessage: previewText,
+      lastAt: createdAt,
+      lastSenderId: senderId,
+    },
+    { merge: true }
+  );
+
   try {
     const otherUid = chatId.split("_").find((u) => u !== senderId);
+
     if (otherUid) {
       const profile = await getCachedUserProfile(otherUid);
+
       if (profile?.pushToken) {
         await sendExpoPush(
           profile.pushToken,
           `طلب بيع من ${senderName}`,
           previewText,
-          { type: "orderCard", chatId, senderId, orderId: order.orderId, productId: order.productId },
+          {
+            type: "orderCard",
+            chatId,
+            senderId,
+            orderId: order.orderId,
+            productId: order.productId,
+          },
         );
       }
     }

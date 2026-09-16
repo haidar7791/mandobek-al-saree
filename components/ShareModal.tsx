@@ -231,8 +231,16 @@ export function ShareModal({
       onShared?.();
       onClose();
       router.push({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
-    } catch {
-      Alert.alert("خطأ", "تعذّر إرسال المشاركة، حاول مجدداً");
+    } catch (error: any) {
+      console.error("ShareModal internal share error:", error);
+
+      const code = String(error?.code || "");
+      const message = String(error?.message || "خطأ غير معروف");
+
+      Alert.alert(
+        "خطأ المشاركة",
+        code ? `${code}\n${message}` : message
+      );
     } finally { setSendingId(null); }
   };
 
