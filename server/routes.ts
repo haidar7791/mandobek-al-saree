@@ -237,7 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const name = escape(String(data?.name || "مستخدم فورس"));
       const playUrl = "https://play.google.com/store/apps/details?id=com.haidar.forus";
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${name}</h2><p>هذا الملف الشخصي متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض الملف الشخصي.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
+      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar-u-nu-latn" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${name}</h2><p>هذا الملف الشخصي متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض الملف الشخصي.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
     } catch (err) { next(err); }
   };
 
@@ -260,7 +260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const image = String(data?.imageUrl || data?.thumbnailUrl || "").replace(/[<>\"']/g, "");
       const playUrl = "https://play.google.com/store/apps/details?id=com.haidar.forus";
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta property="og:title" content="${title}">${image ? `<meta property="og:image" content="${image}">` : ""}<title>${title} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${title}</h2><p>هذا المنتج متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض المنتج مباشرة.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
+      res.status(snap.exists ? 200 : 404).send(`<!doctype html><html lang="ar-u-nu-latn" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta property="og:title" content="${title}">${image ? `<meta property="og:image" content="${image}">` : ""}<title>${title} — فورس</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:32px;text-align:center;color:#0f172a}.box{max-width:480px;margin:8vh auto;background:#fff;border-radius:20px;padding:28px;box-shadow:0 8px 30px #0001}a{display:inline-block;background:#c9a84c;color:#0d1b3e;text-decoration:none;padding:14px 24px;border-radius:12px;font-weight:700}</style></head><body><div class="box"><h1>فورس</h1><h2>${title}</h2><p>هذا المنتج متوفر داخل تطبيق فورس.</p><p>عليك تنزيل التطبيق أولاً لعرض المنتج مباشرة.</p><a href="${playUrl}">تنزيل تطبيق فورس من Google Play</a></div></body></html>`);
     } catch (err) { next(err); }
   });
 
@@ -774,7 +774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokenValid = tokenEntry != null && Date.now() <= tokenEntry.expiresAt;
 
     const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar-u-nu-latn" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>

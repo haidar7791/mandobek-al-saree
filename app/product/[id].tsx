@@ -63,7 +63,7 @@ export default function ProductScreen() {
           <View style={styles.details}>
             <View style={styles.titleRow}>
               <View style={styles.priceBadge}>
-                <Text style={styles.price}>{product.price.toLocaleString("ar-IQ")} د.ع</Text>
+                <Text style={styles.price}>{product.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع</Text>
               </View>
               <Text style={styles.title}>{product.title}</Text>
             </View>

@@ -58,7 +58,7 @@ const TAB_LABELS: Record<Tab, string> = {
 function formatTime(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleString("ar-IQ", {
+  return d.toLocaleString("ar-IQ-u-nu-latn", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -215,7 +215,7 @@ function ProductOrderShareButton({
           cardTitle={payload.productTitle}
           cardDetails={[
             payload.productPrice != null
-              ? `${Number(payload.productPrice).toLocaleString("ar-IQ")} د.ع`
+              ? `${Number(payload.productPrice).toLocaleString("ar-IQ-u-nu-latn")} د.ع`
               : "السعر غير محدد",
             payload.selectedColor
               ? `اللون: ${payload.selectedColor}`
@@ -942,7 +942,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                 : order.status === "accepted"
                 ? { label: "تم القبول",   color: "#22C55E", bg: "rgba(34,197,94,0.1)"  }
                 : { label: "مرفوض",       color: "#EF4444", bg: "rgba(239,68,68,0.1)"  };
-            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ-u-nu-latn", {
               day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
             });
             const canDelete = order.status === "accepted" || order.status === "rejected";
@@ -973,7 +973,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                       <Text style={styles.poInfoLine}>
                         <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
                         <Text style={styles.poPriceValue}>
-                          {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
+                          {price != null ? price.toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
                       {!!order.selectedColor && (
@@ -1130,7 +1130,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                 : order.status === "accepted"
                 ? { label: "🟢 مقبول",         color: "#22C55E", bg: "rgba(34,197,94,0.1)"  }
                 : { label: "🔴 مرفوض",         color: "#EF4444", bg: "rgba(239,68,68,0.1)"  };
-            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+            const date = new Date(order.createdAt).toLocaleDateString("ar-IQ-u-nu-latn", {
               day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
             });
             const canDelete = order.status === "accepted" || order.status === "rejected";
@@ -1161,7 +1161,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                       <Text style={styles.poInfoLine}>
                         <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
                         <Text style={styles.poPriceValue}>
-                          {price != null ? price.toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}
+                          {price != null ? price.toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
                       {!!order.selectedColor && (

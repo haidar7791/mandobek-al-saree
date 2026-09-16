@@ -29,7 +29,7 @@ const C = Colors.light;
 
 function formatExpiry(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("ar-IQ", {
+  return d.toLocaleString("ar-IQ-u-nu-latn", {
     day: "numeric",
     month: "long",
     year: "numeric",

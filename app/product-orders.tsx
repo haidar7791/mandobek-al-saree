@@ -62,7 +62,7 @@ function PriceDisplay({ order }: { order: ProductOrder }) {
   return (
     <View style={styles.pricePill}>
       <Text style={styles.pricePillText}>
-        {raw != null ? Number(raw).toLocaleString("ar-IQ") : "غير محدد"}
+        {raw != null ? Number(raw).toLocaleString("ar-IQ-u-nu-latn") : "غير محدد"}
       </Text>
       {raw != null && <Text style={styles.pricePillCurrency}>د.ع</Text>}
     </View>
@@ -74,7 +74,7 @@ function PriceDisplay({ order }: { order: ProductOrder }) {
 ───────────────────────────────────────────── */
 function PurchaseCard({ order }: { order: ProductOrder }) {
   const cfg = BUYER_STATUS[order.status];
-  const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+  const date = new Date(order.createdAt).toLocaleDateString("ar-IQ-u-nu-latn", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
   const [sellerPhone, setSellerPhone] = useState<string | null>(null);
@@ -96,7 +96,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
 
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
-    const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    const price = raw != null ? Number(raw).toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "";
     const deepLink = order.productId ? `\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${order.productId}` : "";
     await Share.share({
       message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}\n👤 البائع: ${order.sellerName || ""}${deepLink}`,
@@ -200,7 +200,7 @@ function SaleCard({ order, onAccept, onReject }: {
   const [acting, setActing] = useState(false);
   const [buyerPhone, setBuyerPhone] = useState<string | null>(null);
   const cfg = SELLER_STATUS[order.status];
-  const date = new Date(order.createdAt).toLocaleDateString("ar-IQ", {
+  const date = new Date(order.createdAt).toLocaleDateString("ar-IQ-u-nu-latn", {
     day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
   });
 
@@ -241,7 +241,7 @@ function SaleCard({ order, onAccept, onReject }: {
 
   const handleShare = async () => {
     const raw = order.productPrice ?? (order as any).price;
-    const price = raw != null ? Number(raw).toLocaleString("ar-IQ") + " د.ع" : "";
+    const price = raw != null ? Number(raw).toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "";
     const deepLink = order.productId ? `\n🔗 ${PUBLIC_SHARE_BASE_URL}/product/${order.productId}` : "";
     await Share.share({
       message: `🛍️ منتج عبر تطبيق فورس\n📦 ${order.productTitle}${price ? "\n💰 " + price : ""}${deepLink}`,
@@ -762,7 +762,7 @@ export default function ProductOrdersScreen() {
         visible={shareOrders.length > 0}
         onClose={() => setShareOrders([])}
         title="بطاقات البيع"
-        shareText={shareOrders.map((o) => `📦 ${o.productTitle}\n💰 ${o.productPrice != null ? Number(o.productPrice).toLocaleString("ar-IQ") + " د.ع" : "غير محدد"}\n👤 المشتري: ${o.buyerName}\n📞 ${o.buyerPhone || "لا يوجد"}`).join("\n\n")}
+        shareText={shareOrders.map((o) => `📦 ${o.productTitle}\n💰 ${o.productPrice != null ? Number(o.productPrice).toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "غير محدد"}\n👤 المشتري: ${o.buyerName}\n📞 ${o.buyerPhone || "لا يوجد"}`).join("\n\n")}
         shareMessage={`🛍️ تم مشاركة ${shareOrders.length} بطاقة بيع${shareOrders.length > 1 ? "ات" : ""} من فورس`}
         orderCards={shareOrders}
       />

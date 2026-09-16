@@ -42,7 +42,7 @@ function formatTime(iso: string): string {
     d.getMonth() === now.getMonth() &&
     d.getFullYear() === now.getFullYear();
   if (sameDay) {
-    return d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString("ar-IQ-u-nu-latn", { hour: "2-digit", minute: "2-digit" });
   }
   return `${d.getDate()}/${d.getMonth() + 1}`;
 }

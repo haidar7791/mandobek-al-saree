@@ -544,13 +544,36 @@ export default function ChatRoom({
     try {
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
-        Alert.alert("تفعيل الموقع", "فعّل خدمة الموقع على جهازك ثم حاول مرة أخرى.");
+        Alert.alert(
+          "تفعيل الموقع",
+          "خدمة الموقع في جهازك غير مفعلة. فعّلها ثم حاول مشاركة موقعك مرة أخرى."
+        );
         return;
       }
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("إذن الموقع", "يجب السماح بالوصول إلى موقعك لاستخدام مشاركة الموقع.");
-        return;
+
+      const currentPermission = await Location.getForegroundPermissionsAsync();
+
+      if (currentPermission.status !== "granted") {
+        const permission = await Location.requestForegroundPermissionsAsync();
+
+        if (permission.status !== "granted") {
+          if (permission.canAskAgain === false) {
+            Alert.alert(
+              "إذن الموقع",
+              "لم يتم السماح للتطبيق بالوصول إلى موقعك. يمكنك السماح به من إعدادات التطبيق.",
+              [
+                { text: "لاحقًا", style: "cancel" },
+                {
+                  text: "فتح الإعدادات",
+                  onPress: () => {
+                    void Linking.openSettings();
+                  },
+                },
+              ]
+            );
+          }
+          return;
+        }
       }
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.BestForNavigation,
@@ -847,7 +870,7 @@ export default function ChatRoom({
     const swipeResponder = createReplySwipeResponder(item);
 
     const isAdminSender = !isMine && item.senderId === ADMIN_UID;
-    const time = new Date(item.createdAt).toLocaleTimeString("ar-IQ", {
+    const time = new Date(item.createdAt).toLocaleTimeString("ar-IQ-u-nu-latn", {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -959,7 +982,7 @@ export default function ChatRoom({
       );
     } else if (item.type === "order_card" && item.orderCard) {
       const order = item.orderCard;
-      const price = order.productPrice != null ? `${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : "غير محدد";
+      const price = order.productPrice != null ? `${Number(order.productPrice).toLocaleString("ar-IQ-u-nu-latn")} د.ع` : "غير محدد";
       const openMap = (location: { lat: number; lng: number } | null | undefined, label: string) => {
         if (!location) {
           Alert.alert("الموقع", `لا يوجد موقع ${label} محفوظ لهذا الطلب.`);

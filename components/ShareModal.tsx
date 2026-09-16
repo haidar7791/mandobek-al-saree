@@ -99,7 +99,7 @@ export function ShareModal({
 
           if (o.productPrice !== undefined && o.productPrice !== null) {
             lines.push(
-              `سعر المنتج: ${Number(o.productPrice).toLocaleString("ar-IQ")} د.ع`
+              `سعر المنتج: ${Number(o.productPrice).toLocaleString("ar-IQ-u-nu-latn")} د.ع`
             );
           }
 
@@ -132,7 +132,7 @@ export function ShareModal({
 
           if (o.createdAt) {
             lines.push(
-              `تاريخ الطلب: ${new Date(o.createdAt).toLocaleString("ar-IQ")}`
+              `تاريخ الطلب: ${new Date(o.createdAt).toLocaleString("ar-IQ-u-nu-latn")}`
             );
           }
 

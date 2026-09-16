@@ -126,9 +126,9 @@ export interface PromotionPlan {
 }
 
 export const PROMOTION_PLANS: PromotionPlan[] = [
-  { id: "p3", days: 3, cost: 5000, label: "٣ أيام" },
-  { id: "p7", days: 7, cost: 10000, label: "٧ أيام" },
-  { id: "p30", days: 30, cost: 35000, label: "٣٠ يوم" },
+  { id: "p3", days: 3, cost: 5000, label: "3 أيام" },
+  { id: "p7", days: 7, cost: 10000, label: "7 أيام" },
+  { id: "p30", days: 30, cost: 35000, label: "30 يوم" },
 ];
 
 export const ADMIN_UID = "JBtQBKkpMvOT58abx2wZqOtxNwU2";
@@ -1536,7 +1536,7 @@ export const searchUsersForSharing = async (
   searchText: string,
   excludeUserId?: string | null
 ): Promise<ShareUserResult[]> => {
-  const term = searchText.trim().toLocaleLowerCase("ar");
+  const term = searchText.trim().toLocaleLowerCase("ar-u-nu-latn");
   if (!term) return [];
 
   const snap = await getDocs(collection(db, "users"));
@@ -1546,7 +1546,7 @@ export const searchUsersForSharing = async (
     if (excludeUserId && d.id === excludeUserId) return;
     const data = d.data() as UserProfile;
     const name = String(data.name || "").trim();
-    if (!name || !name.toLocaleLowerCase("ar").includes(term)) return;
+    if (!name || !name.toLocaleLowerCase("ar-u-nu-latn").includes(term)) return;
     const role = data.role || "client";
     results.push({
       userId: d.id,
@@ -1558,11 +1558,11 @@ export const searchUsersForSharing = async (
   });
 
   return results.sort((a, b) => {
-    const aa = a.name.toLocaleLowerCase("ar");
-    const bb = b.name.toLocaleLowerCase("ar");
+    const aa = a.name.toLocaleLowerCase("ar-u-nu-latn");
+    const bb = b.name.toLocaleLowerCase("ar-u-nu-latn");
     const as = aa.startsWith(term) ? 0 : 1;
     const bs = bb.startsWith(term) ? 0 : 1;
-    return as - bs || aa.localeCompare(bb, "ar");
+    return as - bs || aa.localeCompare(bb, "ar-u-nu-latn");
   }).slice(0, 30);
 };
 
@@ -1612,7 +1612,7 @@ export const sendOrderCardMessage = async (
 
   await assertCanSendChatMessage(chatId, senderId);
 
-  const previewText = `📦 طلب بيع: ${order.productTitle}${order.productPrice != null ? ` — ${Number(order.productPrice).toLocaleString("ar-IQ")} د.ع` : ""}`;
+  const previewText = `📦 طلب بيع: ${order.productTitle}${order.productPrice != null ? ` — ${Number(order.productPrice).toLocaleString("ar-IQ-u-nu-latn")} د.ع` : ""}`;
   const createdAt = new Date().toISOString();
 
   await addDoc(collection(db, "chats", chatId, "messages"), {

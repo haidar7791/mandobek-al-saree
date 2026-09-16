@@ -152,7 +152,7 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
                         compact
                         product={product}
                         userId={auth.currentUser?.uid ?? null}
-                      />
+          compactPublicProfile/>
                     )}
                   </View>
                 </View>

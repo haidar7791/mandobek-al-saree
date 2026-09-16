@@ -30,7 +30,7 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 function formatCurrency(amount: number): string {
-  return `${amount.toLocaleString("ar-IQ")} د.ع`;
+  return `${amount.toLocaleString("ar-IQ-u-nu-latn")} د.ع`;
 }
 
 function StatCard({

@@ -275,7 +275,7 @@ export default function SearchScreen() {
                 )}
                 <View style={styles.rowInfo}>
                   <Text style={styles.rowName} numberOfLines={1}>{p.title}</Text>
-                  <Text style={styles.priceText}>{p.price.toLocaleString("ar-IQ")} د.ع</Text>
+                  <Text style={styles.priceText}>{p.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع</Text>
                   <View style={styles.sellerRow}>
                     <Text style={styles.rowSub} numberOfLines={1}>{p.sellerName}</Text>
                     {sellerFeatured && (
@@ -335,7 +335,7 @@ export default function SearchScreen() {
                       {/* Title + price */}
                       <Text style={styles.detailTitle}>{p.title}</Text>
                       <Text style={styles.detailPrice}>
-                        {p.price.toLocaleString("ar-IQ")}
+                        {p.price.toLocaleString("ar-IQ-u-nu-latn")}
                         <Text style={styles.detailCurrency}> د.ع</Text>
                       </Text>
 

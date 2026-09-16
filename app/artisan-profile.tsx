@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { getApproximateLocationByIP, getOptionalCurrentLocation } from "../lib/location";
 import {
   View,
   Text,
@@ -18,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   getArtisanById,
@@ -89,14 +89,15 @@ export default function ArtisanProfileScreen() {
         if (profile?.location) setUserLocation(profile.location);
       }
 
-      // Best-effort GPS
+      // Approximate location from IP only — no automatic GPS permission request.
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === "granted") {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        const approximateLocation = await getApproximateLocationByIP();
+        if (approximateLocation) {
+          setUserLocation(approximateLocation);
         }
-      } catch { /* GPS unavailable */ }
+      } catch {
+        // Approximate location unavailable — continue normally.
+      }
 
       const artisanData = await getArtisanById(artisanId);
       if (artisanData) {
@@ -175,6 +176,11 @@ export default function ArtisanProfileScreen() {
     setBookingLoading(true);
     try {
       const userProfile = await getUserProfile(user.uid);
+
+      // GPS is requested only when the user actually presses "طلب الخدمة الآن".
+      // Refusing permission must never cancel or block the service request.
+      const actualClientLocation = await getOptionalCurrentLocation();
+
       await createServiceRequest({
         clientId: user.uid,
         clientName: userName,
@@ -183,7 +189,7 @@ export default function ArtisanProfileScreen() {
         artisanName: artisan.name,
         specialty: artisan.specialty,
         problemDescription: "",
-        clientLocation: userLocation,
+        clientLocation: actualClientLocation,
         clientAddress: "",
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getApproximateLocationByIP } from "../lib/location";
 import {
   View,
   Text,
@@ -25,7 +26,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Circle, Rect } from "react-native-svg";
-import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
@@ -404,7 +404,7 @@ function ProductCard({
           <View style={styles.productPriceLikesRow}>
             <Text style={styles.productPrice}>
               <Text style={styles.productPriceLabel}>السعر: </Text>
-              {product.price.toLocaleString("ar-IQ")}{" "}
+              {product.price.toLocaleString("ar-IQ-u-nu-latn")}{" "}
               <Text style={styles.productCurrency}>د.ع</Text>
             </Text>
 
@@ -1559,15 +1559,15 @@ const isFocused = useIsFocused();
 
       setArtisans(allArtisans);
 
-      // Location is best-effort — failure must never block the rest of the UI
-try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === "granted") {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      // Approximate location from IP only.
+      // Never request GPS permission automatically while loading the dashboard.
+      try {
+        const approximateLocation = await getApproximateLocationByIP();
+        if (approximateLocation) {
+          setUserLocation(approximateLocation);
         }
       } catch {
-        // Location unavailable or denied — silently ignore
+        // Approximate location unavailable — never block the dashboard.
       }
     } catch (err) {
       console.error("loadData error:", err);
@@ -2977,19 +2977,19 @@ try {
         cardDetails={
           shareProduct
             ? [
-                `💰 ${shareProduct.price.toLocaleString("ar-IQ")} د.ع`,
+                `💰 ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع`,
                 `👤 ${shareProduct.sellerName}`,
               ]
             : undefined
         }
         shareText={
           shareProduct
-            ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`
+            ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`
             : ""
         }
         shareMessage={
           shareProduct
-            ? `🛍️ منتج للبيع: ${shareProduct.title}\n💰 ${shareProduct.price.toLocaleString("ar-IQ")} د.ع — من تطبيق فورس`
+            ? `🛍️ منتج للبيع: ${shareProduct.title}\n💰 ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع — من تطبيق فورس`
             : ""
         }
       />

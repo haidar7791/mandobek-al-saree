@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { getOptionalCurrentLocation } from "../lib/location";
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +35,7 @@ type Props = {
   pendingOrderId?: string;
   isLoading?: boolean;
   onLoadingChange?: (productId: string | null) => void;
+  compactPublicProfile?: boolean;
 };
 
 /**
@@ -49,7 +51,8 @@ export default function ProductPurchaseButton({
   pendingOrderId,
   isLoading = false,
   onLoadingChange,
-}: Props) {
+  compactPublicProfile,
+  }: Props) {
   const [visible, setVisible] = useState(false);
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
@@ -115,6 +118,11 @@ export default function ProductPurchaseButton({
     onLoadingChange?.(product.id);
     try {
       const profile = await getUserProfile(viewer.uid);
+
+      // GPS is requested only for the actual purchase submission.
+      // Refusing permission must never prevent the order from being created.
+      const actualBuyerLocation = await getOptionalCurrentLocation();
+
       const imageUrl =
         product.media?.find((item) => item.type === "image")?.url ||
         (product.imageUrl && !/\.(mp4|mov|m4v|webm|avi|mkv)(?:$|[?#])/i.test(product.imageUrl)
@@ -132,7 +140,7 @@ export default function ProductPurchaseButton({
         buyerId: viewer.uid,
         buyerName: profile?.name || userName,
         buyerPhone: profile?.phone || "",
-        buyerLocation: userLocation,
+        buyerLocation: actualBuyerLocation,
         selectedColor,
         selectedSize,
       });
@@ -178,8 +186,19 @@ export default function ProductPurchaseButton({
             <ActivityIndicator size="small" color={C.primary} />
           ) : (
             <>
-              <Ionicons name="cart-outline" size={15} color={C.primary} />
-              <Text style={styles.publicProfileButtonText}>
+              {!(
+                compactPublicProfile &&
+                (colors.length > 0 || sizes.length > 0)
+              ) && (
+                <Ionicons name="cart-outline" size={15} color={C.primary} />
+              )}
+              <Text
+                style={
+                  compactPublicProfile
+                    ? styles.publicProfilePurchaseButtonText
+                    : styles.publicProfileButtonText
+                }
+              >
   {colors.length === 0 && sizes.length === 0 ? "شراء الآن" : "تفاصيل الشراء"}
 </Text>
             </>
@@ -199,7 +218,7 @@ export default function ProductPurchaseButton({
             <Text style={styles.title}>تفاصيل الشراء</Text>
             <Text style={styles.productName} numberOfLines={2}>{product.title}</Text>
             <Text style={styles.price}>
-              {product.price.toLocaleString("ar-IQ")} <Text style={styles.currency}>د.ع</Text>
+              {product.price.toLocaleString("ar-IQ-u-nu-latn")} <Text style={styles.currency}>د.ع</Text>
             </Text>
 
             {colors.length > 0 && (
@@ -256,7 +275,8 @@ const styles = StyleSheet.create({
   button: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, borderRadius: 12, overflow: "hidden" },
   gradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   buttonText: { fontSize: 15, fontFamily: undefined, color: C.primary },
-  publicProfileButtonText: { fontSize: 6, fontFamily: undefined, color: C.primary },
+  publicProfileButtonText: { fontSize: 13, fontFamily: undefined, color: C.primary },
+  publicProfilePurchaseButtonText: { fontSize: 6, fontFamily: undefined, color: C.primary },
   disabled: { opacity: 0.6 },
   cancelButton: { backgroundColor: "#DC2626", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   cancelText: { fontSize: 14, fontFamily: undefined, color: "#FFF" },

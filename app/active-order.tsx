@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as Location from "expo-location";
 import { auth } from "../lib/firebase";
 import {
   subscribeToServiceRequest,
@@ -84,30 +83,11 @@ export default function ActiveOrderScreen() {
     setOptimisticStatus("on_the_way");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // 2 — GPS with a hard 5-second timeout so a slow fix never blocks the write.
-    const getLocWithTimeout = (): Promise<{ lat: number; lng: number } | null> =>
-      new Promise((resolve) => {
-        const timer = setTimeout(() => resolve(null), 5000);
-        Location.requestForegroundPermissionsAsync()
-          .then(({ status }) => {
-            if (status !== "granted") { clearTimeout(timer); resolve(null); return; }
-            return Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-              timeInterval: 4000,
-            });
-          })
-          .then((pos) => {
-            clearTimeout(timer);
-            if (pos) resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-            else resolve(null);
-          })
-          .catch(() => { clearTimeout(timer); resolve(null); });
-      });
-
-    // 3 — Run GPS + Firestore write in the background; UI is already updated.
+    // 2 — Location is intentionally not requested here.
+    // Updating "في الطريق" must never trigger a permission prompt.
+    // The real location is requested only by the explicit actions defined by the app.
     try {
-      const loc = await getLocWithTimeout();
-      await markRequestOnTheWay(request.id, loc);
+      await markRequestOnTheWay(request.id, null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       // Revert the optimistic update only on hard failure.

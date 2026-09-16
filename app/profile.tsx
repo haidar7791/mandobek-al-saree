@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getOptionalCurrentLocation } from "../lib/location";
 import {
   View,
   Text,
@@ -449,6 +450,16 @@ export default function ProfileScreen() {
       const currentUserId = auth.currentUser?.uid || uid;
       if (!currentUserId) throw new Error("not authenticated");
       const safeSpecialty = ["shovel", "roller", "backhoe"].includes(editSpecialty) ? "client" : editSpecialty;
+
+      // Request real location only when changing from "عام" to a professional specialty.
+      // Permission is optional and refusal must never block saving the profile.
+      const specialtyChangedFromGeneral =
+        specialty === "client" && safeSpecialty !== "client";
+
+      const specialtyLocation = specialtyChangedFromGeneral
+        ? await getOptionalCurrentLocation()
+        : null;
+
       // Two explicit branches — no undefined values (Firestore/merge ignores undefined,
       // leaving stale artisan fields behind).
       if (safeSpecialty === "client") {
@@ -470,6 +481,7 @@ export default function ProfileScreen() {
           role: "artisan",
           category: getCategoryForSpecialty(safeSpecialty),
           isAvailable: true,
+          ...(specialtyLocation ? { location: specialtyLocation } : {}),
         });
       }
       const newRole: "client" | "artisan" =
