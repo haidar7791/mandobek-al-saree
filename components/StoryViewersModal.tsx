@@ -85,9 +85,6 @@ export default function StoryViewersModal({
                 {storyOwnerName ? `الحسابات التي شاهدت استوري ${storyOwnerName}` : "الحسابات التي شاهدت هذا الاستوري"}
               </Text>
             </View>
-            <Pressable onPress={onClose} style={styles.closeButton} hitSlop={8}>
-              <Feather name="x" size={20} color={C.textSecondary} />
-            </Pressable>
           </View>
 
           {loading ? (
@@ -158,7 +155,7 @@ const styles = StyleSheet.create({
   sheet: {
     maxHeight: "78%",
     minHeight: 280,
-    backgroundColor: C.card,
+    backgroundColor: "transparent",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 18,
@@ -178,21 +175,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     marginBottom: 10,
   },
-  headerCopy: { flex: 1, alignItems: "flex-end", gap: 2 },
-  title: { color: C.text, fontSize: 19, fontFamily: undefined },
-  subtitle: { color: C.textMuted, fontSize: 11, fontFamily: undefined },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.inputBg,
-    marginRight: 10,
-  },
+  headerCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
+  title: { color: "#FFF", fontSize: 19, fontFamily: undefined, textAlign: "left" },
+  subtitle: { color: C.textMuted, fontSize: 11, fontFamily: undefined, textAlign: "left" },
   list: { paddingTop: 4, paddingBottom: 8, gap: 8 },
   emptyList: { flexGrow: 1 },
   row: {
@@ -218,9 +205,9 @@ const styles = StyleSheet.create({
     borderColor: C.accent,
   },
   avatarText: { color: C.accent, fontSize: 15, fontFamily: undefined },
-  rowCopy: { flex: 1, alignItems: "flex-end", gap: 1 },
-  name: { color: C.text, fontSize: 14, fontFamily: undefined, textAlign: "right" },
-  rowHint: { color: C.textMuted, fontSize: 10, fontFamily: undefined },
+  rowCopy: { flex: 1, alignItems: "flex-start", gap: 1 },
+  name: { color: C.text, fontSize: 14, fontFamily: undefined, textAlign: "left" },
+  rowHint: { color: C.textMuted, fontSize: 10, fontFamily: undefined, textAlign: "left", alignSelf: "flex-start" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 28 },
   emptyIcon: {
     width: 54,
