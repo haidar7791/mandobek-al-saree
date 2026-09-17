@@ -3204,7 +3204,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: -32,
     top: 0,
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "flex-start",
     gap: 2,
   },
