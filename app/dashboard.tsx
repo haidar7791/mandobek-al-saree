@@ -2039,7 +2039,7 @@ const isFocused = useIsFocused();
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.storyStrip}
+          style={[styles.storyStrip, { transform: [{ translateY: -23 }] }]}
           contentContainerStyle={styles.storyStripContent}
         >
           {/* My Story circle — Instagram-style:
@@ -3107,7 +3107,7 @@ const styles = StyleSheet.create({
   },
   stickyBar: { backgroundColor: "#FFF", borderBottomWidth: 1, borderBottomColor: C.border },
   listWrapper: { flex: 1, minHeight: 0 },
-  headerGrad: { paddingBottom: 16, paddingHorizontal: 20, gap: 14 },
+  headerGrad: { paddingBottom: -47, paddingHorizontal: 20, gap: 14 },
 
   // ── Story strip ────────────────────────────────────────────────────────────
   storyStrip: { flexGrow: 0, marginHorizontal: -20 },
