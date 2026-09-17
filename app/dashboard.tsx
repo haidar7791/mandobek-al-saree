@@ -833,6 +833,7 @@ const isFocused = useIsFocused();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("home");
+    const [showNewMenu, setShowNewMenu] = useState(false);
   const [activeServiceCategory, setActiveServiceCategory] =
     useState<ServiceCategory>("home");
   const [refreshing, setRefreshing] = useState(false);
@@ -1871,36 +1872,11 @@ const isFocused = useIsFocused();
               </Text>
             </Pressable>
 
-            <Pressable
+              <Pressable
               style={styles.headerIconCol}
               onPress={() => {
                 Haptics.selectionAsync();
-                Alert.alert(
-                  "جديد",
-                  "اختر ما تريد إضافته",
-                  [
-                    {
-                      text: "إضافة ريلز",
-                      onPress: () => {
-                        void handleAddPost();
-                      },
-                    },
-                    {
-                      text: "إضافة منتج",
-                      onPress: () => {
-                        Haptics.impactAsync(
-                          Haptics.ImpactFeedbackStyle.Medium
-                        );
-                        router.push("/add-product" as any);
-                      },
-                    },
-                    {
-                      text: "إلغاء",
-                      style: "cancel",
-                    },
-                  ],
-                  { cancelable: true }
-                );
+                setShowNewMenu((v) => !v);
               }}
               accessibilityLabel="جديد"
             >
@@ -1911,6 +1887,37 @@ const isFocused = useIsFocused();
                 جديد
               </Text>
             </Pressable>
+
+            {showNewMenu && (
+              <View style={styles.newMenu}>
+                <Pressable
+                  style={styles.newMenuItem}
+                  onPress={() => {
+                    setShowNewMenu(false);
+                    void handleAddPost();
+                  }}
+                >
+                  <Feather name="play-circle" size={20} color="#111" />
+                  <Text style={styles.newMenuText}>إضافة ريلز</Text>
+                </Pressable>
+
+                <View style={styles.newMenuDivider} />
+
+                <Pressable
+                  style={styles.newMenuItem}
+                  onPress={() => {
+                    setShowNewMenu(false);
+                    Haptics.impactAsync(
+                      Haptics.ImpactFeedbackStyle.Medium
+                    );
+                    router.push("/add-product" as any);
+                  }}
+                >
+                  <Feather name="shopping-bag" size={20} color="#111" />
+                  <Text style={styles.newMenuText}>إضافة منتج</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
 
           {userRole === "admin" && (
@@ -3216,6 +3223,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 2,
+  },
+  newMenu: {
+    position: "absolute",
+    left: 46,
+    top: 42,
+    width: 160,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    overflow: "hidden",
+    zIndex: 100,
+    elevation: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  newMenuItem: {
+    height: 50,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+  },
+  newMenuText: {
+    color: "#111",
+    fontSize: 14,
+    fontFamily: undefined,
+  },
+  newMenuDivider: {
+    height: 1,
+    backgroundColor: "#E5E5E5",
   },
   addPostHeaderBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
