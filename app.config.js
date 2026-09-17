@@ -8,7 +8,7 @@ module.exports = {
   userInterfaceStyle: "light",
   newArchEnabled: true,
   splash: {
-    image: "./assets/images/splash-icon.png",
+    image: "./assets/images/icon.png",
     resizeMode: "contain",
     backgroundColor: "#0D1421",
   },
@@ -27,11 +27,6 @@ module.exports = {
     googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "pan",
     versionCode: 23,
-    adaptiveIcon: {
-      backgroundColor: "#0D1421",
-      foregroundImage: "./assets/images/android-icon-foreground.png",
-      backgroundImage: "./assets/images/android-icon-background.png",
-    },
     permissions: [
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
@@ -81,7 +76,7 @@ module.exports = {
     ],
   },
   web: {
-    favicon: "./assets/images/favicon.png",
+    favicon: "./assets/images/icon.png",
     name: "فورس",
   },
   plugins: [
