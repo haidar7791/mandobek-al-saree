@@ -1791,13 +1791,17 @@ const isFocused = useIsFocused();
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
         <View style={styles.headerActions}>
           {userRole === "admin" && (
-            <Pressable style={styles.headerIconCol} onPress={() => router.push("/admin-dashboard" as any)}>
+            <Pressable
+              style={styles.headerIconCol}
+              onPress={() => router.push("/admin-dashboard" as any)}
+            >
               <View style={styles.headerIconBtn}>
                 <Feather name="shield" size={20} color={C.accent} />
               </View>
-              <Text style={styles.headerIconLabel}>الإدارة</Text>
+              <Text pointerEvents="none" style={styles.headerIconLabel}>الإدارة</Text>
             </Pressable>
           )}
+
           <Pressable
             style={styles.headerIconCol}
             onPress={() => {
@@ -1809,9 +1813,14 @@ const isFocused = useIsFocused();
             <View style={styles.headerIconBtn}>
               <Feather name="search" size={20} color="#FFF" />
             </View>
-            <Text style={styles.headerIconLabel}>بحث</Text>
+            <Text pointerEvents="none" style={styles.headerIconLabel}>بحث</Text>
           </Pressable>
-          <Pressable style={styles.headerIconCol} onPress={handleMessagesPress}>
+
+          <Pressable
+            style={styles.headerIconCol}
+            onPress={handleMessagesPress}
+            accessibilityLabel="المراسلات"
+          >
             <View style={styles.headerIconBtn}>
               <Feather name="message-circle" size={20} color="#FFF" />
               {unreadMsgCount > 0 && (
@@ -1822,10 +1831,156 @@ const isFocused = useIsFocused();
                 </View>
               )}
             </View>
-            <Text style={styles.headerIconLabel}>المراسلات</Text>
+            <Text pointerEvents="none" style={styles.headerIconLabel}>المراسلات</Text>
           </Pressable>
+
           <Pressable
             style={styles.headerIconCol}
+            onPress={() => {
+              Haptics.selectionAsync();
+              Alert.alert(
+                "جديد",
+                "اختر ما تريد إضافته",
+                [
+                  {
+                    text: "إضافة ريلز",
+                    onPress: () => {
+                      void handleAddPost();
+                    },
+                  },
+                  {
+                    text: "إضافة منتج",
+                    onPress: () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      router.push("/add-product" as any);
+                    },
+                  },
+                  {
+                    text: "إلغاء",
+                    style: "cancel",
+                  },
+                ],
+                { cancelable: true }
+              );
+            }}
+            accessibilityLabel="جديد"
+          >
+            <View style={styles.headerIconBtn}>
+              <Feather name="plus" size={22} color="#FFF" />
+            </View>
+            <Text pointerEvents="none" style={styles.headerIconLabel}>جديد</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.headerIconCol}
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/profile" as any);
+            }}
+            accessibilityLabel="الملف الشخصي"
+          >
+            <View>
+              <ProfileAvatar
+              photoUri={liveProfile?.photoUri}
+              name={userName}
+              size={36}
+              />
+            </View>
+            <Text pointerEvents="none" style={styles.headerIconLabel} numberOfLines={1}>
+              {userName}
+            </Text>
+          </Pressable>
+
+          <Text
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 5,
+              textAlign: "center",
+              color: "#FFF",
+              fontSize: 20,
+              fontWeight: "900",
+              letterSpacing: 0.5,
+            }}
+          >
+            فورس
+          </Text>
+        </View>
+
+
+        {/* ── Second navigation row ── */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-around",
+            paddingHorizontal: 10,
+            paddingTop: 4,
+            paddingBottom: 8,
+          }}
+        >
+          {[
+            { key: "products" as CategoryTab, icon: "home-outline" as const },
+            { key: "home" as CategoryTab, icon: "play-circle-outline" as const },
+            { key: "services" as CategoryTab, icon: "construct-outline" as const },
+          ].map((item) => (
+            <Pressable
+              key={item.key}
+              style={[
+                styles.headerIconCol,
+                { flex: 1, alignItems: "center" },
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setFocusedProductId(null);
+                setSearchQuery("");
+
+                if (item.key === "products") {
+                  productsListRef.current?.scrollToOffset({
+                    offset: 0,
+                    animated: true,
+                  });
+                  onProductsRefresh();
+                }
+
+                if (item.key === "services") {
+                  setActiveServiceCategory("home");
+                }
+
+                setActiveCategory(item.key);
+              }}
+              accessibilityLabel={
+                item.key === "products"
+                  ? "المنزل"
+                  : item.key === "home"
+                    ? "الريلز"
+                    : "الخدمات"
+              }
+            >
+              <View
+                style={[
+                  styles.headerIconBtn,
+                  activeCategory === item.key && {
+                    backgroundColor: C.accent,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={20}
+                  color={activeCategory === item.key ? C.primary : "#FFF"}
+                />
+              </View>
+            </Pressable>
+          ))}
+
+          <Pressable
+            style={[
+              styles.headerIconCol,
+              { flex: 1, alignItems: "center" },
+            ]}
             onPress={() => {
               Haptics.selectionAsync();
               router.push("/notifications" as any);
@@ -1837,21 +1992,14 @@ const isFocused = useIsFocused();
               {unreadNotificationCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
-                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                    {unreadNotificationCount > 99
+                      ? "99+"
+                      : unreadNotificationCount}
                   </Text>
                 </View>
               )}
             </View>
-            <Text style={styles.headerIconLabel}>الإشعارات</Text>
           </Pressable>
-          <View style={styles.headerIconCol}>
-            <ProfileAvatar
-              photoUri={liveProfile?.photoUri}
-              name={userName}
-              size={36}
-            />
-            <Text style={styles.headerIconLabel} numberOfLines={1}>{userName}</Text>
-          </View>
         </View>
 
         {/* ── Story Strip — between header icons and promote button ── */}
@@ -1966,57 +2114,7 @@ const isFocused = useIsFocused();
 
       </LinearGradient>
 
-      {/* Category tabs — always visible */}
       <View style={styles.stickyBar}>
-            <View style={styles.mainCategoryTabs}>
-              {CATEGORY_TABS.map((tab) => (
-                <Pressable
-                  key={tab.key}
-                  style={[
-                    styles.mainCatTab,
-                    activeCategory === tab.key && styles.catTabActive,
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setFocusedProductId(null); // stop any playing video immediately
-                    setSearchQuery("");         // clear search when switching tabs
-                    if (tab.key === "products") {
-                      // Re-tapping Products behaves like "scroll to top + refresh".
-                      productsListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                      onProductsRefresh();
-                    }
-                    setActiveCategory(tab.key);
-                    if (tab.key === "services") {
-                      setActiveServiceCategory("home");
-                    }
-                  }}
-                >
-                {tab.key === "home" || tab.key === "products" || tab.key === "services" ? (
-                  <Ionicons
-                    name={
-                      tab.key === "home"
-                        ? "play-circle-outline"
-                        : tab.key === "products"
-                        ? "home-outline"
-                        : "construct-outline"
-                    }
-                    size={25}
-                    color={activeCategory === tab.key ? C.accent : C.textSecondary}
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.mainCatTabText,
-                      activeCategory === tab.key && styles.catTabTextActive,
-                    ]}
-                  >
-                    {tab.label}
-                  </Text>
-                )}
-                </Pressable>
-              ))}
-            </View>
-
             {activeCategory === "services" && (
               <ScrollView
                 horizontal
@@ -2087,48 +2185,7 @@ const isFocused = useIsFocused();
                   </Pressable>
                 )}
               </View>
-              <View style={styles.addProductProgressWrap}>
-                <TouchableOpacity
-                  style={styles.addProductBtn}
-                  onLayout={(event) => {
-                    const { width, height } = event.nativeEvent.layout;
-                    if (width > 0 && height > 0 &&
-                      (Math.abs(productProgressSize.width - width) > 0.5 ||
-                        Math.abs(productProgressSize.height - height) > 0.5)) {
-                      setProductProgressSize({ width, height });
-                    }
-                  }}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-product" as any); }}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="plus" size={13} color={C.accent} />
-                  <Text style={styles.addProductBtnText}>إضافة منتج</Text>
 
-                  {productPublishing && productProgressSize.width > 0 && productProgressSize.height > 0 && (
-                    <View style={styles.productProgressOverlay} pointerEvents="none">
-                      <Svg
-                        width={productProgressSize.width}
-                        height={productProgressSize.height}
-                        viewBox={`0 0 ${productProgressSize.width} ${productProgressSize.height}`}
-                      >
-                        <Rect
-                          x="1.5"
-                          y="1.5"
-                          width={Math.max(0, productProgressSize.width - 3)}
-                          height={Math.max(0, productProgressSize.height - 3)}
-                          rx={8}
-                          fill="none"
-                          stroke="#4BFF8A"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeDasharray={`${2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3))} ${2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3))}`}
-                          strokeDashoffset={2 * (Math.max(0, productProgressSize.width - 3) + Math.max(0, productProgressSize.height - 3)) * (1 - productPublishProgress)}
-                        />
-                      </Svg>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
             </View>
           )}
 
@@ -2153,20 +2210,6 @@ const isFocused = useIsFocused();
                 ListFooterComponent={homeLoadingMore ? <ActivityIndicator size="small" color={C.accent} style={{ paddingVertical: 16 }} /> : null}
                 viewabilityConfig={homeViewabilityConfig}
                 onViewableItemsChanged={homeViewabilityHandler}
-                ListHeaderComponent={
-                  <View style={styles.homeFeedIntro}>
-                    <View style={styles.homeFeedHeaderRow}>
-                      <Pressable
-                        style={styles.addPostBtn}
-                        onPress={handleAddPost}
-                        disabled={homePublishing}
-                      >
-                        {homePublishing ? <ActivityIndicator size="small" color="#FFF" /> : <Feather name="plus" size={16} color="#FFF" />}
-                        <Text style={styles.addPostBtnText}>{homePublishing ? `جارٍ النشر ${Math.round(homePublishProgress * 100)}%` : "إضافة منشور"}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                }
                 renderItem={({ item }) => (
                   <HomeFeedCard
                     post={item}
@@ -3123,8 +3166,11 @@ const styles = StyleSheet.create({
     maxWidth: 64,
   },
   headerActions: {
-    flexDirection: "row-reverse", justifyContent: "space-between",
-    alignItems: "flex-start", gap: 4,
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 4,
+    width: "100%",
   },
   addPostHeaderBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
@@ -3396,7 +3442,16 @@ const styles = StyleSheet.create({
   commentToast: { position: "absolute", alignSelf: "center", flexDirection: "row-reverse", alignItems: "center", gap: 6, paddingHorizontal: 15, paddingVertical: 9, borderRadius: 20, backgroundColor: "rgba(25,25,25,.94)", zIndex: 50 },
   commentToastText: { color: "#FFF", fontSize: 12, fontFamily: undefined },
 
-  headerIconCol: { alignItems: "center", gap: 4, maxWidth: 64 },
+  headerIconCol: {
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 4,
+    width: 64,
+    minWidth: 64,
+    maxWidth: 64,
+    zIndex: 10,
+    elevation: 10,
+  },
   headerIconLabel: {
     fontSize: 10, fontFamily: undefined,
     color: "rgba(255,255,255,0.85)", textAlign: "center",
