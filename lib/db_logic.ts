@@ -1334,20 +1334,42 @@ export const sendStoryReply = async (
   storyImageUrl: string,
   text: string
 ): Promise<void> => {
+  const chatRef = doc(db, "chats", chatId);
+  const chatSnap = await getDoc(chatRef);
+
+  if (!chatSnap.exists()) {
+    const participants = chatId.split("_").filter(Boolean).sort();
+
+    if (participants.length !== 2 || !participants.includes(senderId)) {
+      throw new Error("INVALID_STORY_CHAT");
+    }
+
+    await setDoc(chatRef, {
+      participants,
+      lastMessage: text,
+      lastAt: new Date().toISOString(),
+      lastSenderId: senderId,
+    });
+  }
+
+  await assertCanSendChatMessage(chatId, senderId);
+
+  const createdAt = new Date().toISOString();
+
   await addDoc(collection(db, "chats", chatId, "messages"), {
     chatId,
     senderId,
     senderName,
     text,
     storyImageUrl,
-    createdAt: new Date().toISOString(),
+    createdAt,
   });
+
   await setDoc(
-    doc(db, "chats", chatId),
+    chatRef,
     {
-      participants: (await getDoc(doc(db, "chats", chatId))).data()?.participants || chatId.split("_"),
       lastMessage: text,
-      lastAt: new Date().toISOString(),
+      lastAt: createdAt,
       lastSenderId: senderId,
     },
     { merge: true }

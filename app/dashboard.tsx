@@ -1947,12 +1947,11 @@ const isFocused = useIsFocused();
           style={{
             flexDirection: "row",
             alignItems: "center",
-            justifyContent: "space-around",
-            paddingHorizontal: 10,
+            justifyContent: "space-between",
+            paddingHorizontal: 4,
             paddingTop: 4,
             paddingBottom: 8,
-            gap: 3,
-            transform: [{ translateY: -6 }],
+            transform: [{ translateY: -12 }],
           }}
         >
           {[
@@ -1964,7 +1963,7 @@ const isFocused = useIsFocused();
               key={item.key}
               style={[
                 styles.headerIconCol,
-                { flex: 1, alignItems: "center" },
+                { flex: 0, width: 64, alignItems: "center" },
               ]}
               onPress={() => {
                 Haptics.selectionAsync();
@@ -2013,7 +2012,7 @@ const isFocused = useIsFocused();
           <Pressable
             style={[
               styles.headerIconCol,
-              { flex: 1, alignItems: "center" },
+              { flex: 0, width: 64, alignItems: "center" },
             ]}
             onPress={() => {
               Haptics.selectionAsync();
