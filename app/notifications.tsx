@@ -18,6 +18,7 @@ import {
   type ActivityNotification,
 } from "@/lib/notifications";
 import Colors from "@/constants/colors";
+import ReservationsScreen from "./reservations";
 
 const C = Colors.light;
 
@@ -67,6 +68,7 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<ActivityNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  const [section, setSection] = useState<"notifications" | "orders">("notifications");
   const userId = auth.currentUser?.uid;
 
   useEffect(() => {
@@ -128,7 +130,49 @@ export default function NotificationsScreen() {
         </Pressable>
       </View>
 
-      {loading ? (
+      <View style={styles.sectionTabs}>
+        <Pressable
+          style={[
+            styles.sectionTab,
+            section === "notifications" && styles.sectionTabActive,
+          ]}
+          onPress={() => setSection("notifications")}
+        >
+          <Feather name="bell" size={16} color={section === "notifications" ? "#FFF" : C.textSecondary} />
+          <Text
+            style={[
+              styles.sectionTabText,
+              section === "notifications" && styles.sectionTabTextActive,
+            ]}
+          >
+            الإشعارات
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.sectionTab,
+            section === "orders" && styles.sectionTabActive,
+          ]}
+          onPress={() => setSection("orders")}
+        >
+          <Feather name="shopping-bag" size={16} color={section === "orders" ? "#FFF" : C.textSecondary} />
+          <Text
+            style={[
+              styles.sectionTabText,
+              section === "orders" && styles.sectionTabTextActive,
+            ]}
+          >
+            الطلبات
+          </Text>
+        </Pressable>
+      </View>
+
+      {section === "orders" ? (
+        <View style={styles.ordersSection}>
+          <ReservationsScreen inline />
+        </View>
+      ) : loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={C.accent} />
         </View>
@@ -207,6 +251,42 @@ const styles = StyleSheet.create({
   headerTitle: { color: "#FFF", fontSize: 19, fontWeight: "700" },
   markAllButton: { minWidth: 70, alignItems: "flex-end" },
   markAllText: { color: C.accent, fontSize: 12, fontWeight: "700" },
+  sectionTabs: {
+    flexDirection: "row",
+    marginHorizontal: 14,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 4,
+  },
+  sectionTab: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+  sectionTabActive: {
+    backgroundColor: C.primary,
+  },
+  sectionTabText: {
+    color: C.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  sectionTabTextActive: {
+    color: "#FFF",
+  },
+  ordersSection: {
+    flex: 1,
+    minHeight: 0,
+  },
   list: { padding: 14, gap: 10 },
   emptyList: { flexGrow: 1, justifyContent: "center" },
   notification: {

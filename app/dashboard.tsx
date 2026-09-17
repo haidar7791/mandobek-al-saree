@@ -137,13 +137,12 @@ const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 
 const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 });
 const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
-type CategoryTab = "home" | "products" | "services" | "orders";
+type CategoryTab = "home" | "products" | "services";
 
 const CATEGORY_TABS: { key: CategoryTab; label: string }[] = [
   { key: "home", label: "الرئيسية" },
   { key: "products", label: "المنتجات" },
   { key: "services", label: "الخدمات" },
-  { key: "orders", label: "الطلبات" },
 ];
 
 const SERVICE_CATEGORY_TABS: {
@@ -1992,7 +1991,20 @@ const isFocused = useIsFocused();
                     }
                   }}
                 >
-                <Text
+                {tab.key === "home" || tab.key === "products" || tab.key === "services" ? (
+                  <Ionicons
+                    name={
+                      tab.key === "home"
+                        ? "play-circle-outline"
+                        : tab.key === "products"
+                        ? "home-outline"
+                        : "construct-outline"
+                    }
+                    size={25}
+                    color={activeCategory === tab.key ? C.accent : C.textSecondary}
+                  />
+                ) : (
+                  <Text
                     style={[
                       styles.mainCatTabText,
                       activeCategory === tab.key && styles.catTabTextActive,
@@ -2000,6 +2012,7 @@ const isFocused = useIsFocused();
                   >
                     {tab.label}
                   </Text>
+                )}
                 </Pressable>
               ))}
             </View>
@@ -2121,9 +2134,7 @@ const isFocused = useIsFocused();
 
           {/* ── Conditional content: products, services, or inline incoming orders ── */}
           <View style={styles.listWrapper}>
-            {activeCategory === "orders" ? (
-              <ReservationsScreen inline />
-            ) : activeCategory === "home" ? (
+            {activeCategory === "home" ? (
               /* ══ HOME SOCIAL FEED — posts/media only ══ */
               <FlatList
                 ref={homeFeedListRef}
