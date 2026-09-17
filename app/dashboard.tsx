@@ -1844,7 +1844,7 @@ const isFocused = useIsFocused();
               letterSpacing: 0.5,
             }}
           >
-            فورس
+            <Text style={{ fontSize: 27, fontWeight: "bold", color: "#FFF", letterSpacing: 1.8, marginRight: 12 }}>ℱ𝒪ℛ𝒰𝒮</Text>
           </Text>
 
           <View style={styles.headerLeftGroup}>
@@ -3001,12 +3001,12 @@ const isFocused = useIsFocused();
         }
         shareText={
           sharePost
-            ? `📱 منشور عبر تطبيق فورس\n\n👤 ${sharePost.userName}${sharePost.description ? `\n\n${sharePost.description}` : ""}`
+            ? `📱 منشور عبر تطبيق FORUS\n\n👤 ${sharePost.userName}${sharePost.description ? `\n\n${sharePost.description}` : ""}`
             : ""
         }
         shareMessage={
           sharePost
-            ? `📱 شاهد منشور ${sharePost.userName} على تطبيق فورس`
+            ? `📱 شاهد منشور ${sharePost.userName} على تطبيق FORUS`
             : ""
         }
         onShared={() => {
@@ -3044,12 +3044,12 @@ const isFocused = useIsFocused();
         }
         shareText={
           shareProduct
-            ? `🛍️ منتج للبيع عبر تطبيق فورس\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`
+            ? `🛍️ منتج للبيع عبر تطبيق FORUS\n\n📦 ${shareProduct.title}\n💰 السعر: ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع\n👤 البائع: ${shareProduct.sellerName}${shareProduct.description ? "\n\n" + shareProduct.description : ""}`
             : ""
         }
         shareMessage={
           shareProduct
-            ? `🛍️ منتج للبيع: ${shareProduct.title}\n💰 ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع — من تطبيق فورس`
+            ? `🛍️ منتج للبيع: ${shareProduct.title}\n💰 ${shareProduct.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع — من تطبيق FORUS`
             : ""
         }
       />
