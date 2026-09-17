@@ -1790,106 +1790,44 @@ const isFocused = useIsFocused();
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.headerGrad, { paddingTop: topPad }]}>
         <View style={styles.headerActions}>
-          {userRole === "admin" && (
+
+          <View style={styles.headerRightGroup}>
             <Pressable
               style={styles.headerIconCol}
-              onPress={() => router.push("/admin-dashboard" as any)}
+              onPress={handleMessagesPress}
+              accessibilityLabel="المراسلات"
             >
               <View style={styles.headerIconBtn}>
-                <Feather name="shield" size={20} color={C.accent} />
+                <Feather name="message-circle" size={20} color="#FFF" />
+                {unreadMsgCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadMsgCount > 99 ? "99+" : unreadMsgCount}
+                    </Text>
+                  </View>
+                )}
               </View>
-              <Text pointerEvents="none" style={styles.headerIconLabel}>الإدارة</Text>
+              <Text pointerEvents="none" style={styles.headerIconLabel}>
+                المراسلات
+              </Text>
             </Pressable>
-          )}
 
-          <Pressable
-            style={styles.headerIconCol}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/user-search" as any);
-            }}
-            accessibilityLabel="البحث عن المستخدمين"
-          >
-            <View style={styles.headerIconBtn}>
-              <Feather name="search" size={20} color="#FFF" />
-            </View>
-            <Text pointerEvents="none" style={styles.headerIconLabel}>بحث</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.headerIconCol}
-            onPress={handleMessagesPress}
-            accessibilityLabel="المراسلات"
-          >
-            <View style={styles.headerIconBtn}>
-              <Feather name="message-circle" size={20} color="#FFF" />
-              {unreadMsgCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unreadMsgCount > 99 ? "99+" : unreadMsgCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text pointerEvents="none" style={styles.headerIconLabel}>المراسلات</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.headerIconCol}
-            onPress={() => {
-              Haptics.selectionAsync();
-              Alert.alert(
-                "جديد",
-                "اختر ما تريد إضافته",
-                [
-                  {
-                    text: "إضافة ريلز",
-                    onPress: () => {
-                      void handleAddPost();
-                    },
-                  },
-                  {
-                    text: "إضافة منتج",
-                    onPress: () => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      router.push("/add-product" as any);
-                    },
-                  },
-                  {
-                    text: "إلغاء",
-                    style: "cancel",
-                  },
-                ],
-                { cancelable: true }
-              );
-            }}
-            accessibilityLabel="جديد"
-          >
-            <View style={styles.headerIconBtn}>
-              <Feather name="plus" size={22} color="#FFF" />
-            </View>
-            <Text pointerEvents="none" style={styles.headerIconLabel}>جديد</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.headerIconCol}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/profile" as any);
-            }}
-            accessibilityLabel="الملف الشخصي"
-          >
-            <View>
-              <ProfileAvatar
-              photoUri={liveProfile?.photoUri}
-              name={userName}
-              size={36}
-              />
-            </View>
-            <Text pointerEvents="none" style={styles.headerIconLabel} numberOfLines={1}>
-              {userName}
-            </Text>
-          </Pressable>
+            <Pressable
+              style={styles.headerIconCol}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/user-search" as any);
+              }}
+              accessibilityLabel="البحث عن المستخدمين"
+            >
+              <View style={styles.headerIconBtn}>
+                <Feather name="search" size={20} color="#FFF" />
+              </View>
+              <Text pointerEvents="none" style={styles.headerIconLabel}>
+                بحث
+              </Text>
+            </Pressable>
+          </View>
 
           <Text
             pointerEvents="none"
@@ -1907,8 +1845,95 @@ const isFocused = useIsFocused();
           >
             فورس
           </Text>
-        </View>
 
+          <View style={styles.headerLeftGroup}>
+            <Pressable
+              style={styles.headerIconCol}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/profile" as any);
+              }}
+              accessibilityLabel="الملف الشخصي"
+            >
+              <View>
+                <ProfileAvatar
+                  photoUri={liveProfile?.photoUri}
+                  name={userName}
+                  size={36}
+                />
+              </View>
+              <Text
+                pointerEvents="none"
+                style={styles.headerIconLabel}
+                numberOfLines={1}
+              >
+                {userName}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.headerIconCol}
+              onPress={() => {
+                Haptics.selectionAsync();
+                Alert.alert(
+                  "جديد",
+                  "اختر ما تريد إضافته",
+                  [
+                    {
+                      text: "إضافة ريلز",
+                      onPress: () => {
+                        void handleAddPost();
+                      },
+                    },
+                    {
+                      text: "إضافة منتج",
+                      onPress: () => {
+                        Haptics.impactAsync(
+                          Haptics.ImpactFeedbackStyle.Medium
+                        );
+                        router.push("/add-product" as any);
+                      },
+                    },
+                    {
+                      text: "إلغاء",
+                      style: "cancel",
+                    },
+                  ],
+                  { cancelable: true }
+                );
+              }}
+              accessibilityLabel="جديد"
+            >
+              <View style={styles.headerIconBtn}>
+                <Feather name="plus" size={22} color="#FFF" />
+              </View>
+              <Text pointerEvents="none" style={styles.headerIconLabel}>
+                جديد
+              </Text>
+            </Pressable>
+          </View>
+
+          {userRole === "admin" && (
+            <Pressable
+              style={[
+                styles.headerIconCol,
+                {
+                  position: "absolute",
+                  left: 140,
+                  top: 0,
+                },
+              ]}
+              onPress={() => router.push("/admin-dashboard" as any)}
+            >
+              <View style={styles.headerIconBtn}>
+                <Feather name="shield" size={20} color={C.accent} />
+              </View>
+              <Text pointerEvents="none" style={styles.headerIconLabel}>
+                الإدارة
+              </Text>
+            </Pressable>
+          )}
+        </View>
 
         {/* ── Second navigation row ── */}
         <View
@@ -1919,6 +1944,7 @@ const isFocused = useIsFocused();
             paddingHorizontal: 10,
             paddingTop: 4,
             paddingBottom: 8,
+            gap: 3,
           }}
         >
           {[
@@ -3166,11 +3192,30 @@ const styles = StyleSheet.create({
     maxWidth: 64,
   },
   headerActions: {
-    flexDirection: "row-reverse",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 4,
+    position: "relative",
     width: "100%",
+    height: 66,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: -16,
+  },
+
+  headerRightGroup: {
+    position: "absolute",
+    right: -32,
+    top: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 2,
+  },
+
+  headerLeftGroup: {
+    position: "absolute",
+    left: 4,
+    top: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 2,
   },
   addPostHeaderBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
@@ -3446,11 +3491,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 4,
-    width: 64,
-    minWidth: 64,
-    maxWidth: 64,
+    width: 40,
+    minWidth: 40,
+    maxWidth: 40,
     zIndex: 10,
     elevation: 10,
+    marginHorizontal: 0,
   },
   headerIconLabel: {
     fontSize: 10, fontFamily: undefined,
