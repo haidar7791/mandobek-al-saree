@@ -832,7 +832,7 @@ const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CategoryTab>("home");
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>("products");
     const [showNewMenu, setShowNewMenu] = useState(false);
   const [activeServiceCategory, setActiveServiceCategory] =
     useState<ServiceCategory>("home");
@@ -1952,6 +1952,7 @@ const isFocused = useIsFocused();
             paddingTop: 4,
             paddingBottom: 8,
             gap: 3,
+            transform: [{ translateY: -6 }],
           }}
         >
           {[
