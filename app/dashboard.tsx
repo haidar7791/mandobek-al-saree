@@ -2194,33 +2194,6 @@ const isFocused = useIsFocused();
           </View>
 
           {/* ── Sub-header bar: fixed below tabs, only in الرئيسية ── */}
-          {activeCategory === "products" && (
-            <View style={styles.productsSubBar}>
-              <View style={[styles.inlineSearchRow, styles.productSearchRow]}>
-                <Feather name="search" size={14} color={C.textMuted} />
-                <TextInput
-                  style={styles.inlineSearchInput}
-                  placeholder="ابحث في المنتجات..."
-                  placeholderTextColor={C.textMuted}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  returnKeyType="search"
-                  textAlign="right"
-                />
-                {searchQuery.length > 0 && (
-                  <Pressable
-                    onPress={() => { setSearchQuery(""); Haptics.selectionAsync(); }}
-                    style={styles.searchClearBtn}
-                    hitSlop={8}
-                    accessibilityLabel="مسح البحث"
-                  >
-                    <Feather name="x" size={14} color={C.textMuted} />
-                  </Pressable>
-                )}
-              </View>
-
-            </View>
-          )}
 
           {/* ── Conditional content: products, services, or inline incoming orders ── */}
           <View style={styles.listWrapper}>
