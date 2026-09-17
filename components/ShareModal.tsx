@@ -2,6 +2,8 @@
  * ShareModal — external sharing plus internal sharing.
  * Internal sharing keeps recent chats and also provides a global user search.
  */
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import React, { useEffect, useState } from "react";
 import {
   Modal, View, Text, FlatList, Pressable, Share, StyleSheet,
@@ -178,6 +180,16 @@ export function ShareModal({
     const recipientId = recipient.otherUserId;
     if (!recipientId) return;
     const chatId = recipient.chatId || [user.uid, recipientId].sort().join("_");
+    
+    // التأكد من وجود مستند المحادثة أو إنشائه تلقائياً لمنع خطأ CHAT_NOT_FOUND
+    try {
+        await setDoc(doc(db, "chats", chatId), {
+            participants: [user.uid, recipientId].sort(),
+            lastAt: new Date().toISOString(),
+        }, { merge: true });
+    } catch (e) {
+        console.error("Auto-create chat error:", e);
+    }
     setSendingId(recipientId);
     try {
       const myProfile = await getUserProfile(user.uid);
