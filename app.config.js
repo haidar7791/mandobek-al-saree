@@ -1,11 +1,12 @@
 module.exports = {
   name: "فورس",
   slug: "sanad-app",
-  version: "23",
+  version: "24",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "forus",
   userInterfaceStyle: "light",
+  jsEngine: "hermes",
   newArchEnabled: true,
   splash: {
     image: "./assets/images/icon.png",
@@ -22,11 +23,15 @@ module.exports = {
       UIBackgroundModes: ["remote-notification"],
     },
   },
+  androidStatusBar: {
+    barStyle: "light-content",
+  },
   android: {
     package: "com.haidar.forus",
     googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "pan",
-    versionCode: 23,
+    versionCode: 24,
+    edgeToEdgeEnabled: true,
     permissions: [
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
