@@ -1842,10 +1842,10 @@ const isFocused = useIsFocused();
               fontSize: 20,
               fontWeight: "900",
               letterSpacing: 0.5,
-              transform: [{ translateX: -6 }],
+              transform: [{ translateX: -9 }],
             }}
           >
-            <Text style={{ fontSize: 32, fontWeight: "bold", color: "#FFF", letterSpacing: 0, marginRight: 12, transform: [{ translateX: -15 }] }}>ℱ𝒪 ℛ𝒰 𝒮</Text>
+            <Text style={{ fontSize: 32, fontWeight: "bold", color: "#FFF", letterSpacing: 0, marginRight: 12, transform: [{ translateX: -18 }] }}>ℱ𝒪 ℛ𝒰 𝒮</Text>
           </Text>
 
           <View style={styles.headerLeftGroup}>
