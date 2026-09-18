@@ -52,25 +52,11 @@ module.exports = {
             host: "forus-backend-new-911663879269.europe-west1.run.app",
             pathPrefix: "/product",
           },
-        ],
-      },
-      {
-        action: "VIEW",
-        autoVerify: true,
-        category: ["BROWSABLE", "DEFAULT"],
-        data: [
           {
             scheme: "https",
             host: "forus-backend-new-911663879269.europe-west1.run.app",
             pathPrefix: "/profile",
           },
-        ],
-      },
-      {
-        action: "VIEW",
-        autoVerify: true,
-        category: ["BROWSABLE", "DEFAULT"],
-        data: [
           {
             scheme: "https",
             host: "forus-backend-new-911663879269.europe-west1.run.app",
