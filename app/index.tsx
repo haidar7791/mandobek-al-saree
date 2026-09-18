@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -29,6 +30,8 @@ import {
 import { pickGoogleEmail } from "@/lib/google-email-picker";
 
 const C = Colors.light;
+const PRIVACY_POLICY_URL =
+  "https://www.termsfeed.com/live/84beb1e7-05c9-4efc-983e-252e64c5765b";
 
 type ApiResponse = {
   ok?: boolean;
@@ -155,6 +158,12 @@ export default function AuthScreen() {
   const showError = (message: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     Alert.alert("تعذّر إكمال العملية", message);
+  };
+
+  const handlePrivacyPolicyPress = () => {
+    Linking.openURL(PRIVACY_POLICY_URL).catch(() => {
+      Alert.alert("تعذّر فتح الرابط", "يرجى المحاولة مرة أخرى.");
+    });
   };
 
   const handleManualLogin = async () => {
@@ -445,6 +454,16 @@ export default function AuthScreen() {
                 />
 
                 <Pressable
+                  onPress={handlePrivacyPolicyPress}
+                  style={styles.privacyPolicyButton}
+                  accessibilityRole="link"
+                  accessibilityLabel="فتح سياسة الخصوصية"
+                >
+                  <Feather name="external-link" size={14} color={C.accent} />
+                  <Text style={styles.privacyPolicyText}>سياسة الخصوصية</Text>
+                </Pressable>
+
+                <Pressable
                   onPress={() => {
                     setForgotEmail(email.trim());
                     setForgotVisible(true);
@@ -685,6 +704,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: undefined,
     color: C.accent,
+  },
+  privacyPolicyButton: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 5,
+  },
+  privacyPolicyText: {
+    fontSize: 13,
+    fontFamily: undefined,
+    color: C.accent,
+    textDecorationLine: "underline",
   },
   orRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 0 },
   orLine: { flex: 1, height: 1, backgroundColor: "#E2E5EA" },
