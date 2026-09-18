@@ -1214,7 +1214,7 @@ export default function ChatRoom({
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.select({ ios: "padding", android: "height", default: undefined })}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
       <LinearGradient

@@ -1259,19 +1259,46 @@ export function buildChatId(uid1: string, uid2: string): string {
 }
 
 export const assertCanSendChatMessage = async (chatId: string, senderId: string): Promise<void> => {
-  const chatSnap = await getDoc(doc(db, "chats", chatId));
-  if (!chatSnap.exists()) throw new Error("CHAT_NOT_FOUND");
+  const chatRef = doc(db, "chats", chatId);
+  let chatSnap = await getDoc(chatRef);
+
+  // إذا كانت هذه أول محادثة بين مستخدمين، أنشئ وثيقة المحادثة
+  // أولًا ثم أكمل نفس فحوصات الإرسال الحالية.
+  if (!chatSnap.exists()) {
+    const participants = chatId.split("_").filter(Boolean);
+
+    // الإنشاء التلقائي مخصص للمحادثات الفردية فقط.
+    // محادثات المجموعات يجب أن تكون موجودة مسبقًا.
+    if (participants.length !== 2 || !participants.includes(senderId)) {
+      throw new Error("CHAT_NOT_FOUND");
+    }
+
+    await setDoc(chatRef, {
+      participants: participants.sort(),
+      isGroup: false,
+      lastMessage: "",
+      lastAt: "",
+      lastSenderId: "",
+    });
+
+    chatSnap = await getDoc(chatRef);
+  }
+
   const data = chatSnap.data() as Record<string, any>;
   const participants: string[] = Array.isArray(data.participants) ? data.participants : [];
+
   if (!participants.includes(senderId)) throw new Error("NOT_CHAT_PARTICIPANT");
 
   // Group members can send media/messages freely. For one-to-one chats,
   // mirror the Firestore rule so a user who was blocked cannot send.
   if (data.isGroup === true) return;
+
   const otherUid = participants.find((uid) => uid !== senderId);
   if (!otherUid) return;
+
   const otherSnap = await getDoc(doc(db, "users", otherUid));
   const blockedUserIds = (otherSnap.data()?.blockedUserIds || []) as string[];
+
   if (blockedUserIds.includes(senderId)) throw new Error("USER_BLOCKED");
 };
 
