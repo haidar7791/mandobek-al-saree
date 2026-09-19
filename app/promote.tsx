@@ -171,7 +171,7 @@ export default function PromoteScreen() {
           </View>
           <View style={styles.benefitItem}>
             <Ionicons name="star" size={16} color={C.accent} />
-            <Text style={styles.benefitText}>شارة "مميز" تظهر بجانب اسمك</Text>
+            <Text style={styles.benefitText}>شارة &quot;مميز&quot; تظهر بجانب اسمك</Text>
           </View>
           <View style={styles.benefitItem}>
             <Ionicons name="people" size={16} color={C.accent} />

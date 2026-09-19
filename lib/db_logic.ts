@@ -6,7 +6,6 @@ import {
   getDocs,
   getDoc,
   doc,
-  documentId,
   updateDoc,
   query,
   where,

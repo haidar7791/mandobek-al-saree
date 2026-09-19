@@ -24,8 +24,8 @@ import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Svg, { Circle, Rect } from "react-native-svg";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import Svg, { Circle } from "react-native-svg";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
@@ -82,7 +82,6 @@ import Colors from "@/constants/colors";
 import {
   registerForPushNotifications,
   addNotificationTapListener,
-  performSignOut,
 } from "../lib/push_notifications";
 import { useProfileCheck } from "@/hooks/useProfileCheck";
 import { createActivityNotification, subscribeToNotifications } from "@/lib/notifications";
@@ -92,7 +91,6 @@ import ProfilePostComposerModal, {
 } from "@/components/ProfilePostComposerModal";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
-import ReservationsScreen from "./reservations";
 import { useVideoAudio } from "@/lib/video-audio-context";
 
 const getRelativeTime = (dateValue: string | number | Date) => {
@@ -138,12 +136,6 @@ const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 
 const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
 type CategoryTab = "home" | "products" | "services";
-
-const CATEGORY_TABS: { key: CategoryTab; label: string }[] = [
-  { key: "home", label: "الرئيسية" },
-  { key: "products", label: "المنتجات" },
-  { key: "services", label: "الخدمات" },
-];
 
 const SERVICE_CATEGORY_TABS: {
   key: ServiceCategory;
@@ -1440,7 +1432,6 @@ const isFocused = useIsFocused();
   const [storyPublishProgress, setStoryPublishProgress] = useState(0);
   const [productPublishing, setProductPublishing] = useState(false);
   const [productPublishProgress, setProductPublishProgress] = useState(0);
-  const [productProgressSize, setProductProgressSize] = useState({ width: 0, height: 0 });
 
   // Background publish indicators. Progress intentionally approaches 92%
   // while uploading and reaches 100% only when the background task removes
@@ -1671,20 +1662,6 @@ const isFocused = useIsFocused();
     await loadData();
     setRefreshing(false);
   }, [loadData]);
-
-  const handleLogout = async () => {
-    Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج؟", [
-      { text: "إلغاء", style: "cancel" },
-      {
-        text: "خروج",
-        style: "destructive",
-        onPress: async () => {
-          await performSignOut();
-          router.replace("/");
-        },
-      },
-    ]);
-  };
 
   const filteredArtisans = React.useMemo(() => {
     let result = [...artisans];

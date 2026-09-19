@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { Buffer } = require("node:buffer");
 /**
  * Deploys Firebase Realtime Database security rules using firebase-admin SDK.
  * Run once: node scripts/deploy-rtdb-rules.js
