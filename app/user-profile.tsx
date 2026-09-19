@@ -253,7 +253,7 @@ export default function UserProfileScreen() {
   };
 
   // While resolving an artisan redirect, show nothing to avoid flash
-  if (loading && resolvedRole === null) {
+  if (loading && resolvedRole === null && !profile) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color={C.accent} />
@@ -277,7 +277,7 @@ export default function UserProfileScreen() {
               <Text style={styles.initialsText}>{initials}</Text>
             </View>
           )}
-          {loading ? (
+          {!profile ? (
             <ActivityIndicator color={C.accent} style={{ marginTop: 12 }} />
           ) : (
             <>
@@ -287,7 +287,7 @@ export default function UserProfileScreen() {
               ) : null}
             </>
           )}
-          {!loading && (
+          {profile && (
             <View style={styles.statsRow}>
               <Pressable
                 style={styles.statItem}
@@ -329,7 +329,7 @@ export default function UserProfileScreen() {
         </View>
       </LinearGradient>
 
-      {!loading && (
+      {profile && (
         <ScrollView
           style={styles.bodyScroll}
           contentContainerStyle={{ paddingBottom: bottomPad + 24 }}

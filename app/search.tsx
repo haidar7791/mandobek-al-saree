@@ -16,7 +16,6 @@ import {
   getSpecialtyLabel,
   isFeaturedActive,
   createProductOrder,
-  cancelProductOrder,
   getUserProfile,
   likeProduct,
   type ArtisanProfile,

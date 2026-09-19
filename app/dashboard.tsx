@@ -148,37 +148,6 @@ const SERVICE_CATEGORY_TABS: {
   { key: "delivery", label: "توصيل", icon: "navigation" },
 ];
 
-function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
-  return (
-    <View style={{ flexDirection: "row", gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons
-          key={i}
-          name={i <= Math.round(rating) ? "star" : "star-outline"}
-          size={size}
-          color={i <= Math.round(rating) ? "#F59E0B" : C.textMuted}
-        />
-      ))}
-    </View>
-  );
-}
-
-function StarRow({ rating }: { rating: number }) {
-  const full = Math.floor(rating);
-  const half = rating - full >= 0.4;
-  return (
-    <View style={{ flexDirection: "row", gap: 2 }}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons
-          key={i}
-          name={i <= full ? "star" : half && i === full + 1 ? "star-half" : "star-outline"}
-          size={12}
-          color="#F59E0B"
-        />
-      ))}
-    </View>
-  );
-}
 
 
 function ArtisanCard({
