@@ -3823,6 +3823,8 @@ export const createProduct = async (data: {
     ownerName: currentSellerName,
     sellerPhone: data.sellerPhone,
     likesCount: 0,
+    commentsCount: 0,
+    sharesCount: 0,
     sellerFeaturedUntil,
     colors: (data.colors ?? []).filter((c) => c.trim()),
     sizes: (data.sizes ?? []).filter((s) => s.trim()),
@@ -4034,6 +4036,15 @@ export function rankProductsForFeed(
 export const createProductOrder = async (
   data: Omit<ProductOrder, "id" | "createdAt" | "status">
 ): Promise<string> => {
+  const productSnapshot = await getDoc(doc(db, "products", data.productId));
+  if (!productSnapshot.exists()) {
+    throw new Error("المنتج غير متاح");
+  }
+  const productData = productSnapshot.data() as Partial<Product>;
+  if (productData.status !== "available") {
+    throw new Error("تم بيع هذا المنتج أو لم يعد متاحاً");
+  }
+
   const docRef = await addDoc(collection(db, "productOrders"), {
     ...data,
     status: "pending",

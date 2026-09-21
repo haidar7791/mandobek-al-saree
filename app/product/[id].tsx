@@ -7,10 +7,16 @@ import {
   Text,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { auth } from "@/lib/firebase";
-import { likeProduct, subscribeToProducts, type Product } from "@/lib/db_logic";
+import {
+  getIsProductLiked,
+  likeProduct,
+  subscribeToProducts,
+  unlikeProduct,
+  type Product,
+} from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReportButton from "@/components/ReportButton";
@@ -31,14 +37,60 @@ export default function ProductScreen() {
   }, [productParam]);
   const [product, setProduct] = useState<Product | null>(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(initialProduct?.likesCount ?? 0);
+  const [likePending, setLikePending] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToProducts((products) => {
-      setProduct(products.find((item) => item.id === id) ?? initialProduct);
+      const nextProduct = products.find((item) => item.id === id) ?? initialProduct;
+      setProduct(nextProduct);
+      setLikesCount(nextProduct?.likesCount ?? 0);
       setLoading(false);
     }, () => setLoading(false));
     return unsubscribe;
   }, [id, initialProduct]);
+
+  useEffect(() => {
+    const viewer = auth.currentUser;
+    if (!viewer || !product || viewer.uid === product.sellerId) {
+      setIsLiked(false);
+      return;
+    }
+    let cancelled = false;
+    getIsProductLiked(viewer.uid, product.id)
+      .then((liked) => {
+        if (!cancelled) setIsLiked(liked);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [product?.id, product?.sellerId]);
+
+  const handleLike = async () => {
+    const viewer = auth.currentUser;
+    if (!viewer || !product || viewer.uid === product.sellerId || likePending) return;
+
+    const previousLiked = isLiked;
+    const previousCount = likesCount;
+    const nextLiked = !previousLiked;
+    setLikePending(true);
+    setIsLiked(nextLiked);
+    setLikesCount(Math.max(0, previousCount + (nextLiked ? 1 : -1)));
+    try {
+      if (nextLiked) {
+        await likeProduct(viewer.uid, product.id);
+      } else {
+        await unlikeProduct(viewer.uid, product.id);
+      }
+    } catch {
+      setIsLiked(previousLiked);
+      setLikesCount(previousCount);
+    } finally {
+      setLikePending(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -76,9 +128,11 @@ export default function ProductScreen() {
              media={normalizeProductMedia(product.media, product.imageUrl)}
              height={320}
              onDoubleTapLike={async () => {
-               const viewer = auth.currentUser;
-               if (!viewer || viewer.uid === product.sellerId) return false;
-               return likeProduct(viewer.uid, product.id);
+                const viewer = auth.currentUser;
+                if (!viewer || viewer.uid === product.sellerId || likePending) return false;
+                const before = isLiked;
+                await handleLike();
+                return !before;
              }}
            />
           <View style={styles.details}>
@@ -89,6 +143,18 @@ export default function ProductScreen() {
               <Text style={styles.title}>{product.title}</Text>
             </View>
             {product.description ? <Text style={styles.description}>{product.description}</Text> : null}
+            {auth.currentUser?.uid !== product.sellerId && (
+              <Pressable
+                style={styles.likeRow}
+                onPress={() => { void handleLike(); }}
+                disabled={likePending}
+                accessibilityRole="button"
+                accessibilityLabel={isLiked ? "إلغاء إعجاب المنتج" : "الإعجاب بالمنتج"}
+              >
+                <Text style={styles.likeCount}>{likesCount} إعجاب</Text>
+                <Feather name={isLiked ? "heart" : "heart"} size={21} color={isLiked ? "#EF4444" : C.textSecondary} />
+              </Pressable>
+            )}
             <View style={styles.divider} />
             <Pressable
               style={styles.sellerRow}
@@ -141,6 +207,8 @@ const styles = StyleSheet.create({
   priceBadge: { backgroundColor: "#FFF8EC", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   price: { fontSize: 14, fontFamily: undefined, color: C.accent },
   description: { marginTop: 18, fontSize: 15, lineHeight: 27, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
+  likeRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 16 },
+  likeCount: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
   divider: { height: 1, backgroundColor: C.border, marginVertical: 20 },
   sellerRow: { flexDirection: "row", alignItems: "center", gap: 11 },
   sellerIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#FFF8EC", alignItems: "center", justifyContent: "center" },

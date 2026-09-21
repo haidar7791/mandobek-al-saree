@@ -46,6 +46,8 @@ attached_assets/*firebase-adminsdk*.json
 
 .env
 google-key.json
+credentials.json
+credentials/
 google-key.json
 google-key.json
 google-key.json

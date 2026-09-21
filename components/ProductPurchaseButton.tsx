@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   gradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   buttonText: { fontSize: 15, fontFamily: undefined, color: C.primary },
   publicProfileButtonText: { fontSize: 13, fontFamily: undefined, color: C.primary },
-  publicProfilePurchaseButtonText: { fontSize: 6, fontFamily: undefined, color: C.primary },
+  publicProfilePurchaseButtonText: { fontSize: 13, fontFamily: undefined, color: C.primary },
   disabled: { opacity: 0.6 },
   cancelButton: { backgroundColor: "#DC2626", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   cancelText: { fontSize: 14, fontFamily: undefined, color: "#FFF" },

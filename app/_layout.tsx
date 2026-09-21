@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, router } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import React, { useEffect, useRef, useState } from "react";
@@ -39,6 +39,7 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!isLoggedIn}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="reset-password" />
       </Stack.Protected>
 
       <Stack.Protected guard={isLoggedIn}>
@@ -59,6 +60,13 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="promote" />
         <Stack.Screen name="story-creator" />
         <Stack.Screen name="story-viewer" />
+        <Stack.Screen name="add-product" />
+        <Stack.Screen name="group-details" />
+        <Stack.Screen name="group-media" />
+        <Stack.Screen name="group-members" />
+        <Stack.Screen name="product-orders" />
+        <Stack.Screen name="search" />
+        <Stack.Screen name="user-search" />
       </Stack.Protected>
     </Stack>
   );
@@ -233,8 +241,14 @@ export default function RootLayout() {
       let path = "";
       if (url.startsWith("forus://")) {
         path = url.replace(/^forus:\/\//, "");
-      } else if (url.startsWith("https://forus-backend-new-911663879269.europe-west1.run.app/")) {
+      } else if (
+        url.startsWith("https://forus-backend-911663879269.europe-west1.run.app/") ||
+        url.startsWith("https://forus-backend-new-911663879269.europe-west1.run.app/")
+      ) {
         path = url.replace(/^https:\/\/forus-backend-911663879269\.europe-west1\.run\.app\//, "");
+        if (path === url) {
+          path = url.replace(/^https:\/\/forus-backend-new-911663879269\.europe-west1\.run\.app\//, "");
+        }
       } else {
         return;
       }

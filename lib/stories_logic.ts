@@ -69,6 +69,12 @@ export type StoryViewerProfile = {
   photoUri: string | null;
 };
 
+function isStoryActive(story: Pick<Story, "createdAt" | "expiresAt">): boolean {
+  const fallbackExpiry = new Date(story.createdAt).getTime() + 24 * 60 * 60 * 1000;
+  const expiry = new Date(story.expiresAt || fallbackExpiry).getTime();
+  return Number.isFinite(expiry) ? expiry > Date.now() : false;
+}
+
 // ─── Upload helpers ────────────────────────────────────────────────────────────
 
 /**
@@ -276,6 +282,7 @@ export function subscribeToActiveStories(
 
       const map = new Map<string, StoryGroup>();
       for (const story of all) {
+        if (!isStoryActive(story)) continue;
         if (story.userId === currentUserId) continue;
         if (!map.has(story.userId)) {
           map.set(story.userId, {
@@ -301,7 +308,7 @@ export function subscribeToActiveStories(
         if (latest) {
           group.coverImageUri =
             latest.mediaType === "video"
-              ? (latest.thumbnailUrl ?? latest.userPhotoUri)
+              ? (latest.thumbnailUrl ?? latest.mediaUrl ?? latest.userPhotoUri)
               : latest.mediaUrl;
         }
       }
@@ -341,7 +348,7 @@ export function subscribeToMyStories(
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const active = snap.docs
         .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
-        .filter((s) => s.createdAt > since)
+        .filter((s) => s.createdAt > since && isStoryActive(s))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
       onData(active);
@@ -370,7 +377,7 @@ export async function fetchUserStories(userId: string): Promise<Story[]> {
       const snap = await getDocs(q);
       return snap.docs
         .map((d) => ({ id: d.id, ...(d.data() as Omit<Story, "id">) }))
-        .filter((s) => s.createdAt > since)
+        .filter((s) => s.createdAt > since && isStoryActive(s))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     } catch (err) {
       console.error(`[stories] fetchUserStories attempt ${attempt + 1} failed:`, err);
