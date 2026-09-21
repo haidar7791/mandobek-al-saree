@@ -169,7 +169,7 @@ export default function ResetPasswordScreen() {
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Pressable onPress={() => router.replace("/" as any)} style={styles.backBtn}>
             <Feather name="chevron-right" size={24} color="#FFF" />
           </Pressable>
           <View style={styles.headerTextGroup}>

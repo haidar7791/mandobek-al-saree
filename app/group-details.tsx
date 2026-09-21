@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, TextInput, Modal } from "react-native";
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -60,7 +60,10 @@ export default function GroupDetailsScreen() {
     Alert.alert("مغادرة المجموعة", "هل تريد مغادرة هذه المجموعة؟ لن ترى محادثاتها بعد المغادرة.", [
       { text: "إلغاء", style: "cancel" },
       { text: "مغادرة", style: "destructive", onPress: async () => {
-        try { await leaveGroup(chatId, uid); router.replace("/messages"); }
+        try {
+          await leaveGroup(chatId, uid);
+          navigateWithHomeBase("/messages" as any);
+        }
         catch { Alert.alert("خطأ", "تعذّرت مغادرة المجموعة"); }
       } },
     ]);
