@@ -1,20 +1,19 @@
 import { router } from "expo-router";
 
 /**
- * Opens a screen with a clean authenticated navigation base.
+ * Opens a screen without adding another stale screen to the stack.
  *
- * dismissAll() returns to the first screen in the protected stack (Home).
- * Pushing the destination after that leaves exactly one Home screen below it,
- * so Back never walks through stale search/profile/detail screens.
+ * The previous stack-pop approach was not handled reliably by the protected
+ * Expo Router stack, so use replace instead. Replacing keeps the current
+ * stack bounded and avoids replaying search/profile/detail screens.
  */
 export function navigateWithHomeBase(target: any): void {
-  router.dismissAll();
-  router.push(target);
+  router.replace(target);
 }
 
 /**
- * Return to the single Home root without replaying the previous stack.
+ * Return to Home without dispatching an unsupported stack-pop action.
  */
 export function goHome(): void {
-  router.dismissAll();
+  router.replace("/dashboard" as any);
 }
