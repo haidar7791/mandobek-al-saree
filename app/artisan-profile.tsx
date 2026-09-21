@@ -43,7 +43,7 @@ import PublicProfileTabs from "@/components/PublicProfileTabs";
 import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "../lib/notifications";
-import { navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -105,7 +105,7 @@ export default function ArtisanProfileScreen() {
         // Canonical routing: client accounts always use /user-profile so the
         // public profile looks identical regardless of where it was opened.
         if (artisanData.specialty === "client") {
-          navigateWithHomeBase({
+          router.replace({
             pathname: "/user-profile",
             params: {
               userId: artisanData.userId,
@@ -142,7 +142,7 @@ export default function ArtisanProfileScreen() {
 
   useEffect(() => {
     if (initialArtisan?.specialty === "client") {
-      navigateWithHomeBase({
+      router.replace({
         pathname: "/user-profile",
         params: {
           userId: initialArtisan.userId,
@@ -289,10 +289,20 @@ export default function ArtisanProfileScreen() {
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
       {/* ─────────────── HERO (gradient) ─────────────── */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 6 }]}>
-        {/* Public profile share button — replaces the visible back button. */}
-        <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
-          <Feather name="share-2" size={19} color={C.accent} />
-        </Pressable>
+        <View style={styles.navActions}>
+          <Pressable
+            style={styles.topBackBtn}
+            onPress={goBack}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+          >
+            <Feather name="arrow-right" size={20} color={C.accent} />
+          </Pressable>
+          <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
+            <Feather name="share-2" size={19} color={C.accent} />
+          </Pressable>
+        </View>
 
         {/* Photo — centered */}
         <View style={styles.photoWrap}>
@@ -513,13 +523,26 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     alignItems: "center",
   },
+  navActions: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  topBackBtn: {
+    width: 38, height: 38, borderRadius: 11,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
+    alignItems: "center", justifyContent: "center",
+  },
   topShareBtn: {
     alignSelf: "flex-start",
     width: 38, height: 38, borderRadius: 11,
     backgroundColor: "rgba(201,168,76,0.12)",
     borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
     alignItems: "center", justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 0,
   },
 
   // Photo

@@ -915,6 +915,7 @@ const isFocused = useIsFocused();
   const isInlineVideoPlayingRef = useRef(true);
   const [reelIndex, setReelIndex] = useState(0);
   const [showReels, setShowReels] = useState(false);
+  const reopenReelsOnFocusRef = useRef(false);
   const [commentPost, setCommentPost] = useState<HomeFeedPost | null>(null);
   const [comments, setComments] = useState<HomeFeedComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -1184,6 +1185,16 @@ const isFocused = useIsFocused();
     if (homeFeed.length === 0 && !homeLoadingMore && !homeRefreshing) {
       loadHomeFeed();
     }
+    if (reopenReelsOnFocusRef.current) {
+      const timer = setTimeout(() => {
+        if (!isFocusedRef.current) return;
+        reopenReelsOnFocusRef.current = false;
+        isReelsOpenRef.current = true;
+        setShowReels(true);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
   }, [loadHomeFeed, homeFeed.length, homeLoadingMore, homeRefreshing]));
 
   useEffect(() => {
@@ -2506,6 +2517,11 @@ const isFocused = useIsFocused();
          }}
         onOpenProfile={(item) => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+           const currentVideoIndex = homeFeed
+             .filter((post) => post.mediaType === "video")
+             .findIndex((post) => post.id === item.id);
+           if (currentVideoIndex >= 0) setReelIndex(currentVideoIndex);
+           reopenReelsOnFocusRef.current = true;
           setShowReels(false);
           navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
         }}

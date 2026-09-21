@@ -35,6 +35,7 @@ import {
   type AdminReport,
 } from "@/lib/admin_reporting";
 import Colors from "@/constants/colors";
+import { goBack } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -588,6 +589,14 @@ export default function AdminDashboardScreen() {
       <LinearGradient colors={["#1A0D3E", "#0D1B3E"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
           <Pressable
+            onPress={goBack}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+          >
+            <Feather name="arrow-right" size={21} color="rgba(255,255,255,0.8)" />
+          </Pressable>
+          <Pressable
             onPress={() => Alert.alert("تسجيل الخروج", "هل تريد الخروج من لوحة التحكم؟", [
               { text: "إلغاء", style: "cancel" },
               { text: "خروج", style: "destructive", onPress: () => router.replace("/") },
@@ -729,6 +738,11 @@ const styles = StyleSheet.create({
   headerContent: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 20, paddingBottom: 16, gap: 12,
+  },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center", justifyContent: "center",
   },
   logoutBtn: {
     width: 40, height: 40, borderRadius: 12,

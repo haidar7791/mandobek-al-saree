@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { auth } from "./firebase";
 
 /**
  * Open a child screen while keeping the current screen mounted underneath it.
@@ -18,7 +19,10 @@ export function goBack(): void {
     router.back();
     return;
   }
-  router.replace("/dashboard" as any);
+  // A protected screen opened from a cold start may have no parent entry.
+  // Always keep the user inside the correct auth branch instead of allowing
+  // the native back action to close the app or reveal the login route.
+  router.replace((auth.currentUser ? "/dashboard" : "/") as any);
 }
 
 /**

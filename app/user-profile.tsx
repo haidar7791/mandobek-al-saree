@@ -38,7 +38,7 @@ import FollowersModal from "@/components/FollowersModal";
 import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "@/lib/notifications";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -88,7 +88,7 @@ export default function UserProfileScreen() {
           const artisan = await getArtisanByUserId(userId);
           if (cancelled) return;
           if (artisan) {
-            navigateWithHomeBase({
+            router.replace({
               pathname: "/artisan-profile",
               params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
             } as any);
@@ -266,9 +266,20 @@ export default function UserProfileScreen() {
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.hero, { paddingTop: topPad + 8 }]}>
         <View style={styles.nav}>
-          <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
-            <Feather name="share-2" size={19} color={C.accent} />
-          </Pressable>
+          <View style={styles.navActions}>
+            <Pressable
+              style={styles.topBackBtn}
+              onPress={goBack}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="رجوع"
+            >
+              <Feather name="arrow-right" size={20} color={C.accent} />
+            </Pressable>
+            <Pressable style={styles.topShareBtn} onPress={() => setShareVisible(true)} hitSlop={8}>
+              <Feather name="share-2" size={19} color={C.accent} />
+            </Pressable>
+          </View>
         </View>
         <View style={styles.heroContent}>
           {photoUri ? (
@@ -424,6 +435,13 @@ const styles = StyleSheet.create({
   bodyScroll: { flex: 1 },
   hero: { paddingHorizontal: 16, paddingBottom: 20 },
   nav: { alignSelf: "flex-start", marginBottom: 12 },
+  navActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  topBackBtn: {
+    width: 38, height: 38, borderRadius: 11,
+    backgroundColor: "rgba(201,168,76,0.12)",
+    borderWidth: 1, borderColor: "rgba(201,168,76,0.35)",
+    alignItems: "center", justifyContent: "center",
+  },
   topShareBtn: {
     width: 38, height: 38, borderRadius: 11,
     backgroundColor: "rgba(201,168,76,0.12)",
