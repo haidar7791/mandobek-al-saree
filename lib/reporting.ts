@@ -1,11 +1,12 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { buildModerationNotificationData } from "./notifications";
 
 export type ReportTargetType = "product" | "post" | "story" | "chat";
 
@@ -86,7 +87,11 @@ export async function submitReport({
     reporterName = user.email?.split("@")[0]?.trim() || "مستخدم";
   }
 
-  await addDoc(collection(db, "reports"), {
+  const reportRef = doc(collection(db, "reports"));
+  const notificationRef = doc(collection(db, "notifications"));
+  const batch = writeBatch(db);
+
+  batch.set(reportRef, {
     reporterId: user.uid,
     reporterName,
     targetType,
@@ -98,4 +103,15 @@ export async function submitReport({
     status: "open",
     createdAt: serverTimestamp(),
   });
+  batch.set(
+    notificationRef,
+    buildModerationNotificationData({
+      recipientId: user.uid,
+      title: "تم استلام البلاغ",
+      body: "تلقينا بلاغك بنجاح، نقوم حالياً بمراجعته من قبل الإدارة وسنوافيك بالمستجدات قريباً. شكراً لمساهمتك في جعل التطبيق أكثر أماناً",
+      entityId: cleanTargetId,
+      entityType: targetType,
+    }),
+  );
+  await batch.commit();
 }

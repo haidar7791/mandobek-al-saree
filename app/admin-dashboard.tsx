@@ -189,12 +189,88 @@ function formatReportDate(value: unknown): string {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()} - ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function reportMessageLabel(message: {
+  text: string;
+  type?: string;
+  deleted?: boolean;
+}): string {
+  if (message.deleted) return "تم حذف هذه الرسالة";
+  if (message.text) return message.text;
+  if (message.type === "image") return "صورة";
+  if (message.type === "video") return "فيديو";
+  if (message.type === "audio") return "رسالة صوتية";
+  if (message.type === "location") return "موقع";
+  return "رسالة بدون نص";
+}
+
 const reportTargetLabels: Record<AdminReport["targetType"], string> = {
   product: "منتج",
   post: "منشور",
   story: "استوري",
   chat: "محادثة",
 };
+
+function ReportPreview({ item }: { item: AdminReport }) {
+  const preview = item.preview;
+  if (!preview) return null;
+
+  return (
+    <View style={styles.reportPreview}>
+      <View style={styles.reportPreviewHeader}>
+        <Feather name="eye" size={14} color={C.primary} />
+        <Text style={styles.reportPreviewTitle}>معاينة المحتوى</Text>
+      </View>
+
+      {preview.imageUrl && (
+        <Image
+          source={{ uri: preview.imageUrl }}
+          style={styles.reportPreviewImage}
+          resizeMode="cover"
+        />
+      )}
+
+      {!!preview.title && (
+        <Text style={styles.reportPreviewContentTitle} numberOfLines={2}>
+          {preview.title}
+        </Text>
+      )}
+      {!!preview.text && (
+        <Text style={styles.reportPreviewText} numberOfLines={6}>
+          {preview.text}
+        </Text>
+      )}
+
+      {!!preview.messages?.length && (
+        <View style={styles.reportMessages}>
+          {preview.messages.map((message) => (
+            <View key={message.id} style={styles.reportMessage}>
+              <View style={styles.reportMessageMeta}>
+                <Text style={styles.reportMessageDate}>{formatReportDate(message.createdAt)}</Text>
+                <Text style={styles.reportMessageSender} numberOfLines={1}>
+                  {message.senderName}
+                </Text>
+              </View>
+              <Text style={styles.reportMessageText} numberOfLines={4}>
+                {reportMessageLabel(message)}
+              </Text>
+              {!!message.mediaUrl && (message.type === "image" || message.type === "video") && (
+                <Image
+                  source={{ uri: message.mediaUrl }}
+                  style={styles.reportMessageImage}
+                  resizeMode="cover"
+                />
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {!preview.imageUrl && !preview.title && !preview.text && !preview.messages?.length && (
+        <Text style={styles.reportPreviewEmpty}>تعذر العثور على تفاصيل إضافية لهذا المحتوى</Text>
+      )}
+    </View>
+  );
+}
 
 function ReportCard({
   item,
@@ -256,6 +332,8 @@ function ReportCard({
           <Text style={styles.reportDetailLabel}>تاريخ البلاغ</Text>
         </View>
       </View>
+
+      <ReportPreview item={item} />
 
       {!item.targetExists && !deleted && (
         <View style={styles.reportNotice}>
@@ -812,6 +890,76 @@ const styles = StyleSheet.create({
   },
   reportDetailLabel: { fontSize: 11, fontFamily: undefined, color: C.textMuted },
   reportDetailValue: { flex: 1, fontSize: 12, fontFamily: undefined, color: C.text, textAlign: "right" },
+  reportPreview: {
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  reportPreviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  reportPreviewTitle: { fontSize: 12, fontFamily: undefined, color: C.primary },
+  reportPreviewImage: {
+    width: "100%",
+    height: 150,
+    borderRadius: 9,
+    backgroundColor: "#E5E7EB",
+  },
+  reportPreviewContentTitle: {
+    fontSize: 13,
+    fontFamily: undefined,
+    color: C.text,
+    textAlign: "right",
+  },
+  reportPreviewText: {
+    fontSize: 12,
+    lineHeight: 19,
+    fontFamily: undefined,
+    color: C.textSecondary,
+    textAlign: "right",
+  },
+  reportPreviewEmpty: {
+    fontSize: 11,
+    fontFamily: undefined,
+    color: C.textMuted,
+    textAlign: "right",
+  },
+  reportMessages: { gap: 7 },
+  reportMessage: {
+    gap: 4,
+    padding: 8,
+    borderRadius: 9,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  reportMessageMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  reportMessageSender: { flex: 1, fontSize: 10, fontFamily: undefined, color: C.primary, textAlign: "right" },
+  reportMessageDate: { fontSize: 9, fontFamily: undefined, color: C.textMuted },
+  reportMessageText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: undefined,
+    color: C.text,
+    textAlign: "right",
+  },
+  reportMessageImage: {
+    width: "100%",
+    height: 90,
+    borderRadius: 7,
+    backgroundColor: "#E5E7EB",
+  },
   reportNotice: {
     flexDirection: "row",
     alignItems: "center",

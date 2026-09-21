@@ -9,6 +9,7 @@ config.resolver = {
   ...config.resolver,
   blockList: [
     /\.local[\/\\]/,
+    /\.config[\/\\]/,
   ],
 };
 

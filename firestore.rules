@@ -261,7 +261,10 @@ service cloud.firestore {
       // إنشاء إشعار باسم المستخدم الحالي فقط
       allow create: if isSignedIn()
         && request.resource.data.actorId == request.auth.uid
-        && request.resource.data.recipientId != request.auth.uid;
+        && (
+          request.resource.data.recipientId != request.auth.uid
+          || request.resource.data.type == "moderation"
+        );
 
       allow update: if isSignedIn()
         && resource.data.recipientId == request.auth.uid

@@ -20,7 +20,8 @@ export type ActivityNotificationType =
   | "follow"
   | "comment"
   | "share"
-  | "purchase";
+  | "purchase"
+  | "moderation";
 
 export type ActivityNotificationAction = "new" | "accepted" | "rejected";
 
@@ -34,7 +35,7 @@ export type ActivityNotification = {
   title: string;
   body: string;
   entityId?: string;
-  entityType?: "post" | "product" | "story" | "profile" | "order" | "service";
+  entityType?: "post" | "product" | "story" | "chat" | "profile" | "order" | "service";
   action?: ActivityNotificationAction;
   read: boolean;
   createdAt: string;
@@ -178,6 +179,43 @@ export const createActivityNotification = async (input: {
     // Activity logging must never make the original like/order/follow fail.
     console.error("createActivityNotification error:", error);
   }
+};
+
+export type ModerationNotificationInput = {
+  recipientId: string;
+  title: string;
+  body: string;
+  entityId?: string;
+  entityType?: ActivityNotification["entityType"];
+};
+
+export function buildModerationNotificationData(
+  input: ModerationNotificationInput,
+): Record<string, unknown> {
+  const actorId = auth.currentUser?.uid;
+  if (!actorId) throw new Error("NOTIFICATION_AUTH_REQUIRED");
+  if (!input.recipientId) throw new Error("NOTIFICATION_RECIPIENT_REQUIRED");
+
+  return {
+    recipientId: input.recipientId,
+    actorId,
+    actorName: "إدارة فورس",
+    actorPhotoUri: null,
+    type: "moderation",
+    title: input.title,
+    body: input.body,
+    entityId: input.entityId || null,
+    entityType: input.entityType || null,
+    action: null,
+    read: false,
+    createdAt: serverTimestamp(),
+  };
+}
+
+export const createModerationNotification = async (
+  input: ModerationNotificationInput,
+): Promise<void> => {
+  await addDoc(collection(db, "notifications"), buildModerationNotificationData(input));
 };
 
 export const subscribeToNotifications = (

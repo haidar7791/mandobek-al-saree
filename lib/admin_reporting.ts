@@ -5,6 +5,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -12,6 +15,7 @@ import {
 import { deleteObject, ref } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import { ADMIN_UID } from "./db_logic";
+import { buildModerationNotificationData } from "./notifications";
 import type { ReportTargetType } from "./reporting";
 
 const TARGET_COLLECTIONS: Record<ReportTargetType, string> = {
@@ -36,6 +40,26 @@ export type AdminReport = {
   targetCollection: string;
   targetExists: boolean;
   targetOwnerIds: string[];
+  preview?: AdminReportPreview;
+};
+
+export type AdminReportMessage = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  type?: string;
+  mediaUrl?: string;
+  createdAt: unknown;
+  deleted?: boolean;
+};
+
+export type AdminReportPreview = {
+  title?: string;
+  text?: string;
+  imageUrl?: string;
+  mediaType?: "image" | "video";
+  messages?: AdminReportMessage[];
 };
 
 function assertAdmin(): void {
@@ -84,15 +108,17 @@ function getOwnerIds(
     targetData?.sellerId,
     targetData?.senderId,
   ];
+  const reportOwnerIds = Array.isArray(report.targetOwnerIds) ? report.targetOwnerIds : [];
 
   if (targetType !== "chat") {
-    return uniqueIds([...explicitOwner, ...directOwners]);
+    return uniqueIds([...explicitOwner, ...reportOwnerIds, ...directOwners]);
   }
 
   const participants = Array.isArray(targetData?.participants) ? targetData.participants : [];
   const reporterId = typeof report.reporterId === "string" ? report.reporterId : "";
   return uniqueIds([
     ...explicitOwner,
+    ...reportOwnerIds,
     ...directOwners,
     ...participants.filter((participant) => participant !== ADMIN_UID && participant !== reporterId),
   ]).filter((id) => id !== ADMIN_UID);
@@ -100,6 +126,106 @@ function getOwnerIds(
 
 async function getTargetSnapshot(report: AdminReport) {
   return getDoc(doc(db, report.targetCollection, report.targetId));
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getPreviewImage(targetData: Record<string, unknown>): string {
+  const media = Array.isArray(targetData.media) ? targetData.media : [];
+  const imageMedia = media.find(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      (item as Record<string, unknown>).type === "image",
+  );
+  const mediaUrl =
+    imageMedia && typeof imageMedia === "object"
+      ? stringValue((imageMedia as Record<string, unknown>).url)
+      : "";
+
+  return (
+    stringValue(targetData.thumbnailUrl) ||
+    stringValue(targetData.imageUrl) ||
+    mediaUrl ||
+    (targetData.mediaType !== "video" ? stringValue(targetData.mediaUrl) : "") ||
+    (targetData.mediaType !== "video" ? stringValue(targetData.url) : "")
+  );
+}
+
+function getContentPreview(
+  targetType: ReportTargetType,
+  targetData: Record<string, unknown>,
+  report: AdminReport,
+): AdminReportPreview {
+  if (targetType === "product") {
+    return {
+      title: stringValue(targetData.title) || report.targetName || report.targetId,
+      text: stringValue(targetData.description),
+      imageUrl: getPreviewImage(targetData),
+      mediaType: targetData.mediaType === "video" ? "video" : "image",
+    };
+  }
+
+  if (targetType === "story") {
+    return {
+      text: stringValue(targetData.text),
+      imageUrl: getPreviewImage({
+        ...targetData,
+        mediaUrl: targetData.mediaUrl,
+        mediaType: targetData.mediaType,
+      }),
+      mediaType: targetData.mediaType === "video" ? "video" : "image",
+    };
+  }
+
+  return {
+    text:
+      stringValue(targetData.description) ||
+      stringValue(targetData.caption) ||
+      stringValue(targetData.text),
+    imageUrl: getPreviewImage(targetData),
+    mediaType: targetData.mediaType === "video" ? "video" : "image",
+  };
+}
+
+async function getChatPreview(chatId: string): Promise<AdminReportMessage[]> {
+  const mapMessage = (message: { id: string; data: () => Record<string, unknown> }): AdminReportMessage => {
+    const data = message.data();
+    return {
+      id: message.id,
+      senderId: stringValue(data.senderId),
+      senderName: stringValue(data.senderName) || "مستخدم",
+      text: stringValue(data.text),
+      type: stringValue(data.type) || undefined,
+      mediaUrl: stringValue(data.mediaUrl) || undefined,
+      createdAt: data.createdAt,
+      deleted: data.deleted === true,
+    };
+  };
+
+  try {
+    const snapshot = await getDocs(
+      query(
+        collection(db, "chats", chatId, "messages"),
+        orderBy("createdAt", "desc"),
+        limit(5),
+      ),
+    );
+    return snapshot.docs.reverse().map(mapMessage);
+  } catch (error) {
+    try {
+      const snapshot = await getDocs(collection(db, "chats", chatId, "messages"));
+      return snapshot.docs
+        .map(mapMessage)
+        .sort((a, b) => timestampMillis(a.createdAt) - timestampMillis(b.createdAt))
+        .slice(-5);
+    } catch (fallbackError) {
+      console.error("get reported chat preview failed:", error, fallbackError);
+      return [];
+    }
+  }
 }
 
 export async function getAdminReports(): Promise<AdminReport[]> {
@@ -123,6 +249,7 @@ export async function getAdminReports(): Promise<AdminReport[]> {
         targetCollection: TARGET_COLLECTIONS[data.targetType],
         targetExists: false,
         targetOwnerIds: [],
+        preview: undefined,
       } satisfies AdminReport];
     }).filter((report) => report.targetId.length > 0);
 
@@ -130,14 +257,23 @@ export async function getAdminReports(): Promise<AdminReport[]> {
     reports.map(async (report) => {
       try {
         const targetSnapshot = await getTargetSnapshot(report);
+        const targetData = targetSnapshot.exists()
+          ? (targetSnapshot.data() as Record<string, unknown>)
+          : null;
+        const preview = targetData
+          ? report.targetType === "chat"
+            ? { messages: await getChatPreview(report.targetId) }
+            : getContentPreview(report.targetType, targetData, report)
+          : undefined;
         return {
           ...report,
           targetExists: targetSnapshot.exists(),
           targetOwnerIds: getOwnerIds(
             report.targetType,
-            targetSnapshot.exists() ? (targetSnapshot.data() as Record<string, unknown>) : null,
+            targetData,
             report as unknown as Record<string, unknown>
           ),
+          preview,
         };
       } catch {
         return report;
@@ -155,6 +291,13 @@ export async function deleteReportedContent(report: AdminReport): Promise<void> 
   if (!targetSnapshot.exists()) return;
 
   const targetData = targetSnapshot.data() as Record<string, unknown>;
+  const ownerIds = getOwnerIds(
+    report.targetType,
+    targetData,
+    report as unknown as Record<string, unknown>,
+  ).filter((userId) => userId !== ADMIN_UID);
+  const notificationBody =
+    "تنبيه إداري: تم حذف محتواك لانتهاكه معايير وقواعد استخدام التطبيق (مثل سياسة سلامة الأطفال أو شروط النشر). يرجى الالتزام بالشروط لتجنب حظر حسابك نهائياً";
 
   if (report.targetType === "chat") {
     const messagesSnapshot = await getDocs(collection(db, "chats", report.targetId, "messages"));
@@ -163,11 +306,39 @@ export async function deleteReportedContent(report: AdminReport): Promise<void> 
       messagesSnapshot.docs.slice(index, index + 500).forEach((message) => batch.delete(message.ref));
       await batch.commit();
     }
-    await deleteDoc(targetRef);
+    const batch = writeBatch(db);
+    batch.delete(targetRef);
+    ownerIds.forEach((userId) => {
+      batch.set(
+        doc(collection(db, "notifications")),
+        buildModerationNotificationData({
+          recipientId: userId,
+          title: "تنبيه بشأن المحتوى",
+          body: notificationBody,
+          entityId: report.targetId,
+          entityType: report.targetType,
+        }),
+      );
+    });
+    await batch.commit();
     return;
   }
 
-  await deleteDoc(targetRef);
+  const deleteBatch = writeBatch(db);
+  deleteBatch.delete(targetRef);
+  ownerIds.forEach((userId) => {
+    deleteBatch.set(
+      doc(collection(db, "notifications")),
+      buildModerationNotificationData({
+        recipientId: userId,
+        title: "تنبيه بشأن المحتوى",
+        body: notificationBody,
+        entityId: report.targetId,
+        entityType: report.targetType,
+      }),
+    );
+  });
+  await deleteBatch.commit();
 
   if (report.targetType === "post") {
     const ownerId = getOwnerIds(report.targetType, targetData, report as unknown as Record<string, unknown>)[0];
@@ -220,20 +391,30 @@ export async function banReportedContentOwners(report: AdminReport): Promise<str
     throw new Error("REPORT_OWNER_NOT_FOUND");
   }
 
-  await Promise.all(
-    ownerIds.map((userId) =>
-      setDoc(
-        doc(db, "users", userId),
-        {
-          isBanned: true,
-          bannedAt: serverTimestamp(),
-          bannedBy: ADMIN_UID,
-          banReason: report.reasonLabel || report.reason,
-        },
-        { merge: true }
-      )
-    )
-  );
+  const batch = writeBatch(db);
+  ownerIds.forEach((userId) => {
+    batch.set(
+      doc(db, "users", userId),
+      {
+        isBanned: true,
+        bannedAt: serverTimestamp(),
+        bannedBy: ADMIN_UID,
+        banReason: report.reasonLabel || report.reason,
+      },
+      { merge: true },
+    );
+    batch.set(
+      doc(collection(db, "notifications")),
+      buildModerationNotificationData({
+        recipientId: userId,
+        title: "تنبيه إداري",
+        body: "تنبيه إداري: تم حظر حسابك نهائياً لمخالفتك معايير وقواعد استخدام التطبيق.",
+        entityId: report.targetId,
+        entityType: report.targetType,
+      }),
+    );
+  });
+  await batch.commit();
 
   return ownerIds;
 }
