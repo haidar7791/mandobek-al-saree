@@ -52,6 +52,27 @@ service cloud.firestore {
         );
     }
 
+    // Like transactions update an owner's aggregate counter even when the
+    // authenticated user is a different account from the content owner.
+    // Keep this exception limited to the counter fields used by the app.
+    function canUpdateContentLikeCounter() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["contentLikesCount"])
+        && request.resource.data.get("contentLikesCount", -1) is number
+        && request.resource.data.get("contentLikesCount", -1) >= 0;
+    }
+
+    // Profile-post likes also update the denormalized profilePosts array to
+    // keep that post's likesCount in sync with its likes subcollection.
+    function canUpdateProfilePostLikeCounters() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["profilePosts", "contentLikesCount"])
+        && request.resource.data.get("contentLikesCount", -1) is number
+        && request.resource.data.get("contentLikesCount", -1) >= 0;
+    }
+
     // ============================================================
     // Followers collection group
     // مطلوب لـ getFollowingProfiles()
@@ -70,9 +91,20 @@ service cloud.firestore {
 
       allow read, write: if isSignedIn();
 
-      // إعجابات المنشور
+      // إعجابات المنشور: كل مستخدم يدير مستند إعجابه فقط.
       match /likes/{likerId} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "createdAt",
+            "likedAt",
+            "likerId"
+          ]);
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+        allow update: if false;
       }
 
       // تعليقات المنشور
@@ -107,7 +139,18 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
 
       match /likes/{likerId} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId",
+            "userId",
+            "createdAt"
+          ]);
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+        allow update: if false;
       }
 
       match /comments/{commentId} {
@@ -159,7 +202,9 @@ service cloud.firestore {
             "banReason",
             "role"
           ]) == false
-        );
+        )
+        || canUpdateContentLikeCounter()
+        || canUpdateProfilePostLikeCounters();
 
       allow delete: if isAdmin();
 
@@ -320,7 +365,18 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
 
       match /likes/{likerId} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn();
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId",
+            "userId",
+            "createdAt"
+          ]);
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+        allow update: if false;
       }
 
       match /comments/{commentId} {
