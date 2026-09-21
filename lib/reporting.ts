@@ -48,6 +48,7 @@ type SubmitReportInput = {
   targetType: ReportTargetType;
   targetId: string;
   targetName?: string;
+  targetOwnerId?: string;
   reason: ReportReason;
   reasonLabel: string;
 };
@@ -56,6 +57,7 @@ export async function submitReport({
   targetType,
   targetId,
   targetName,
+  targetOwnerId,
   reason,
   reasonLabel,
 }: SubmitReportInput): Promise<void> {
@@ -90,6 +92,7 @@ export async function submitReport({
     targetType,
     targetId: cleanTargetId,
     ...(targetName?.trim() ? { targetName: targetName.trim() } : {}),
+    ...(targetOwnerId?.trim() ? { targetOwnerId: targetOwnerId.trim() } : {}),
     reason,
     reasonLabel,
     status: "open",

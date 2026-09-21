@@ -135,7 +135,33 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      allow read, write: if isSignedIn();
+      // الملف الشخصي قابل للقراءة للمستخدمين المسجلين، لكن حالة الحظر
+      // وحقول الإدارة لا يمكن تعديلها إلا من قبل المسؤول.
+      allow read: if isSignedIn();
+
+      allow create: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.get("isBanned", false) == false
+          && request.resource.data.get("role", "client") in ["client", "artisan"]
+        );
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && resource.data.get("isBanned", false) != true
+          && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "isBanned",
+            "bannedAt",
+            "bannedBy",
+            "banReason",
+            "role"
+          ]) == false
+        );
+
+      allow delete: if isAdmin();
 
       // المتابعون
       match /followers/{followerId} {

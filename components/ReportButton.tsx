@@ -25,6 +25,7 @@ type ReportButtonProps = {
   targetType: ReportTargetType;
   targetId: string;
   targetName?: string;
+  targetOwnerId?: string;
   variant?: "light" | "dark";
   style?: StyleProp<ViewStyle>;
 };
@@ -33,6 +34,7 @@ export default function ReportButton({
   targetType,
   targetId,
   targetName,
+  targetOwnerId,
   variant = "light",
   style,
 }: ReportButtonProps) {
@@ -56,6 +58,7 @@ export default function ReportButton({
         targetType,
         targetId,
         targetName,
+        targetOwnerId,
         reason: reason.value,
         reasonLabel: reason.label,
       });

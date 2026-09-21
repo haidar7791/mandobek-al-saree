@@ -322,6 +322,7 @@ function ProductCard({
           targetType="product"
           targetId={product.id}
           targetName={product.title}
+          targetOwnerId={product.sellerId}
           style={styles.productReportBtn}
         />
       )}
@@ -519,6 +520,7 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
             targetType="post"
             targetId={post.id}
             targetName={post.userName}
+            targetOwnerId={post.userId}
             style={styles.homePostReport}
           />
         )}
@@ -721,6 +723,7 @@ function HomeVideoViewer({
                           targetType="post"
                           targetId={item.id}
                           targetName={item.userName}
+                          targetOwnerId={item.userId}
                           variant="dark"
                           style={styles.reelReportBtn}
                         />

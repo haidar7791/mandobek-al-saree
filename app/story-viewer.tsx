@@ -484,6 +484,7 @@ export default function StoryViewerScreen() {
               targetType="story"
               targetId={story.id}
               targetName={story.userName}
+              targetOwnerId={story.userId}
               variant="dark"
               style={styles.topActionBtn}
             />

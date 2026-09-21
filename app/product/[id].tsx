@@ -42,6 +42,7 @@ export default function ProductScreen() {
              targetType="product"
              targetId={product.id}
              targetName={product.title}
+              targetOwnerId={product.sellerId}
              style={styles.headerReport}
            />
          ) : (

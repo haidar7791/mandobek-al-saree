@@ -1250,6 +1250,7 @@ export default function ChatRoom({
               targetType="chat"
               targetId={chatId}
               targetName={isGroup ? otherName : otherUserName ?? otherName}
+              targetOwnerId={otherUid ?? undefined}
               variant="dark"
               style={styles.headerReportBtn}
             />

@@ -8,8 +8,9 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
 import { I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { configurePushHandler, registerForPushNotifications } from "@/lib/push_notifications";
 import { NetworkProvider } from "@/lib/network";
 import { VideoAudioProvider } from "@/lib/video-audio-context";
@@ -65,6 +66,7 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
 export default function RootLayout() {
   const [fontsReady, setFontsReady] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [accountStatusChecked, setAccountStatusChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [uid, setUid] = useState<string | null>(null);
   const pendingDeepLink = useRef<string | null>(null);
@@ -83,6 +85,23 @@ export default function RootLayout() {
       configurePushHandler();
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!uid) return;
+    const unsubscribe = onSnapshot(
+      doc(db, "users", uid),
+      (profileSnapshot) => {
+        if (profileSnapshot.data()?.isBanned === true) {
+          void signOut(auth);
+        }
+      },
+      () => {
+        // The initial auth check remains the source of truth when a profile
+        // read is temporarily unavailable.
+      }
+    );
+    return unsubscribe;
+  }, [uid]);
 
   useEffect(() => {
     async function loadFonts() {
@@ -117,33 +136,67 @@ export default function RootLayout() {
   useEffect(() => {
     let presenceCleanup: (() => void) | null = null;
     let unsub: (() => void) | null = null;
+    let accountCheckId = 0;
+
+    const activateAccount = (user: NonNullable<typeof auth.currentUser>) => {
+      setIsLoggedIn(true);
+      setUid(user.uid);
+      setAccountStatusChecked(true);
+
+      if (presenceCleanup) {
+        presenceCleanup();
+        presenceCleanup = null;
+      }
+      presenceCleanup = setupPresence(user.uid);
+      // Refresh this device's push token for the account that's now active.
+      registerForPushNotifications(user.uid).catch(() => {});
+    };
 
     try {
       unsub = onAuthStateChanged(auth, (user) => {
         try {
           if (isAuthRoutingSuspended()) {
             setAuthChecked(true);
+            setAccountStatusChecked(true);
             return;
           }
-          setIsLoggedIn(!!user);
-          setUid(user?.uid ?? null);
           setAuthChecked(true);
 
           if (presenceCleanup) {
             presenceCleanup();
             presenceCleanup = null;
           }
-          if (user) {
-            presenceCleanup = setupPresence(user.uid);
-            // Refresh this device's push token for the account that's now
-            // active, so notifications always target whoever is currently
-            // signed in (and never the account that just logged out).
-            registerForPushNotifications(user.uid).catch(() => {});
+          if (!user) {
+            accountCheckId += 1;
+            setIsLoggedIn(false);
+            setUid(null);
+            setAccountStatusChecked(true);
+            return;
           }
+
+          const checkId = ++accountCheckId;
+          setAccountStatusChecked(false);
+          getDoc(doc(db, "users", user.uid))
+            .then(async (profileSnapshot) => {
+              if (checkId !== accountCheckId) return;
+              if (profileSnapshot.data()?.isBanned === true) {
+                setIsLoggedIn(false);
+                setUid(null);
+                setAccountStatusChecked(true);
+                await signOut(auth);
+                return;
+              }
+              activateAccount(user);
+            })
+            .catch(() => {
+              // A missing profile should not lock out a newly-created account.
+              if (checkId === accountCheckId) activateAccount(user);
+            });
         } catch (innerErr) {
           console.warn("Auth state handler error:", innerErr);
           // Still mark auth as checked so the app doesn't hang on splash
           setAuthChecked(true);
+          setAccountStatusChecked(true);
         }
       });
     } catch (err) {
@@ -153,6 +206,7 @@ export default function RootLayout() {
       console.error("Firebase auth init error:", err);
       setFatalError(err instanceof Error ? err : new Error(String(err)));
       setAuthChecked(true);
+      setAccountStatusChecked(true);
     }
 
     return () => {
@@ -162,10 +216,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsReady && authChecked) {
+    if (fontsReady && authChecked && accountStatusChecked) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsReady, authChecked]);
+  }, [fontsReady, authChecked, accountStatusChecked]);
 
   // ── Deep-link handler ──────────────────────────────────────────────────────
   // Keep the link while auth is loading or the user is logged out. This lets a
@@ -238,7 +292,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!fontsReady || !authChecked) return null;
+  if (!fontsReady || !authChecked || !accountStatusChecked) return null;
 
   return (
     <ErrorBoundary>

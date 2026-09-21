@@ -23,6 +23,8 @@ import Animated, {
 import { Ionicons, Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import { auth } from "@/lib/firebase";
+import { ADMIN_UID } from "@/lib/db_logic";
 
 const C = Colors.light;
 const ADMIN_PASSWORD = "admin2025";
@@ -47,6 +49,10 @@ export default function AdminLoginScreen() {
   const handleLogin = async () => {
     if (!password) {
       Alert.alert("خطأ", "يرجى إدخال كلمة المرور");
+      return;
+    }
+    if (auth.currentUser?.uid !== ADMIN_UID) {
+      Alert.alert("غير مصرح", "يجب الدخول بالحساب الإداري المعتمد.");
       return;
     }
 
