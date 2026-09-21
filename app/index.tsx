@@ -20,7 +20,14 @@ import { Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { auth } from "@/lib/firebase";
-import { ensureUserDocument } from "@/lib/db_logic";
+import {
+  ALL_SPECIALTIES,
+  CAR_SERVICES,
+  DELIVERY_SERVICES,
+  GENERAL_SERVICES,
+  HOME_SERVICES,
+  ensureUserDocument,
+} from "@/lib/db_logic";
 import { getApiUrl, GOOGLE_EMAIL_LOGIN_PATH } from "@/lib/config";
 import {
   createUserWithEmailAndPassword,
@@ -32,6 +39,13 @@ import { pickGoogleEmail } from "@/lib/google-email-picker";
 const C = Colors.light;
 const PRIVACY_POLICY_URL =
   "https://www.termsfeed.com/live/84beb1e7-05c9-4efc-983e-252e64c5765b";
+
+const SPECIALTY_GROUPS = [
+  { title: "خدمات المنزل", items: HOME_SERVICES },
+  { title: "خدمات السيارات", items: CAR_SERVICES },
+  { title: "خدمات طبية", items: GENERAL_SERVICES },
+  { title: "خدمات التوصيل", items: DELIVERY_SERVICES },
+];
 
 type ApiResponse = {
   ok?: boolean;
@@ -145,6 +159,8 @@ export default function AuthScreen() {
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountPassword, setNewAccountPassword] = useState("");
+  const [newAccountSpecialty, setNewAccountSpecialty] = useState("client");
+  const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -230,6 +246,8 @@ export default function AuthScreen() {
       setGoogleEmail(selectedEmail);
       setNewAccountName("");
       setNewAccountPassword("");
+       setNewAccountSpecialty("client");
+       setSpecialtyPickerVisible(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTimeout(() => newPasswordRef.current?.focus(), 200);
     } catch (error: any) {
@@ -263,7 +281,7 @@ export default function AuthScreen() {
       );
       await ensureUserDocument(credential.user.uid, selectedEmail, "client", {
         name,
-        specialty: "client",
+        specialty: newAccountSpecialty,
         location: null,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -381,6 +399,29 @@ export default function AuthScreen() {
                   inputRef={newPasswordRef}
                   onSubmitEditing={handleCreateGoogleAccount}
                 />
+
+                 <View style={styles.fieldWrap}>
+                   <Text style={styles.fieldLabel}>التخصص المهني</Text>
+                   <Pressable
+                     style={styles.specialtyPickerBtn}
+                     onPress={() => setSpecialtyPickerVisible(true)}
+                     disabled={createLoading}
+                   >
+                     <Feather name="chevron-left" size={17} color={C.textSecondary} />
+                     <Text
+                       style={[
+                         styles.specialtyPickerValue,
+                         newAccountSpecialty === "client" && { color: C.textMuted },
+                       ]}
+                     >
+                       {newAccountSpecialty === "client"
+                         ? "عام"
+                         : ALL_SPECIALTIES.find((item) => item.key === newAccountSpecialty)?.label ||
+                           "اختر التخصص"}
+                     </Text>
+                     <Feather name="briefcase" size={17} color={C.textSecondary} />
+                   </Pressable>
+                 </View>
 
                 <Pressable
                   style={[styles.primaryButton, createLoading && styles.disabled]}
@@ -551,6 +592,80 @@ export default function AuthScreen() {
                 </LinearGradient>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={specialtyPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSpecialtyPickerVisible(false)}
+      >
+        <Pressable
+          style={styles.specialtyModalOverlay}
+          onPress={() => setSpecialtyPickerVisible(false)}
+        >
+          <Pressable style={styles.specialtySheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.specialtyModalTitle}>اختر التخصص المهني</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.specialtyOptionsScroll}>
+              <Pressable
+                style={[
+                  styles.specialtyOption,
+                  newAccountSpecialty === "client" && styles.specialtyOptionActive,
+                ]}
+                onPress={() => {
+                  setNewAccountSpecialty("client");
+                  setSpecialtyPickerVisible(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.specialtyOptionLabel,
+                    newAccountSpecialty === "client" && styles.specialtyOptionLabelActive,
+                  ]}
+                >
+                  عام
+                </Text>
+                {newAccountSpecialty === "client" && (
+                  <Feather name="check" size={16} color={C.primary} />
+                )}
+              </Pressable>
+
+              {SPECIALTY_GROUPS.map((group) => (
+                <View key={group.title}>
+                  <Text style={styles.specialtyGroupTitle}>{group.title}</Text>
+                  {group.items.map((item) => (
+                    <Pressable
+                      key={item.key}
+                      style={[
+                        styles.specialtyOption,
+                        newAccountSpecialty === item.key && styles.specialtyOptionActive,
+                      ]}
+                      onPress={() => {
+                        setNewAccountSpecialty(item.key);
+                        setSpecialtyPickerVisible(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.specialtyOptionLabel,
+                          newAccountSpecialty === item.key && styles.specialtyOptionLabelActive,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                      {newAccountSpecialty === item.key && (
+                        <Feather name="check" size={16} color={C.primary} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              ))}
+              <View style={{ height: 24 }} />
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -809,6 +924,87 @@ const styles = StyleSheet.create({
   },
   modalSendText: {
     fontSize: 13,
+    fontFamily: undefined,
+    color: C.primary,
+  },
+  specialtyPickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.inputBg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  specialtyPickerValue: {
+    flex: 1,
+    minHeight: 25,
+    fontSize: 14,
+    fontFamily: undefined,
+    color: C.text,
+    textAlign: "right",
+    textAlignVertical: "center",
+  },
+  specialtyModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(7,15,35,0.62)",
+    justifyContent: "flex-end",
+  },
+  specialtySheet: {
+    width: "100%",
+    maxHeight: "78%",
+    backgroundColor: C.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  modalHandle: {
+    alignSelf: "center",
+    width: 42,
+    height: 4,
+    borderRadius: 4,
+    backgroundColor: "#D9DDE5",
+    marginBottom: 14,
+  },
+  specialtyModalTitle: {
+    fontSize: 18,
+    fontFamily: undefined,
+    color: C.text,
+    textAlign: "right",
+    marginBottom: 8,
+  },
+  specialtyOptionsScroll: { maxHeight: 480 },
+  specialtyGroupTitle: {
+    fontSize: 14,
+    fontFamily: undefined,
+    color: C.textMuted,
+    textAlign: "right",
+    marginTop: 10,
+    marginBottom: 3,
+    paddingHorizontal: 12,
+  },
+  specialtyOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 2,
+  },
+  specialtyOptionActive: { backgroundColor: "#EEF2FF" },
+  specialtyOptionLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: undefined,
+    color: C.text,
+    textAlign: "right",
+  },
+  specialtyOptionLabelActive: {
     fontFamily: undefined,
     color: C.primary,
   },
