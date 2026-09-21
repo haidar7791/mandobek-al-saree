@@ -152,6 +152,7 @@ export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+  const newAccountNameRef = useRef<TextInput>(null);
   const newPasswordRef = useRef<TextInput>(null);
 
   const [email, setEmail] = useState("");
@@ -249,7 +250,7 @@ export default function AuthScreen() {
        setNewAccountSpecialty("client");
        setSpecialtyPickerVisible(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => newPasswordRef.current?.focus(), 200);
+      setTimeout(() => newAccountNameRef.current?.focus(), 200);
     } catch (error: any) {
       console.error("[Google email auth]", error);
       showError(error?.message ?? "تعذّر اختيار حساب Google");
@@ -387,6 +388,7 @@ export default function AuthScreen() {
                   value={newAccountName}
                   onChangeText={setNewAccountName}
                   icon={<Feather name="user" size={18} color={C.textSecondary} />}
+                  inputRef={newAccountNameRef}
                   onSubmitEditing={() => newPasswordRef.current?.focus()}
                 />
                 <InputField
