@@ -234,6 +234,10 @@ function ReportCard({
           <Text style={styles.reportDetailLabel}>المُبلّغ</Text>
         </View>
         <View style={styles.reportDetailRow}>
+          <Text style={styles.reportDetailValue} numberOfLines={1}>{item.reporterId || "غير متوفر"}</Text>
+          <Text style={styles.reportDetailLabel}>معرّف المُبلّغ</Text>
+        </View>
+        <View style={styles.reportDetailRow}>
           <Text style={styles.reportDetailValue}>{item.targetName || item.targetId}</Text>
           <Text style={styles.reportDetailLabel}>المحتوى</Text>
         </View>

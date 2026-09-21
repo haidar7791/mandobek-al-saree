@@ -515,15 +515,6 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
             )}
           </Pressable>
         )}
-        {!isOwner && (
-          <ReportButton
-            targetType="post"
-            targetId={post.id}
-            targetName={post.userName}
-            targetOwnerId={post.userId}
-            style={styles.homePostReport}
-          />
-        )}
       </View>
 
       {!!post.description && (
@@ -575,6 +566,15 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
         <Pressable onPress={onLike} style={styles.homeAction}><Ionicons name={isLiked ? "heart" : "heart-outline"} size={22} color={isLiked ? "#EF4444" : C.textSecondary} /><Text style={[styles.homeActionText, isLiked && styles.likedCountText]}>{post.likesCount}</Text></Pressable>
         <Pressable onPress={onComment} style={styles.homeAction}><Ionicons name="chatbubble-outline" size={21} color={C.textSecondary} /><Text style={styles.homeActionText}>{post.commentsCount}</Text></Pressable>
         <Pressable onPress={onShare} style={styles.homeAction}><Feather name="share-2" size={20} color={C.textSecondary} /></Pressable>
+        {!isOwner && (
+          <ReportButton
+            targetType="post"
+            targetId={post.id}
+            targetName={post.userName}
+            targetOwnerId={post.userId}
+            style={styles.homePostReport}
+          />
+        )}
       </View>
     </View>
   );
