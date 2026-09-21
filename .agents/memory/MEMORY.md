@@ -19,3 +19,4 @@
 - [Denormalized name sync](name-sync-denormalized-content.md) — rename propagation must cover legacy ownership fields across all content records
 - [Product video fullscreen behavior](product-video-fullscreen.md) — shared media carousels must opt into product-feed fullscreen synchronization explicitly
 - [Chat unread state](chat-unread-state.md) — keep list highlighting separate from the home badge's latest-sender rule
+- [Content like operation semantics](content-like-operation-semantics.md) — idempotent like/unlike helpers return whether a write occurred, not the final liked state

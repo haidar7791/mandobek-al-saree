@@ -56,6 +56,8 @@ import {
   type ChatLastActivity,
   fetchProductsOnce,
   deleteProduct,
+  getIsProductLiked,
+  unlikeProduct,
   likeProduct,
   rankProductsForFeed,
   subscribeToBuyerProductOrders,
@@ -67,6 +69,7 @@ import {
   uploadProfilePostMedia,
   addProfilePost,
   removeHomeFeedPost,
+  getIsHomePostLiked,
   toggleProfilePostLike,
   addProfilePostComment,
   togglePostCommentLike,
@@ -277,10 +280,56 @@ function ProductCard({
   const isMine = product.sellerId === userId;
   const [, forceRelativeTimeUpdate] = useState(0);
   const [likesCount, setLikesCount] = useState(product.likesCount ?? 0);
+  const [isLiked, setIsLiked] = useState(false);
+  const pendingLikeRef = useRef(false);
 
   useEffect(() => {
     setLikesCount(product.likesCount ?? 0);
   }, [product.likesCount]);
+
+  useEffect(() => {
+    const viewer = auth.currentUser;
+    if (!viewer || isMine) {
+      setIsLiked(false);
+      return;
+    }
+    let cancelled = false;
+    getIsProductLiked(viewer.uid, product.id)
+      .then((liked) => {
+        if (!cancelled) setIsLiked(liked);
+      })
+      .catch((error) => {
+        console.warn("product like state read failed", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMine, product.id]);
+
+  const handleLike = async () => {
+    const viewer = auth.currentUser;
+    if (!viewer || isMine || pendingLikeRef.current) return false;
+
+    const wasLiked = isLiked;
+    const nextLiked = !wasLiked;
+    const delta = nextLiked ? 1 : -1;
+    pendingLikeRef.current = true;
+    setIsLiked(nextLiked);
+    setLikesCount((count) => Math.max(0, count + delta));
+
+    try {
+      await (nextLiked
+        ? likeProduct(viewer.uid, product.id)
+        : unlikeProduct(viewer.uid, product.id));
+      return nextLiked;
+    } catch (error) {
+      setIsLiked(wasLiked);
+      setLikesCount((count) => Math.max(0, count - delta));
+      throw error;
+    } finally {
+      pendingLikeRef.current = false;
+    }
+  };
 
   const handleDelete = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -335,16 +384,8 @@ function ProductCard({
           onMediaPress={onMediaPress}
           onDoubleTapLike={async () => {
             const viewer = auth.currentUser;
-            if (!viewer || isMine) return false;
-            setLikesCount((count) => count + 1);
-            try {
-              const liked = await likeProduct(viewer.uid, product.id);
-              if (!liked) setLikesCount((count) => Math.max(0, count - 1));
-              return liked;
-            } catch (error) {
-              setLikesCount((count) => Math.max(0, count - 1));
-              throw error;
-            }
+             if (!viewer || isMine || isLiked) return false;
+             return handleLike();
           }}
         />
       </View>
@@ -380,8 +421,17 @@ function ProductCard({
             </Text>
 
             <View style={styles.productEngagement}>
-              <Ionicons name="heart" size={15} color="#EF4444" />
-              <Text style={styles.productLikesText}>{likesCount}</Text>
+               <Pressable
+                 onPress={() => { void handleLike().catch(() => undefined); }}
+                 disabled={isMine}
+                 hitSlop={8}
+                 style={styles.productLikeButton}
+                 accessibilityRole="button"
+                 accessibilityLabel={isLiked ? "إلغاء إعجاب المنتج" : "الإعجاب بالمنتج"}
+               >
+                 <Ionicons name={isLiked ? "heart" : "heart-outline"} size={17} color={isLiked ? "#EF4444" : C.textSecondary} />
+               </Pressable>
+               <Text style={[styles.productLikesText, isLiked && styles.likedCountText]}>{likesCount}</Text>
               <Text style={styles.productLikesLabel}>إعجاب</Text>
             </View>
           </View>
@@ -859,6 +909,7 @@ const isFocused = useIsFocused();
   const [homeVideoMuted, setHomeVideoMuted] = useState(true);
   const [isInlineVideoPlaying, setIsInlineVideoPlaying] = useState(true);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const pendingPostLikeRef = useRef(new Set<string>());
   const homeResumeBlockedRef = useRef(false);
   const isReelsOpenRef = useRef(false);
   const isInlineVideoPlayingRef = useRef(true);
@@ -910,6 +961,7 @@ const isFocused = useIsFocused();
   ).current;
 
   const loadHomeFeed = useCallback(async (refresh = false) => {
+    const requestedCursor = refresh ? null : homeFeedCursorRef.current;
     if (refresh) {
       setHomeRefreshing(true);
       homeFeedCursorRef.current = null;
@@ -918,13 +970,30 @@ const isFocused = useIsFocused();
       setHomeLoading(true);
     }
     try {
-      const page = await getHomeFeedPosts(10, refresh ? null : homeFeedCursorRef.current);
-      if (refresh || homeFeedCursorRef.current === null) {
+      const page = await getHomeFeedPosts(10, requestedCursor);
+      const viewerId = auth.currentUser?.uid;
+      const likedEntries = viewerId
+        ? await Promise.all(page.posts.map(async (post) => {
+            try {
+              return [post.id, await getIsHomePostLiked(viewerId, post.id)] as const;
+            } catch (error) {
+              console.warn("home post like state read failed", post.id, error);
+              return [post.id, false] as const;
+            }
+          }))
+        : [];
+      if (requestedCursor === null) {
         setHomeFeed(page.posts);
+        setLikedPostIds(new Set(likedEntries.filter(([, liked]) => liked).map(([id]) => id)));
       } else if (page.posts.length) {
         setHomeFeed((current) => {
           const seen = new Set(current.map((item) => item.id));
           return [...current, ...page.posts.filter((item) => !seen.has(item.id))];
+        });
+        setLikedPostIds((current) => {
+          const next = new Set(current);
+          likedEntries.forEach(([id, liked]) => liked ? next.add(id) : next.delete(id));
+          return next;
         });
       }
       homeFeedCursorRef.current = page.lastDoc;
@@ -943,10 +1012,26 @@ const isFocused = useIsFocused();
     setHomeLoadingMore(true);
     try {
       const page = await getHomeFeedPosts(10, homeFeedCursorRef.current);
+      const viewerId = auth.currentUser?.uid;
+      const likedEntries = viewerId
+        ? await Promise.all(page.posts.map(async (post) => {
+            try {
+              return [post.id, await getIsHomePostLiked(viewerId, post.id)] as const;
+            } catch (error) {
+              console.warn("home post like state read failed", post.id, error);
+              return [post.id, false] as const;
+            }
+          }))
+        : [];
       if (page.posts.length) {
         setHomeFeed((current) => {
           const seen = new Set(current.map((item) => item.id));
           return [...current, ...page.posts.filter((item) => !seen.has(item.id))];
+        });
+        setLikedPostIds((current) => {
+          const next = new Set(current);
+          likedEntries.forEach(([id, liked]) => liked ? next.add(id) : next.delete(id));
+          return next;
         });
       }
       homeFeedCursorRef.current = page.lastDoc;
@@ -960,6 +1045,8 @@ const isFocused = useIsFocused();
   }, [homeHasMore, homeLoadingMore]);
 
   const handleHomePostLike = useCallback(async (postId: string) => {
+    if (pendingPostLikeRef.current.has(postId)) return;
+    pendingPostLikeRef.current.add(postId);
     const wasLiked = likedPostIds.has(postId);
     const nextLiked = !wasLiked;
     const countDelta = nextLiked ? 1 : -1;
@@ -1004,6 +1091,8 @@ const isFocused = useIsFocused();
           : post
       )));
       Alert.alert("تعذر الإعجاب", e?.message || "حدث خطأ.");
+    } finally {
+      pendingPostLikeRef.current.delete(postId);
     }
   }, [likedPostIds]);
 
@@ -3863,6 +3952,7 @@ availOnline: { backgroundColor: "#22C55E" },
     paddingTop: 0,
     flexShrink: 0,
   },
+  productLikeButton: { alignItems: "center", justifyContent: "center" },
   productLikesText: { fontSize: 13, fontFamily: undefined, color: C.text },
   productLikesLabel: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
   productFeaturedBadge: {

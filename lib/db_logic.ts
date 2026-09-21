@@ -895,6 +895,11 @@ export const getIsProductLiked = async (likerId: string, productId: string): Pro
   return snap.exists();
 };
 
+export const getIsHomePostLiked = async (likerId: string, postId: string): Promise<boolean> => {
+  const snap = await getDoc(doc(db, "posts", postId, "likes", likerId));
+  return snap.exists();
+};
+
 export const likeProduct = async (likerId: string, productId: string): Promise<boolean> => {
   const productRef = doc(db, "products", productId);
   const likeRef = doc(db, "products", productId, "likes", likerId);

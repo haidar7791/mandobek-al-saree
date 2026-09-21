@@ -30,6 +30,9 @@ type Props = {
   actionDisabled?: boolean;
   /** Called by a double-tap on a post. Return true when the like was recorded. */
   onDoubleTapLike?: (post: ProfilePost) => Promise<boolean> | boolean;
+  /** Called by the persistent heart button. */
+  onLike?: (post: ProfilePost) => Promise<boolean> | boolean;
+  isLiked?: (postId: string) => boolean;
 };
 
 export default function ProfilePostFeed({
@@ -44,6 +47,8 @@ export default function ProfilePostFeed({
   onAction,
   actionDisabled = false,
   onDoubleTapLike,
+  onLike,
+  isLiked,
 }: Props) {
   const [fullscreenPost, setFullscreenPost] = useState<ProfilePost | null>(null);
   const [heartPostId, setHeartPostId] = useState<string | null>(null);
@@ -189,10 +194,16 @@ export default function ProfilePostFeed({
                 )}
               </Pressable>
 
-              <View style={styles.likesRow}>
-                <Ionicons name="heart" size={12} color="#EF4444" />
+              <Pressable
+                style={styles.likesRow}
+                onPress={() => { void Promise.resolve(onLike?.(post)).catch(() => undefined); }}
+                disabled={!onLike}
+                accessibilityRole="button"
+                accessibilityLabel={isLiked?.(post.id) ? "إلغاء إعجاب المنشور" : "الإعجاب بالمنشور"}
+              >
+                <Ionicons name={isLiked?.(post.id) ? "heart" : "heart-outline"} size={15} color={isLiked?.(post.id) ? "#EF4444" : "#FFF"} />
                 <Text style={styles.likesText}>{post.likesCount ?? 0}</Text>
-              </View>
+              </Pressable>
 
               {canDelete && onDelete && (
                 <Pressable
