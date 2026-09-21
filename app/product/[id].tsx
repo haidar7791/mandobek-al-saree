@@ -21,7 +21,7 @@ import ProductMediaCarousel, { normalizeProductMedia } from "@/components/Produc
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReportButton from "@/components/ReportButton";
 import Colors from "@/constants/colors";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -95,7 +95,7 @@ export default function ProductScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Pressable onPress={goHome} style={styles.backButton} accessibilityLabel="رجوع">
+        <Pressable onPress={goBack} style={styles.backButton} accessibilityLabel="رجوع">
           <Feather name="arrow-right" size={22} color={C.text} />
         </Pressable>
         <Text style={styles.headerTitle}>تفاصيل المنتج</Text>

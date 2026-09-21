@@ -24,7 +24,7 @@ import {
   type ShareUserResult,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -148,7 +148,7 @@ export default function UserSearchScreen() {
       >
         <Pressable
           style={styles.backBtn}
-          onPress={goHome}
+          onPress={goBack}
           accessibilityLabel="رجوع"
         >
           <Feather name="chevron-right" size={24} color="#FFF" />

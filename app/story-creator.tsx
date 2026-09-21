@@ -26,7 +26,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome } from "@/lib/navigation";
+import { goBack, goHome } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -191,7 +191,7 @@ export default function StoryCreatorScreen() {
     >
       {/* ── Top bar ── */}
       <View style={styles.topBar}>
-        <Pressable onPress={goHome} style={styles.closeBtn} hitSlop={10}>
+        <Pressable onPress={goBack} style={styles.closeBtn} hitSlop={10}>
           <Feather name="x" size={22} color="#FFF" />
         </Pressable>
         <Text style={styles.topTitle}>إنشاء قصة</Text>

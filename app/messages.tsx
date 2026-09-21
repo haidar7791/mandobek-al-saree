@@ -30,7 +30,7 @@ import {
   type ShareUserResult,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -241,7 +241,7 @@ export default function MessagesScreen() {
         colors={["#0D1B3E", "#162452"]}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
-        <Pressable style={styles.backBtn} onPress={goHome}>
+        <Pressable style={styles.backBtn} onPress={goBack}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>

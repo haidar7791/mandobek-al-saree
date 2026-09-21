@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, TextInput,
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth } from "../lib/firebase";
@@ -74,7 +74,7 @@ export default function GroupDetailsScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable style={styles.back} onPress={goHome}><Feather name="chevron-right" size={24} color="#FFF" /></Pressable>
+        <Pressable style={styles.back} onPress={goBack}><Feather name="chevron-right" size={24} color="#FFF" /></Pressable>
         <Text style={styles.headerTitle}>معلومات المجموعة</Text>
         <View style={{ width: 38 }} />
       </View>

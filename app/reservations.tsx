@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -785,7 +785,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
     <View style={styles.root}>
       {!inline && (
         <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-          <Pressable style={styles.backBtn} onPress={goHome}>
+          <Pressable style={styles.backBtn} onPress={goBack}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
           <View style={{ flex: 1, alignItems: "flex-end" }}>

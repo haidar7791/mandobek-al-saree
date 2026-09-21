@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -105,7 +105,7 @@ export default function AdminLoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Pressable onPress={goHome} style={styles.backBtn}>
+          <Pressable onPress={goBack} style={styles.backBtn}>
             <Feather name="chevron-right" size={22} color="rgba(255,255,255,0.7)" />
           </Pressable>
 

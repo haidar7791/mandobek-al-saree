@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome } from "@/lib/navigation";
+import { goBack, goHome } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -151,7 +151,7 @@ export default function AddProductScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 10 }]}>
-        <Pressable onPress={goHome} style={styles.backBtn}>
+        <Pressable onPress={goBack} style={styles.backBtn}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.headerText}>

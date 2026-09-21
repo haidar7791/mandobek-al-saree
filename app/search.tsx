@@ -23,7 +23,7 @@ import {
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -148,7 +148,7 @@ export default function SearchScreen() {
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={goHome}>
+        <Pressable style={styles.backBtn} onPress={goBack}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.inputWrap}>

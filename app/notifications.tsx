@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { auth } from "@/lib/firebase";
@@ -110,7 +110,7 @@ export default function NotificationsScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Pressable onPress={goHome} style={styles.backButton} hitSlop={10}>
+        <Pressable onPress={goBack} style={styles.backButton} hitSlop={10}>
           <Feather name="arrow-right" size={22} color={C.accent} />
         </Pressable>
         <Text style={styles.headerTitle}>الإشعارات</Text>

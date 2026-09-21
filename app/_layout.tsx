@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
-import { I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
+import { BackHandler, I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
@@ -20,7 +20,7 @@ import { isAuthRoutingSuspended } from "@/lib/auth_flow";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as Application from "expo-application";
 import { compareVersions, getMinimumRequiredVersion } from "@/lib/remote_config";
-import { navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -88,6 +88,21 @@ export default function RootLayout() {
   // Automatic artisan location tracking: no-op for client accounts, kicks in
   // silently for artisan accounts as soon as they're signed in.
   useArtisanLocationTracking(uid);
+
+  // Expo Router handles normal stack pops, but Android dispatches the
+  // hardware back event before a screen is always able to render its own
+  // header action. Keep the event inside the app and use the same fallback
+  // policy as every in-app back button.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        goBack();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     try {

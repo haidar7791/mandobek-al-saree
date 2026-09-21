@@ -13,7 +13,7 @@ import {
   Share,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -556,7 +556,7 @@ export default function ProductOrdersScreen() {
     <View style={styles.root}>
       {/* ── Header ── */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 10 }]}>
-        <Pressable onPress={goHome} style={styles.backBtn}>
+        <Pressable onPress={goBack} style={styles.backBtn}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.headerText}>

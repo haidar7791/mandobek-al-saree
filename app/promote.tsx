@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { router } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -130,7 +130,7 @@ export default function PromoteScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <Pressable style={styles.backBtn} onPress={goHome}>
+        <Pressable style={styles.backBtn} onPress={goBack}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>

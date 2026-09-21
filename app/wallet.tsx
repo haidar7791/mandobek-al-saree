@@ -12,7 +12,7 @@ import {
   Image,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { goHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -286,7 +286,7 @@ export default function WalletScreen() {
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
         <View style={[styles.headerContent, { paddingTop: topPad + 10 }]}>
-          <Pressable onPress={goHome} style={styles.backBtn}>
+          <Pressable onPress={goBack} style={styles.backBtn}>
             <Feather name="chevron-right" size={22} color="rgba(255,255,255,0.8)" />
           </Pressable>
           <Text style={styles.headerTitle}>المحفظة المالية</Text>

@@ -31,7 +31,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { goHome, navigateWithHomeBase } from "@/lib/navigation";
+import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -368,7 +368,7 @@ export default function StoryViewerScreen() {
         <Pressable style={styles.retryBtn} onPress={loadStories}>
           <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
         </Pressable>
-        <Pressable onPress={goHome} style={{ marginTop: 12 }}>
+        <Pressable onPress={goBack} style={{ marginTop: 12 }}>
           <Text style={[styles.errorText, { fontSize: 13 }]}>رجوع</Text>
         </Pressable>
       </View>
@@ -404,7 +404,7 @@ export default function StoryViewerScreen() {
           >
             <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
           </Pressable>
-        <Pressable onPress={goHome} style={{ marginTop: 12 }}>
+        <Pressable onPress={goBack} style={{ marginTop: 12 }}>
             <Text style={[styles.videoErrorText, { fontSize: 13 }]}>رجوع</Text>
           </Pressable>
         </View>
@@ -490,7 +490,7 @@ export default function StoryViewerScreen() {
               style={styles.topActionBtn}
             />
           )}
-        <Pressable onPress={goHome} hitSlop={10} style={styles.topActionBtn}>
+        <Pressable onPress={goBack} hitSlop={10} style={styles.topActionBtn}>
             <Feather name="x" size={22} color="#FFF" />
           </Pressable>
         </View>
