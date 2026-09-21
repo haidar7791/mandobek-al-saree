@@ -32,6 +32,7 @@ import * as Clipboard from "expo-clipboard";
 import { auth } from "../lib/firebase";
 import { Video, ResizeMode } from "expo-av";
 import { ShareModal } from "@/components/ShareModal";
+import ReportButton from "@/components/ReportButton";
 import {
   subscribeToActiveStories,
   subscribeToMyStories,
@@ -316,6 +317,14 @@ function ProductCard({
       >
         <Feather name="share-2" size={13} color={C.accent} />
       </Pressable>
+      {!isMine && (
+        <ReportButton
+          targetType="product"
+          targetId={product.id}
+          targetName={product.title}
+          style={styles.productReportBtn}
+        />
+      )}
       <View><ProductMediaCarousel
           media={normalizeProductMedia(product.media, product.imageUrl)}
           height={380}
@@ -504,6 +513,14 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
               <Feather name="trash-2" size={16} color="#FFF" />
             )}
           </Pressable>
+        )}
+        {!isOwner && (
+          <ReportButton
+            targetType="post"
+            targetId={post.id}
+            targetName={post.userName}
+            style={styles.homePostReport}
+          />
         )}
       </View>
 
@@ -698,14 +715,25 @@ function HomeVideoViewer({
                 <View style={styles.reelOverlay}>
                   <View style={styles.reelTopRow}>
                     <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
-                    <Pressable
-                      onPress={() => setMuted((value) => !value)}
-                      style={styles.reelMuteBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={muted ? "تشغيل صوت الريلز" : "كتم صوت الريلز"}
-                    >
-                      <Ionicons name={muted ? "volume-mute" : "volume-high"} size={21} color="#FFF" />
-                    </Pressable>
+                    <View style={styles.reelTopActions}>
+                      {auth.currentUser?.uid !== item.userId && (
+                        <ReportButton
+                          targetType="post"
+                          targetId={item.id}
+                          targetName={item.userName}
+                          variant="dark"
+                          style={styles.reelReportBtn}
+                        />
+                      )}
+                      <Pressable
+                        onPress={() => setMuted((value) => !value)}
+                        style={styles.reelMuteBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={muted ? "تشغيل صوت الريلز" : "كتم صوت الريلز"}
+                      >
+                        <Ionicons name={muted ? "volume-mute" : "volume-high"} size={21} color="#FFF" />
+                      </Pressable>
+                    </View>
                   </View>
 
                   <View style={styles.reelBottomArea}>
@@ -3196,6 +3224,7 @@ const styles = StyleSheet.create({
   homePostHeader: { flexDirection: "row-reverse", alignItems: "center", padding: 12, gap: 9 },
   homePostProfileTouchable: { flex: 1, flexDirection: "row", alignItems: "center", gap: 1, margin: 0, padding: 0 },
   homePostDelete: { width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(0,0,0,.68)", alignItems: "center", justifyContent: "center" },
+  homePostReport: { marginLeft: 2 },
   homeMediaPressable: { width: "100%" },
   homeMuteBtn: { position: "absolute", right: 12, bottom: 12, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,.48)", alignItems: "center", justifyContent: "center" },
   homePostUser: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flex: 1, margin: 0, padding: 0 },
@@ -3213,8 +3242,10 @@ const styles = StyleSheet.create({
   reelPage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height, backgroundColor: "#000" },
   reelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", padding: 18, paddingTop: 52 },
   reelTopRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", width: "100%" },
+  reelTopActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   reelClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
   reelMuteBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
+  reelReportBtn: { width: 42, height: 42, borderRadius: 21 },
   reelBottomArea: { position: "relative", minHeight: 220, justifyContent: "flex-end", paddingBottom: 4 },
   reelActions: { position: "absolute", right: 2, bottom: 78, gap: 20, alignItems: "center" },
   reelProfileColumn: { width: 68, alignItems: "center", gap: 4 },
@@ -3669,6 +3700,12 @@ availOnline: { backgroundColor: "#22C55E" },
     shadowOpacity: 0.12,
     shadowRadius: 3,
     elevation: 3,
+  },
+  productReportBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    zIndex: 10,
   },
 
   // ── Inline search bars ─────────────────────────────────────────────────────

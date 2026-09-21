@@ -1,7 +1,7 @@
 module.exports = {
   name: "فورس",
   slug: "sanad-app",
-  version: "24",
+  version: "26",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "forus",
@@ -30,7 +30,7 @@ module.exports = {
     package: "com.haidar.forus",
     googleServicesFile: "./google-services.json",
     softwareKeyboardLayoutMode: "pan",
-    versionCode: 24,
+    versionCode: 26,
     edgeToEdgeEnabled: true,
     permissions: [
       "android.permission.CAMERA",

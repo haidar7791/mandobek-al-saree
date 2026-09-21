@@ -356,5 +356,24 @@ service cloud.firestore {
     match /ratings/{ratingId} {
       allow read, write: if isSignedIn();
     }
+
+    // بلاغات المحتوى — المستخدم يرسل البلاغ فقط، والمسؤولون يراجعونه.
+    match /reports/{reportId} {
+      allow create: if isSignedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.reporterName is string
+        && request.resource.data.targetId is string
+        && request.resource.data.targetType in ["product", "post", "story", "chat"]
+        && request.resource.data.reason in [
+          "inappropriate",
+          "violence",
+          "child_exploitation",
+          "harassment",
+          "spam_scam",
+          "other"
+        ]
+        && request.resource.data.status == "open";
+      allow read, update, delete: if isAdmin();
+    }
   }
 }

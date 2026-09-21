@@ -12,6 +12,7 @@ import { Feather } from "@expo/vector-icons";
 import { auth } from "@/lib/firebase";
 import { likeProduct, subscribeToProducts, type Product } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
+import ReportButton from "@/components/ReportButton";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -36,7 +37,16 @@ export default function ProductScreen() {
           <Feather name="arrow-right" size={22} color={C.text} />
         </Pressable>
         <Text style={styles.headerTitle}>تفاصيل المنتج</Text>
-        <View style={styles.headerSpacer} />
+         {product && auth.currentUser?.uid !== product.sellerId ? (
+           <ReportButton
+             targetType="product"
+             targetId={product.id}
+             targetName={product.title}
+             style={styles.headerReport}
+           />
+         ) : (
+           <View style={styles.headerSpacer} />
+         )}
       </View>
 
       {loading ? (
@@ -104,6 +114,7 @@ const styles = StyleSheet.create({
   },
   backButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   headerSpacer: { width: 38 },
+  headerReport: { width: 38, height: 38, borderRadius: 19 },
   headerTitle: { fontSize: 17, fontFamily: undefined, color: C.text },
   content: { paddingBottom: 32 },
   details: { padding: 18 },

@@ -47,6 +47,7 @@ import {
   type Story,
 } from "@/lib/stories_logic";
 import StoryViewersModal from "@/components/StoryViewersModal";
+import ReportButton from "@/components/ReportButton";
 import {
   buildChatId,
   sendStoryReply,
@@ -477,6 +478,15 @@ export default function StoryViewerScreen() {
             <Pressable onPress={handleDelete} hitSlop={10} style={styles.topActionBtn}>
               <Feather name="trash-2" size={18} color="rgba(255,255,255,0.85)" />
             </Pressable>
+          )}
+          {!isOwner && (
+            <ReportButton
+              targetType="story"
+              targetId={story.id}
+              targetName={story.userName}
+              variant="dark"
+              style={styles.topActionBtn}
+            />
           )}
           <Pressable onPress={() => router.back()} hitSlop={10} style={styles.topActionBtn}>
             <Feather name="x" size={22} color="#FFF" />

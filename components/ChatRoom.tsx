@@ -25,6 +25,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { Audio, Video, ResizeMode } from "expo-av";
 import { auth } from "../lib/firebase";
+import ReportButton from "@/components/ReportButton";
 import {
   sendMessage,
   sendMediaMessage,
@@ -1244,6 +1245,15 @@ export default function ChatRoom({
             )}
           </Pressable>
         )}
+          {!!currentUid && !!chatId && (
+            <ReportButton
+              targetType="chat"
+              targetId={chatId}
+              targetName={isGroup ? otherName : otherUserName ?? otherName}
+              variant="dark"
+              style={styles.headerReportBtn}
+            />
+          )}
 
         <Pressable
           style={styles.headerInfo}
@@ -1568,6 +1578,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginHorizontal: 4,
     backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  headerReportBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginHorizontal: 4,
   },
   headerAvatar: {
     width: 40, height: 40, borderRadius: 12,
