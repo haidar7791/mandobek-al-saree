@@ -30,6 +30,7 @@ import {
   type ShareUserResult,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -65,7 +66,7 @@ function ChatItem({ chat, index, onDelete }: { chat: ChatSummary; index: number;
         delayLongPress={350}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push({
+          navigateWithHomeBase({
             pathname: "/chat",
             params: {
               chatId: chat.chatId,
@@ -199,7 +200,7 @@ export default function MessagesScreen() {
         groupPhotoUri,
       );
       resetGroupModal();
-      router.push({
+      navigateWithHomeBase({
         pathname: "/chat",
         params: {
           chatId: created.chatId,
@@ -240,7 +241,7 @@ export default function MessagesScreen() {
         colors={["#0D1B3E", "#162452"]}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={styles.backBtn} onPress={goHome}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>

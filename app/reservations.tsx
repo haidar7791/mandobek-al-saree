@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { ShareModal } from "@/components/ShareModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -537,7 +538,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
     const me = auth.currentUser;
     if (!me || !otherUserId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
+    navigateWithHomeBase({
       pathname: "/chat",
       params: { chatId: buildChatId(me.uid, otherUserId), otherName: otherName ?? "" },
     } as any);
@@ -777,14 +778,14 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
   };
 
   const handleOpen = (req: ServiceRequest) => {
-    router.push({ pathname: "/active-order", params: { requestId: req.id } });
+    navigateWithHomeBase({ pathname: "/active-order", params: { requestId: req.id } });
   };
 
   return (
     <View style={styles.root}>
       {!inline && (
         <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()}>
+          <Pressable style={styles.backBtn} onPress={goHome}>
             <Feather name="chevron-right" size={22} color="#FFF" />
           </Pressable>
           <View style={{ flex: 1, alignItems: "flex-end" }}>
@@ -1009,7 +1010,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                     activeOpacity={0.75}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
+                      navigateWithHomeBase({ pathname: "/user-profile", params: { userId: order.buyerId, userName: order.buyerName } } as any);
                     }}
                   >
                     <Text style={styles.poInfoLine} numberOfLines={1}>
@@ -1197,7 +1198,7 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                       activeOpacity={0.75}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        router.push({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
+                        navigateWithHomeBase({ pathname: "/user-profile", params: { userId: order.sellerId, userName: order.sellerName } } as any);
                       }}
                     >
                       <Text style={styles.poInfoLine} numberOfLines={1}>

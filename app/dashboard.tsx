@@ -93,6 +93,7 @@ import ProfilePostComposerModal, {
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import { useVideoAudio } from "@/lib/video-audio-context";
+import { navigateWithHomeBase } from "@/lib/navigation";
 
 const getRelativeTime = (dateValue: string | number | Date) => {
   const date = new Date(dateValue).getTime();
@@ -180,7 +181,7 @@ function ArtisanCard({
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           // Pass the already-fetched artisan object along so the profile screen
           // can render instantly instead of waiting on a fresh Firestore read.
-          router.push({
+          navigateWithHomeBase({
             pathname: "/artisan-profile",
             params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
           });
@@ -353,7 +354,7 @@ function ProductCard({
             activeOpacity={0.7}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push({
+              navigateWithHomeBase({
                 pathname: "/user-profile",
                 params: { userId: product.sellerId, userName: product.sellerName },
               } as any);
@@ -1577,22 +1578,22 @@ const isFocused = useIsFocused();
 
     const sub = addNotificationTapListener((data) => {
       if (data?.type === "chat" && data?.chatId && data?.senderName) {
-        router.push({
+        navigateWithHomeBase({
           pathname: "/chat",
           params: { chatId: data.chatId, otherName: data.senderName },
         });
       } else if (data?.type === "serviceRequest" || data?.type === "requestStatus") {
-        router.push({
+        navigateWithHomeBase({
           pathname: "/reservations",
           params: { tab: "services" },
         } as any);
       } else if (data?.type === "productOrder") {
-        router.push({
+        navigateWithHomeBase({
           pathname: "/reservations",
           params: { tab: "myProducts" },
         } as any);
       } else if (data?.type === "productOrderResponse") {
-        router.push({
+        navigateWithHomeBase({
           pathname: "/reservations",
           params: { tab: "myOrders" },
         } as any);
@@ -1654,7 +1655,7 @@ const isFocused = useIsFocused();
   }, [userId]);
 
   const handleMessagesPress = useCallback(async () => {
-    router.push("/messages" as any);
+    navigateWithHomeBase("/messages" as any);
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -1794,7 +1795,7 @@ const isFocused = useIsFocused();
               style={styles.headerIconCol}
               onPress={() => {
                 Haptics.selectionAsync();
-                router.push("/user-search" as any);
+                navigateWithHomeBase("/user-search" as any);
               }}
               accessibilityLabel="البحث عن المستخدمين"
             >
@@ -1830,7 +1831,7 @@ const isFocused = useIsFocused();
               style={styles.headerIconCol}
               onPress={() => {
                 Haptics.selectionAsync();
-                router.push("/profile" as any);
+                navigateWithHomeBase("/profile" as any);
               }}
               accessibilityLabel="الملف الشخصي"
             >
@@ -1888,7 +1889,7 @@ const isFocused = useIsFocused();
                     Haptics.impactAsync(
                       Haptics.ImpactFeedbackStyle.Medium
                     );
-                    router.push("/add-product" as any);
+                    navigateWithHomeBase("/add-product" as any);
                   }}
                 >
                   <Feather name="shopping-bag" size={20} color="#111" />
@@ -1908,7 +1909,7 @@ const isFocused = useIsFocused();
                   top: 0,
                 },
               ]}
-              onPress={() => router.push("/admin-dashboard" as any)}
+              onPress={() => navigateWithHomeBase("/admin-dashboard" as any)}
             >
               <View style={styles.headerIconBtn}>
                 <Feather name="shield" size={20} color={C.accent} />
@@ -1994,7 +1995,7 @@ const isFocused = useIsFocused();
             ]}
             onPress={() => {
               Haptics.selectionAsync();
-              router.push("/notifications" as any);
+              navigateWithHomeBase("/notifications" as any);
             }}
             accessibilityLabel="الإشعارات"
           >
@@ -2028,9 +2029,9 @@ const isFocused = useIsFocused();
               onPress={() => {
                 Haptics.selectionAsync();
                 if (myStories.length === 0) {
-                  router.push("/story-creator" as any);
+                  navigateWithHomeBase("/story-creator" as any);
                 } else {
-                  router.push({ pathname: "/story-viewer", params: { userId } } as any);
+                  navigateWithHomeBase({ pathname: "/story-viewer", params: { userId } } as any);
                 }
               }}
             >
@@ -2078,7 +2079,7 @@ const isFocused = useIsFocused();
                   onPress={(e) => {
                     e.stopPropagation();
                     Haptics.selectionAsync();
-                    router.push("/story-creator" as any);
+                    navigateWithHomeBase("/story-creator" as any);
                   }}
                   hitSlop={6}
                 >
@@ -2096,7 +2097,7 @@ const isFocused = useIsFocused();
               style={styles.storyCircleWrap}
               onPress={() => {
                 Haptics.selectionAsync();
-                router.push({ pathname: "/story-viewer", params: { userId: group.userId } } as any);
+                navigateWithHomeBase({ pathname: "/story-viewer", params: { userId: group.userId } } as any);
               }}
             >
               <View style={[
@@ -2236,7 +2237,7 @@ const isFocused = useIsFocused();
                     }}
                     onOpenProfile={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
+                      navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
                     }}
                     isOwner={auth.currentUser?.uid === item.userId}
                     onDelete={() => handleDeleteHomePost(item)}
@@ -2417,7 +2418,7 @@ const isFocused = useIsFocused();
         onOpenProfile={(item) => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           setShowReels(false);
-          router.push({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
+          navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
         }}
       />
 
@@ -2468,7 +2469,7 @@ const isFocused = useIsFocused();
                     <TouchableOpacity
                       activeOpacity={0.75}
                       onPress={() =>
-                        router.push({
+                        navigateWithHomeBase({
                           pathname: "/user-profile",
                           params: {
                             userId: item.userId,
@@ -2496,7 +2497,7 @@ const isFocused = useIsFocused();
                         <TouchableOpacity
                           activeOpacity={0.75}
                           onPress={() =>
-                            router.push({
+                            navigateWithHomeBase({
                               pathname: "/user-profile",
                               params: {
                                 userId: item.userId,
@@ -2613,7 +2614,7 @@ const isFocused = useIsFocused();
                               <TouchableOpacity
                                 activeOpacity={0.75}
                                 onPress={() =>
-                                  router.push({
+                                  navigateWithHomeBase({
                                     pathname: "/user-profile",
                                     params: {
                                       userId: reply.userId,
@@ -2641,7 +2642,7 @@ const isFocused = useIsFocused();
                                   <TouchableOpacity
                                     activeOpacity={0.75}
                                     onPress={() =>
-                                      router.push({
+                                      navigateWithHomeBase({
                                         pathname: "/user-profile",
                                         params: {
                                           userId: reply.userId,

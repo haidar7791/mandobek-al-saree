@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, FlatList, Alert, ActivityIndicator, 
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { auth } from "../lib/firebase";
@@ -25,9 +26,9 @@ export default function GroupMembersScreen() {
     if (member.userId === uid) return;
     try {
       const [profile, artisan] = await Promise.all([getUserProfile(member.userId), getArtisanByUserId(member.userId)]);
-      if (profile?.role === "artisan" && profile.specialty !== "client" && artisan) router.push({ pathname: "/artisan-profile", params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) } } as any);
-      else router.push({ pathname: "/user-profile", params: { userId: member.userId, userName: member.name, userPhoto: member.photoUri || "" } } as any);
-    } catch { router.push({ pathname: "/user-profile", params: { userId: member.userId, userName: member.name, userPhoto: member.photoUri || "" } } as any); }
+      if (profile?.role === "artisan" && profile.specialty !== "client" && artisan) navigateWithHomeBase({ pathname: "/artisan-profile", params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) } } as any);
+      else navigateWithHomeBase({ pathname: "/user-profile", params: { userId: member.userId, userName: member.name, userPhoto: member.photoUri || "" } } as any);
+    } catch { navigateWithHomeBase({ pathname: "/user-profile", params: { userId: member.userId, userName: member.name, userPhoto: member.photoUri || "" } } as any); }
   };
 
   const manageMember = (member: GroupMemberProfile) => {
@@ -44,7 +45,7 @@ export default function GroupMembersScreen() {
 
   if(loading||!group)return <View style={styles.center}><ActivityIndicator size="large" color={C.accent}/></View>;
   return <View style={styles.root}>
-    <View style={[styles.header,{paddingTop:insets.top+8}]}><Pressable style={styles.back} onPress={()=>router.back()}><Feather name="chevron-right" size={24} color="#FFF"/></Pressable><Text style={styles.headerTitle}>أعضاء المجموعة</Text><Pressable style={styles.addTop} onPress={()=>setAddVisible(true)}><Feather name="user-plus" size={20} color={C.primary}/></Pressable></View>
+    <View style={[styles.header,{paddingTop:insets.top+8}]}><Pressable style={styles.back} onPress={goHome}><Feather name="chevron-right" size={24} color="#FFF"/></Pressable><Text style={styles.headerTitle}>أعضاء المجموعة</Text><Pressable style={styles.addTop} onPress={()=>setAddVisible(true)}><Feather name="user-plus" size={20} color={C.primary}/></Pressable></View>
     <FlatList data={group.members} keyExtractor={m=>m.userId} contentContainerStyle={{padding:14,paddingBottom:insets.bottom+20}} ListHeaderComponent={<Text style={styles.count}>{group.members.length} عضو</Text>} renderItem={({item})=><Pressable style={styles.row} onPress={()=>openProfile(item)} onLongPress={()=>manageMember(item)} delayLongPress={450}>
       {item.photoUri?<Image source={{uri:item.photoUri}} style={styles.avatar}/>:<View style={styles.fallback}><Text style={styles.initial}>{item.name?.[0]||"م"}</Text></View>}
       <View style={styles.info}><Text style={styles.name}>{item.name}</Text><Text style={styles.role}>{item.role==="admin"?"مسؤول المجموعة":item.role==="moderator"?"مشرف":"عضو"}</Text></View>

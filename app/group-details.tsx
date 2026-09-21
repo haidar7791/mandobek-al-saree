@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, TextInput,
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth } from "../lib/firebase";
@@ -70,7 +71,7 @@ export default function GroupDetailsScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable style={styles.back} onPress={() => router.back()}><Feather name="chevron-right" size={24} color="#FFF" /></Pressable>
+        <Pressable style={styles.back} onPress={goHome}><Feather name="chevron-right" size={24} color="#FFF" /></Pressable>
         <Text style={styles.headerTitle}>معلومات المجموعة</Text>
         <View style={{ width: 38 }} />
       </View>
@@ -88,17 +89,17 @@ export default function GroupDetailsScreen() {
         <Text style={styles.count}>{group.participants.length} عضو</Text>
 
         <View style={styles.options}>
-          <Pressable style={styles.option} onPress={() => router.push({ pathname: "/group-members", params: { chatId } } as any)}>
+          <Pressable style={styles.option} onPress={() => navigateWithHomeBase({ pathname: "/group-members", params: { chatId } } as any)}>
             <View style={styles.optionIcon}><Feather name="users" size={20} color={C.accent} /></View>
             <View style={styles.optionText}><Text style={styles.optionTitle}>عرض أعضاء المجموعة</Text><Text style={styles.optionSub}>عرض الأعضاء والملفات الشخصية وإدارة الأعضاء</Text></View>
             <Feather name="chevron-left" size={20} color={C.textMuted} />
           </Pressable>
-          <Pressable style={styles.option} onPress={() => router.push({ pathname: "/group-media", params: { chatId } } as any)}>
+          <Pressable style={styles.option} onPress={() => navigateWithHomeBase({ pathname: "/group-media", params: { chatId } } as any)}>
             <View style={styles.optionIcon}><Feather name="image" size={20} color={C.accent} /></View>
             <View style={styles.optionText}><Text style={styles.optionTitle}>عرض الوسائط</Text><Text style={styles.optionSub}>جميع الصور والفيديوهات المرسلة في المجموعة</Text></View>
             <Feather name="chevron-left" size={20} color={C.textMuted} />
           </Pressable>
-          <Pressable style={styles.option} onPress={() => router.push({ pathname: "/group-members", params: { chatId, add: "1" } } as any)}>
+          <Pressable style={styles.option} onPress={() => navigateWithHomeBase({ pathname: "/group-members", params: { chatId, add: "1" } } as any)}>
             <View style={styles.optionIcon}><Feather name="user-plus" size={20} color={C.accent} /></View>
             <View style={styles.optionText}><Text style={styles.optionTitle}>إضافة أعضاء للمجموعة</Text><Text style={styles.optionSub}>يمكن لأي عضو في المجموعة إضافة مستخدمين</Text></View>
             <Feather name="chevron-left" size={20} color={C.textMuted} />

@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -248,7 +249,7 @@ export default function ChatRoom({
     if (!otherUid || otherUid === ADMIN_UID) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (otherArtisanProfile) {
-      router.push({
+      navigateWithHomeBase({
         pathname: "/artisan-profile",
         params: {
           artisanId: otherArtisanProfile.id,
@@ -256,7 +257,7 @@ export default function ChatRoom({
         },
       });
     } else {
-      router.push({
+      navigateWithHomeBase({
         pathname: "/user-profile",
         params: {
           userId: otherUid,
@@ -995,7 +996,7 @@ export default function ChatRoom({
         const me = auth.currentUser;
         if (!me || !order.sellerId) return;
         const cid = [me.uid, order.sellerId].sort().join("_");
-        router.push({ pathname: "/chat", params: { chatId: cid, otherUserId: order.sellerId, otherName: order.sellerName } } as any);
+        navigateWithHomeBase({ pathname: "/chat", params: { chatId: cid, otherUserId: order.sellerId, otherName: order.sellerName } } as any);
       };
       bubbleContent = (
         <View style={styles.orderCardBubble}>
@@ -1024,7 +1025,7 @@ export default function ChatRoom({
               <Feather name="map-pin" size={14} color={isMine ? C.primary : "#FFF"} />
               <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>موقع البائع</Text>
             </Pressable>
-            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={() => router.push({ pathname: "/product/[id]", params: { id: order.productId } } as any)}>
+            <Pressable style={[styles.orderActionBtn, isMine ? styles.orderActionMine : styles.orderActionTheirs]} onPress={() => navigateWithHomeBase({ pathname: "/product/[id]", params: { id: order.productId } } as any)}>
               <Feather name="package" size={14} color={isMine ? C.primary : "#FFF"} />
               <Text style={[styles.orderActionText, { color: isMine ? C.primary : "#FFF" }]}>المنتج</Text>
             </Pressable>
@@ -1076,7 +1077,7 @@ export default function ChatRoom({
               ]}
               onPress={() => {
                 Haptics.selectionAsync();
-                router.push(item.cardRoute as any);
+                navigateWithHomeBase(item.cardRoute as any);
               }}
             >
               <Feather
@@ -1222,7 +1223,7 @@ export default function ChatRoom({
         colors={["#0D1B3E", "#162452"]}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={styles.backBtn} onPress={goHome}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
 
@@ -1258,7 +1259,7 @@ export default function ChatRoom({
 
         <Pressable
           style={styles.headerInfo}
-          onPress={() => isGroup ? router.push({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
+          onPress={() => isGroup ? navigateWithHomeBase({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
           disabled={!isGroup && !canOpenProfile}
           hitSlop={6}
         >
@@ -1274,7 +1275,7 @@ export default function ChatRoom({
         </Pressable>
         <Pressable
           style={styles.headerAvatar}
-          onPress={() => isGroup ? router.push({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
+          onPress={() => isGroup ? navigateWithHomeBase({ pathname: "/group-details", params: { chatId } } as any) : handleOpenArtisanProfile()}
           disabled={!isGroup && !canOpenProfile}
           hitSlop={6}
         >

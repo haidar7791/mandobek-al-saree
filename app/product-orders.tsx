@@ -13,6 +13,7 @@ import {
   Share,
 } from "react-native";
 import { router } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -91,7 +92,7 @@ function PurchaseCard({ order }: { order: ProductOrder }) {
     if (!me) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const chatId = buildChatId(me.uid, order.sellerId);
-    router.push({ pathname: "/chat", params: { chatId, otherUserId: order.sellerId, otherName: order.sellerName ?? "" } } as any);
+    navigateWithHomeBase({ pathname: "/chat", params: { chatId, otherUserId: order.sellerId, otherName: order.sellerName ?? "" } } as any);
   };
 
   const handleShare = async () => {
@@ -223,7 +224,7 @@ function SaleCard({ order, onAccept, onReject }: {
     if (!me) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const chatId = buildChatId(me.uid, order.buyerId);
-    router.push({ pathname: "/chat", params: { chatId, otherUserId: order.buyerId, otherName: order.buyerName } } as any);
+    navigateWithHomeBase({ pathname: "/chat", params: { chatId, otherUserId: order.buyerId, otherName: order.buyerName } } as any);
   };
 
   const showLocation = () => {
@@ -555,7 +556,7 @@ export default function ProductOrdersScreen() {
     <View style={styles.root}>
       {/* ── Header ── */}
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 10 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={goHome} style={styles.backBtn}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.headerText}>

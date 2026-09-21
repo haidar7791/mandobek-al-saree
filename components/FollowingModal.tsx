@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { navigateWithHomeBase } from "@/lib/navigation";
 import {
   getFollowingProfiles,
   type FollowerProfile,
@@ -179,7 +180,7 @@ export default function FollowingModal({
                   onPress={() => {
                     onClose();
 
-                    router.push({
+                    navigateWithHomeBase({
                       pathname: "/user-profile",
                       params: {
                         userId: item.id,

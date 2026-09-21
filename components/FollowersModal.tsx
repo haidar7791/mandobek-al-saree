@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { navigateWithHomeBase } from "@/lib/navigation";
 import { getFollowerProfiles, type FollowerProfile } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 
@@ -111,7 +112,7 @@ export default function FollowersModal({ visible, onClose, profileId, profileNam
                   style={styles.row}
                   onPress={() => {
                     onClose();
-                    router.push({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
+                    navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`فتح ملف ${item.name}`}

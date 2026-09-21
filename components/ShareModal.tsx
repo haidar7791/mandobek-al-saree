@@ -10,6 +10,7 @@ import {
   ActivityIndicator, Alert, Image, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { router } from "expo-router";
+import { navigateWithHomeBase } from "@/lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
@@ -242,7 +243,7 @@ export function ShareModal({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onShared?.();
       onClose();
-      router.push({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
+      navigateWithHomeBase({ pathname: "/chat", params: { chatId, otherName: recipient.otherName } } as any);
     } catch (error: any) {
       console.error("ShareModal internal share error:", error);
 

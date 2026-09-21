@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { navigateWithHomeBase } from "@/lib/navigation";
 import {
   getStoryViewerProfiles,
   type StoryViewerProfile,
@@ -119,7 +120,7 @@ export default function StoryViewersModal({
                   onPress={() => {
                     onClose();
                     if (onOpenProfile) onOpenProfile(item);
-                    else router.push({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
+                    else navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.id, userName: item.name } } as any);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`فتح ملف ${item.name}`}

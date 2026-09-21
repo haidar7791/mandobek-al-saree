@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -109,7 +110,7 @@ export default function ActiveOrderScreen() {
           try {
             await completeServiceRequest(request.id);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            router.back();
+            goHome();
           } catch {
             Alert.alert("خطأ", "تعذّر إنهاء الخدمة");
           } finally {
@@ -129,7 +130,7 @@ export default function ActiveOrderScreen() {
         style: "destructive",
         onPress: async () => {
           await cancelServiceRequest(request.id);
-          router.back();
+          goHome();
         },
       },
     ]);
@@ -153,7 +154,7 @@ export default function ActiveOrderScreen() {
     if (!otherUid) return;
     const chatId = buildChatId(user.uid, otherUid);
     const otherName = isArtisanSide ? request.clientName : request.artisanName;
-    router.push({ pathname: "/chat", params: { chatId, otherName } });
+    navigateWithHomeBase({ pathname: "/chat", params: { chatId, otherName } });
   };
 
   if (!request) {
@@ -177,7 +178,7 @@ export default function ActiveOrderScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={styles.backBtn} onPress={goHome}>
           <Feather name="chevron-right" size={22} color="#FFF" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "flex-end" }}>

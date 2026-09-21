@@ -31,6 +31,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -129,7 +130,7 @@ export default function StoryViewerScreen() {
   // ── Load stories ────────────────────────────────────────────────────────
   const loadStories = useCallback(async () => {
     const uid = Array.isArray(userId) ? userId[0] : userId;
-    if (!uid) { if (router.canGoBack()) router.back(); return; }
+    if (!uid) { goHome(); return; }
 
     setLoading(true);
     setFetchError(false);
@@ -137,7 +138,7 @@ export default function StoryViewerScreen() {
       const data = await fetchUserStories(uid);
       if (!data || data.length === 0) {
         // No active stories for this user — exit cleanly
-        router.back();
+        goHome();
         return;
       }
       storiesRef.current = data;
@@ -262,7 +263,7 @@ export default function StoryViewerScreen() {
       return;
     }
 
-    if (router.canGoBack()) router.back();
+    goHome();
   }, [currentUserId, index]);
 
   const goPrev = useCallback(() => {
@@ -310,7 +311,7 @@ export default function StoryViewerScreen() {
         onPress: async () => {
           try { await deleteStory(story.id); } catch { /* ignore */ }
           const remaining = stories.filter((_, i) => i !== index);
-          if (remaining.length === 0) { if (router.canGoBack()) router.back(); return; }
+          if (remaining.length === 0) { goHome(); return; }
           setStories(remaining);
           setIndex(Math.min(index, remaining.length - 1));
         },
@@ -367,7 +368,7 @@ export default function StoryViewerScreen() {
         <Pressable style={styles.retryBtn} onPress={loadStories}>
           <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
         </Pressable>
-        <Pressable onPress={() => router.back()} style={{ marginTop: 12 }}>
+        <Pressable onPress={goHome} style={{ marginTop: 12 }}>
           <Text style={[styles.errorText, { fontSize: 13 }]}>رجوع</Text>
         </Pressable>
       </View>
@@ -403,7 +404,7 @@ export default function StoryViewerScreen() {
           >
             <Text style={styles.retryBtnText}>إعادة المحاولة</Text>
           </Pressable>
-          <Pressable onPress={() => router.back()} style={{ marginTop: 12 }}>
+        <Pressable onPress={goHome} style={{ marginTop: 12 }}>
             <Text style={[styles.videoErrorText, { fontSize: 13 }]}>رجوع</Text>
           </Pressable>
         </View>
@@ -489,7 +490,7 @@ export default function StoryViewerScreen() {
               style={styles.topActionBtn}
             />
           )}
-          <Pressable onPress={() => router.back()} hitSlop={10} style={styles.topActionBtn}>
+        <Pressable onPress={goHome} hitSlop={10} style={styles.topActionBtn}>
             <Feather name="x" size={22} color="#FFF" />
           </Pressable>
         </View>
@@ -542,7 +543,7 @@ export default function StoryViewerScreen() {
         onOpenProfile={(viewer) => {
           pauseStoryForProfile();
           setViewersVisible(false);
-          router.push({ pathname: "/user-profile", params: { userId: viewer.id, userName: viewer.name } } as any);
+          navigateWithHomeBase({ pathname: "/user-profile", params: { userId: viewer.id, userName: viewer.name } } as any);
         }}
       />
 

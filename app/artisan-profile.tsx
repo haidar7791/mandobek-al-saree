@@ -43,6 +43,7 @@ import PublicProfileTabs from "@/components/PublicProfileTabs";
 import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "../lib/notifications";
+import { navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -104,7 +105,7 @@ export default function ArtisanProfileScreen() {
         // Canonical routing: client accounts always use /user-profile so the
         // public profile looks identical regardless of where it was opened.
         if (artisanData.specialty === "client") {
-          router.replace({
+          navigateWithHomeBase({
             pathname: "/user-profile",
             params: {
               userId: artisanData.userId,
@@ -141,7 +142,7 @@ export default function ArtisanProfileScreen() {
 
   useEffect(() => {
     if (initialArtisan?.specialty === "client") {
-      router.replace({
+      navigateWithHomeBase({
         pathname: "/user-profile",
         params: {
           userId: initialArtisan.userId,
@@ -159,7 +160,7 @@ export default function ArtisanProfileScreen() {
     if (!user || !artisan) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const chatId = buildChatId(user.uid, artisan.userId);
-    router.push({
+    navigateWithHomeBase({
       pathname: "/chat",
       params: { chatId, otherName: artisan.name, otherArtisan: JSON.stringify(artisan) },
     });

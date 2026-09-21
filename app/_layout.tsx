@@ -20,6 +20,7 @@ import { isAuthRoutingSuspended } from "@/lib/auth_flow";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as Application from "expo-application";
 import { compareVersions, getMinimumRequiredVersion } from "@/lib/remote_config";
+import { navigateWithHomeBase } from "@/lib/navigation";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -251,20 +252,11 @@ export default function RootLayout() {
       if (type === "profile") {
         // A deep link is a new navigation root: keep exactly one Home screen
         // underneath the public profile instead of accumulating profile/profile/profile.
-        router.replace("/dashboard" as any);
-        setTimeout(() => {
-          router.push({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
-        }, 0);
+        navigateWithHomeBase({ pathname: "/artisan-profile", params: { artisanId: id } } as any);
       } else if (type === "user") {
-        router.replace("/dashboard" as any);
-        setTimeout(() => {
-          router.push({ pathname: "/user-profile", params: { userId: id } } as any);
-        }, 0);
+        navigateWithHomeBase({ pathname: "/user-profile", params: { userId: id } } as any);
       } else if (type === "product") {
-        // Product shares always land in the live marketplace feed. Replacing
-        // the current route prevents repeated deep-link opens from building
-        // an endless dashboard stack; Home remains the final screen on Back.
-        router.replace({ pathname: "/dashboard", params: { productId: id } } as any);
+        navigateWithHomeBase({ pathname: "/product/[id]", params: { id } } as any);
       }
     };
 

@@ -24,6 +24,7 @@ import {
   type ShareUserResult,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -112,7 +113,7 @@ export default function UserSearchScreen() {
   const openProfile = (user: ShareUserResult) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    router.push({
+    navigateWithHomeBase({
       pathname: "/user-profile",
       params: {
         userId: user.userId,
@@ -124,10 +125,12 @@ export default function UserSearchScreen() {
   const openProduct = (product: Product) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    router.push({
-      pathname: "/dashboard",
+    navigateWithHomeBase({
+      pathname: "/product/[id]",
       params: {
         productId: product.id,
+        id: product.id,
+        product: JSON.stringify(product),
       },
     } as any);
   };
@@ -145,7 +148,7 @@ export default function UserSearchScreen() {
       >
         <Pressable
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={goHome}
           accessibilityLabel="رجوع"
         >
           <Feather name="chevron-right" size={24} color="#FFF" />

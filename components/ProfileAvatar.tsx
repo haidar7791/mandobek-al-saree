@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Image, Text, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
+import { navigateWithHomeBase } from "@/lib/navigation";
 
 interface ProfileAvatarProps {
   photoUri?: string | null;
@@ -59,7 +60,7 @@ export default function ProfileAvatar({
 
   return (
     <Pressable
-      onPress={() => router.push("/profile" as any)}
+      onPress={() => navigateWithHomeBase("/profile" as any)}
       style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}
       hitSlop={8}
     >

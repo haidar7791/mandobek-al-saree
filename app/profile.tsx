@@ -55,6 +55,7 @@ import ProfilePostComposerModal, {
 import FollowersModal from "@/components/FollowersModal";
 import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
+import { navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -540,7 +541,7 @@ export default function ProfileScreen() {
           <Text style={styles.headerTitle}>الملف الشخصي</Text>
           {/* Settings and customer support stay together under the profile header. */}
           <View style={styles.headerTools}>
-            <Pressable onPress={() => router.push("/support" as any)} style={styles.headerIcon}>
+            <Pressable onPress={() => navigateWithHomeBase("/support" as any)} style={styles.headerIcon}>
               <Feather name="headphones" size={19} color={C.accent} />
             </Pressable>
           </View>
@@ -622,7 +623,7 @@ export default function ProfileScreen() {
 
       {/* Account controls */}
       <View style={styles.controlRow}>
-        <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => router.push("/wallet" as any)}>
+        <Pressable style={[styles.controlBtn, styles.walletBtn]} onPress={() => navigateWithHomeBase("/wallet" as any)}>
           <MaterialCommunityIcons name="wallet-outline" size={17} color={C.accent} />
           <Text style={[styles.controlBtnText, styles.walletAmountText]} numberOfLines={1}>
             {balance.toLocaleString("en-US")} د.ع
@@ -633,7 +634,7 @@ export default function ProfileScreen() {
           style={[styles.controlBtn, styles.promoteControlBtn]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/promote" as any);
+            navigateWithHomeBase("/promote" as any);
           }}
           accessibilityLabel="روّج حسابك"
         >
@@ -716,7 +717,7 @@ export default function ProfileScreen() {
                 <View />
                 <Pressable
                   style={[styles.sectionAction, productsLoading && { opacity: 0.55 }]}
-                  onPress={() => router.push("/add-product" as any)}
+                  onPress={() => navigateWithHomeBase("/add-product" as any)}
                   accessibilityRole="button"
                 >
                   <Feather name="plus" size={15} color={C.accent} />
@@ -742,7 +743,7 @@ export default function ProfileScreen() {
                       style={styles.profileProductCard}
                       onPress={() => {
                         Haptics.selectionAsync();
-                        router.replace({
+                        navigateWithHomeBase({
                           pathname: "/dashboard",
                           params: { productId: product.id },
                         } as any);
@@ -782,7 +783,7 @@ export default function ProfileScreen() {
           {uid === ADMIN_UID && (
             <Pressable
               style={styles.adminBtn}
-              onPress={() => router.push("/admin")}
+                onPress={() => navigateWithHomeBase("/admin")}
             >
               <View style={styles.adminIcon}>
                 <Ionicons name="shield-checkmark" size={20} color="#fff" />

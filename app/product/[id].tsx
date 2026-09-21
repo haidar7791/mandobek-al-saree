@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,28 +12,38 @@ import { Feather } from "@expo/vector-icons";
 import { auth } from "@/lib/firebase";
 import { likeProduct, subscribeToProducts, type Product } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
+import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import ReportButton from "@/components/ReportButton";
 import Colors from "@/constants/colors";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
 export default function ProductScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { id, product: productParam } = useLocalSearchParams<{ id: string; product?: string }>();
+  const initialProduct = useMemo(() => {
+    if (!productParam) return null;
+    try {
+      return JSON.parse(productParam) as Product;
+    } catch {
+      return null;
+    }
+  }, [productParam]);
+  const [product, setProduct] = useState<Product | null>(initialProduct);
+  const [loading, setLoading] = useState(!initialProduct);
 
   useEffect(() => {
     const unsubscribe = subscribeToProducts((products) => {
-      setProduct(products.find((item) => item.id === id) ?? null);
+      setProduct(products.find((item) => item.id === id) ?? initialProduct);
       setLoading(false);
     }, () => setLoading(false));
     return unsubscribe;
-  }, [id]);
+  }, [id, initialProduct]);
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton} accessibilityLabel="رجوع">
+        <Pressable onPress={goHome} style={styles.backButton} accessibilityLabel="رجوع">
           <Feather name="arrow-right" size={22} color={C.text} />
         </Pressable>
         <Text style={styles.headerTitle}>تفاصيل المنتج</Text>
@@ -82,7 +92,7 @@ export default function ProductScreen() {
             <View style={styles.divider} />
             <Pressable
               style={styles.sellerRow}
-              onPress={() => router.push({ pathname: "/user-profile", params: { userId: product.sellerId } } as any)}
+               onPress={() => navigateWithHomeBase({ pathname: "/user-profile", params: { userId: product.sellerId } } as any)}
             >
               <View style={styles.sellerIcon}>
                 <Feather name="user" size={18} color={C.accent} />
@@ -93,6 +103,13 @@ export default function ProductScreen() {
               </View>
               <Feather name="chevron-left" size={18} color={C.textMuted} />
             </Pressable>
+            {auth.currentUser?.uid !== product.sellerId && (
+              <ProductPurchaseButton
+                product={product}
+                userId={auth.currentUser?.uid ?? null}
+                compactPublicProfile
+              />
+            )}
           </View>
         </ScrollView>
       )}

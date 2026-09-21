@@ -38,6 +38,7 @@ import FollowersModal from "@/components/FollowersModal";
 import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "@/lib/notifications";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -87,7 +88,7 @@ export default function UserProfileScreen() {
           const artisan = await getArtisanByUserId(userId);
           if (cancelled) return;
           if (artisan) {
-            router.replace({
+            navigateWithHomeBase({
               pathname: "/artisan-profile",
               params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
             } as any);
@@ -200,7 +201,7 @@ export default function UserProfileScreen() {
     if (!me || !userId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const chatId = buildChatId(me.uid, userId);
-    router.push({ pathname: "/chat", params: { chatId, otherName: displayName } });
+    navigateWithHomeBase({ pathname: "/chat", params: { chatId, otherName: displayName } });
   };
 
   const handleToggleFollow = async () => {

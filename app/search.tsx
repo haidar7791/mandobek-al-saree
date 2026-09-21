@@ -23,6 +23,7 @@ import {
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
+import { goHome, navigateWithHomeBase } from "@/lib/navigation";
 
 const C = Colors.light;
 
@@ -147,7 +148,7 @@ export default function SearchScreen() {
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
       <LinearGradient colors={["#0D1B3E", "#162452"]} style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable style={styles.backBtn} onPress={goHome}>
           <Feather name="chevron-right" size={24} color="#FFF" />
         </Pressable>
         <View style={styles.inputWrap}>
@@ -213,7 +214,7 @@ export default function SearchScreen() {
                   activeOpacity={0.8}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push({
+                    navigateWithHomeBase({
                       pathname: "/artisan-profile",
                       params: { artisanId: a.id, artisan: JSON.stringify(a) },
                     });
@@ -252,7 +253,10 @@ export default function SearchScreen() {
                 activeOpacity={0.8}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setSelectedProduct(p);
+                  navigateWithHomeBase({
+                    pathname: "/product/[id]",
+                    params: { id: p.id, product: JSON.stringify(p) },
+                  });
                 }}
               >
                 {normalizeProductMedia(p.media, p.imageUrl).length > 0 ? (
@@ -350,7 +354,7 @@ export default function SearchScreen() {
                         onPress={() => {
                           setSelectedProduct(null);
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          router.push({ pathname: "/user-profile", params: { userId: p.sellerId, userName: p.sellerName } } as any);
+                          navigateWithHomeBase({ pathname: "/user-profile", params: { userId: p.sellerId, userName: p.sellerName } } as any);
                         }}
                       >
                         <Feather name="chevron-left" size={16} color={C.textSecondary} />
