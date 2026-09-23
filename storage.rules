@@ -1,106 +1,536 @@
 rules_version = '2';
 
-// قواعد أمان Firebase Storage لتطبيق "سند"
+// قواعد أمان Firestore لتطبيق "فورس"
 // انسخ هذا الملف بالكامل إلى:
-// Firebase Console > Storage > Rules
+// Firebase Console > Firestore Database > Rules
 
-service firebase.storage {
-  match /b/{bucket}/o {
+service cloud.firestore {
+  match /databases/{database}/documents {
 
-    // معرض أعمال الحرفي / المنشورات - صور وفيديوهات لملف المستخدم
-    match /portfolio/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.size < 100 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*|video/.*');
-      allow delete: if request.auth != null
-                    && request.auth.uid == userId;
+    // ============================================================
+    // Helpers
+    // ============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // منشورات الرئيسية الشاملة (Posts / Reels)
-    match /posts/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.size < 100 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*|video/.*');
-      allow delete: if request.auth != null
-                    && request.auth.uid == userId;
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2";
     }
 
-    // الصور الشخصية
-    match /avatars/{userId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.size < 10 * 1024 * 1024;
+    function chatAllowsMessage(chatId) {
+      let chat = get(
+        /databases/$(database)/documents/chats/$(chatId)
+      ).data;
+
+      return isSignedIn()
+        && request.auth.uid in chat.participants
+        && (
+          chat.isGroup == true
+          ||
+          (
+            request.auth.uid == chat.participants[0]
+            && !(
+              request.auth.uid in
+              get(
+                /databases/$(database)/documents/users/$(chat.participants[1])
+              ).data.get("blockedUserIds", [])
+            )
+          )
+          ||
+          (
+            request.auth.uid == chat.participants[1]
+            && !(
+              request.auth.uid in
+              get(
+                /databases/$(database)/documents/users/$(chat.participants[0])
+              ).data.get("blockedUserIds", [])
+            )
+          )
+        );
     }
 
-    // وسائط المحادثات - أي مشارك حالي يستطيع إرسال/قراءة الوسائط.
-    // هذا يعتمد على participants من وثيقة المحادثة، لذلك الأعضاء المضافون
-    // لاحقاً إلى المجموعة يستطيعون أيضاً إرسال الصور والفيديو.
-    match /chatMedia/{chatId}/{fileName} {
-      function isChatParticipant() {
-        return request.auth != null
-          && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+    // Like transactions update an owner's aggregate counter even when the
+    // authenticated user is a different account from the content owner.
+    // Keep this exception limited to the counter fields used by the app.
+    function canUpdateContentLikeCounter() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["contentLikesCount"])
+        && request.resource.data.get("contentLikesCount", -1) is number
+        && request.resource.data.get("contentLikesCount", -1) >= 0;
+    }
+
+    // Profile-post likes also update the denormalized profilePosts array to
+    // keep that post's likesCount in sync with its likes subcollection.
+    function canUpdateProfilePostLikeCounters() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["profilePosts", "contentLikesCount"])
+        && request.resource.data.get("contentLikesCount", -1) is number
+        && request.resource.data.get("contentLikesCount", -1) >= 0;
+    }
+
+    // ============================================================
+    // Followers collection group
+    // مطلوب لـ getFollowingProfiles()
+    // ============================================================
+
+    match /{path=**}/followers/{followerId} {
+      allow read: if isSignedIn();
+    }
+
+    // ============================================================
+    // المنشورات الرئيسية والمعرض
+    // Posts / Reels Feed
+    // ============================================================
+
+    match /posts/{postId} {
+
+      allow read, write: if isSignedIn();
+
+      // إعجابات المنشور: كل مستخدم يدير مستند إعجابه فقط.
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "userId",
+            "createdAt",
+            "likedAt",
+            "likerId"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
       }
-      allow read: if isChatParticipant();
-      allow write: if isChatParticipant()
-                    && request.resource.size < 50 * 1024 * 1024;
-      allow delete: if isChatParticipant();
+
+      // تعليقات المنشور
+      match /comments/{commentId} {
+
+        allow read, write: if isSignedIn();
+
+        // إعجابات التعليق
+        match /likes/{likerId} {
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
+      }
     }
 
-    // وسائط المنتجات — صور وفيديوهات
-    match /products/{productId}/{fileName=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.resource.size < 100 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*|video/.*');
-      allow delete: if request.auth != null;
+    // ============================================================
+    // منشورات الملف الشخصي ومعرض الأعمال
+    // Profile Posts
+    // ============================================================
+
+    match /profilePosts/{postId} {
+
+      allow read, write: if isSignedIn();
+
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId",
+            "userId",
+            "createdAt"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+
+        allow read, write: if isSignedIn();
+
+        // إعجابات تعليقات منشورات الملف الشخصي
+        match /likes/{likerId} {
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
+      }
     }
 
-    // وسائط القصص — صور وفيديوهات stories
-    match /stories/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.size < 100 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*|video/.*');
-      allow delete: if request.auth != null
-                    && request.auth.uid == userId;
+    // ============================================================
+    // المستخدمون والملف الشخصي
+    // ============================================================
+
+    match /users/{userId} {
+
+      // الملف الشخصي قابل للقراءة للمستخدمين المسجلين
+      allow read: if isSignedIn();
+
+      allow create: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.get("isBanned", false) == false
+          && request.resource.data.get("role", "client") in ["client", "artisan"]
+        );
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && resource.data.get("isBanned", false) != true
+          && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "isBanned",
+            "bannedAt",
+            "bannedBy",
+            "banReason",
+            "role"
+          ]) == false
+        )
+        || canUpdateContentLikeCounter()
+        || canUpdateProfilePostLikeCounters();
+
+      allow delete: if isAdmin();
+
+      // المتابعون
+      match /followers/{followerId} {
+
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == followerId
+          && exists(
+            /databases/$(database)/documents/users/$(userId)
+          )
+          && request.resource.data.keys().hasOnly([
+            "followedAt"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == followerId;
+
+        allow update: if false;
+      }
+
+      // إعجابات الملف الشخصي
+      match /likes/{likerId} {
+
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && exists(
+            /databases/$(database)/documents/users/$(userId)
+          )
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
+
+      // التقييمات
+      match /reviews/{reviewId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // إعجابات منشورات الملف الشخصي الموجودة داخل users
+      match /profilePosts/{postId}/likes/{likerId} {
+
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
     }
 
-    // منشورات الملف الشخصي
-    match /profile-posts/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.size < 100 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*|video/.*');
-      allow delete: if request.auth != null
-                    && request.auth.uid == userId;
+    // ============================================================
+    // فهرس الهاتف
+    // ============================================================
+
+    match /phoneIndex/{phone} {
+
+      allow get: if true;
+
+      allow list: if false;
+
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          "phone",
+          "userId"
+        ])
+        && request.resource.data.phone == phone;
+
+      allow delete: if isAdmin();
     }
 
+    // ============================================================
+    // الإشعارات
+    // ============================================================
 
+    match /notifications/{notificationId} {
 
-    // صور أغلفة مجموعات المحادثة
-    match /chatGroups/{chatId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                    && request.resource.size < 10 * 1024 * 1024
-                    && request.resource.contentType.matches('image/.*');
-      allow delete: if request.auth != null;
+      // المستخدم يستطيع قراءة إشعاراته فقط
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.actorId == request.auth.uid
+        && (
+          request.resource.data.recipientId != request.auth.uid
+          || request.resource.data.type == "moderation"
+        );
+
+      allow update: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.recipientId == request.auth.uid;
+
+      allow delete: if isSignedIn()
+        && resource.data.recipientId == request.auth.uid;
     }
 
-    // إيصالات تحويل المحفظة
-    match /walletReceipts/{userId}/{fileName} {
-      allow read: if request.auth != null
-                    && (request.auth.uid == userId
-                        || request.auth.uid == "JBtQBKkpMvOT58abx2wZqOtxNwU2");
-      allow write: if request.auth != null
-                    && request.auth.uid == userId;
+    // ============================================================
+    // الحرفيون والبائعون
+    // ============================================================
+
+    match /artisans/{artisanId} {
+
+      allow read, write: if isSignedIn();
+
+      match /reviews/{reviewId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // ============================================================
+    // المحفظة
+    // ============================================================
+
+    match /wallets/{userId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // طلبات المحفظة
+    // ============================================================
+
+    match /walletRequests/{requestId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // سجلات الترويج
+    // ============================================================
+
+    match /promotions/{promoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // المنتجات
+    // ============================================================
+
+    match /products/{productId} {
+
+      allow read, write: if isSignedIn();
+
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId
+          && request.resource.data.keys().hasOnly([
+            "likedAt",
+            "likerId",
+            "userId",
+            "createdAt"
+          ]);
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // ============================================================
+    // المأكولات والأطباق
+    // Food Items
+    // ============================================================
+
+    match /foodItems/{foodId} {
+
+      // عرض الأطباق + إنشاء طبق + تعديل وحذف الأطباق
+      // للمستخدمين المسجلين فقط.
+      allow read, write: if isSignedIn();
+
+      // ==========================================================
+      // إعجابات الطبق
+      // ==========================================================
+
+      match /likes/{likerId} {
+
+        allow read: if isSignedIn();
+
+        // المستخدم يستطيع إنشاء إعجابه بنفسه فقط.
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        // المستخدم يستطيع حذف إعجابه بنفسه فقط.
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
+
+      // ==========================================================
+      // تعليقات الطبق
+      // ==========================================================
+
+      match /comments/{commentId} {
+
+        // عرض التعليقات + إضافة التعليقات.
+        allow read, write: if isSignedIn();
+
+        // ========================================================
+        // إعجابات تعليقات الطبق
+        // ========================================================
+
+        match /likes/{likerId} {
+
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
+      }
+    }
+
+    // ============================================================
+    // القصص
+    // ============================================================
+
+    match /stories/{storyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // طلبات الخدمة
+    // ============================================================
+
+    match /serviceRequests/{requestId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // المحادثات والرسائل
+    // ============================================================
+
+    match /chats/{chatId} {
+
+      allow read, write: if isSignedIn();
+
+      match /messages/{messageId} {
+
+        allow read: if isSignedIn();
+
+        allow create: if chatAllowsMessage(chatId);
+
+        allow update, delete: if isSignedIn();
+      }
+    }
+
+    // ============================================================
+    // طلبات شراء المنتجات
+    // ============================================================
+
+    match /productOrders/{orderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // المتابعات والتقييمات
+    // ============================================================
+
+    match /follows/{followId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /reviews/{reviewId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /ratings/{ratingId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ============================================================
+    // البلاغات
+    // ============================================================
+
+    match /reports/{reportId} {
+
+      allow create: if isSignedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.reporterName is string
+        && request.resource.data.targetId is string
+        && request.resource.data.targetType in [
+          "product",
+          "post",
+          "story",
+          "chat"
+        ]
+        && request.resource.data.reason in [
+          "inappropriate",
+          "violence",
+          "child_exploitation",
+          "harassment",
+          "spam_scam",
+          "other"
+        ]
+        && request.resource.data.status == "open";
+
+      allow read, update, delete: if isAdmin();
     }
   }
 }
-

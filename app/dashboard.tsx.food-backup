@@ -57,10 +57,6 @@ import {
   fetchProductsOnce,
   deleteProduct,
   getIsProductLiked,
-  type FoodItem,
-  fetchFoodItems,
-  getIsFoodLiked,
-  toggleFoodLike,
   unlikeProduct,
   likeProduct,
   rankProductsForFeed,
@@ -144,7 +140,7 @@ const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 
 const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 });
 const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
-type CategoryTab = "home" | "products" | "food" | "services";
+type CategoryTab = "home" | "products" | "services";
 
 const SERVICE_CATEGORY_TABS: {
   key: ServiceCategory;
@@ -868,273 +864,6 @@ function HomeVideoViewer({
 }
 
 
-
-function FoodDashboardCard({ item }: { item: FoodItem }) {
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(item.likesCount || 0);
-  const [liking, setLiking] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    const checkLike = async () => {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-
-      try {
-        const value = await getIsFoodLiked(item.id, uid);
-        if (active) setLiked(value);
-      } catch (error) {
-        console.error("food like check failed:", error);
-      }
-    };
-
-    void checkLike();
-
-    return () => {
-      active = false;
-    };
-  }, [item.id]);
-
-  const handleLike = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || liking) return;
-
-    setLiking(true);
-
-    try {
-      const nextLiked = await toggleFoodLike(item.id, uid);
-
-      setLiked(nextLiked);
-      setLikesCount((count) =>
-        Math.max(0, count + (nextLiked ? 1 : -1))
-      );
-    } catch (error: any) {
-      Alert.alert(
-        "تعذر الإعجاب",
-        error?.message || "حدث خطأ."
-      );
-    } finally {
-      setLiking(false);
-    }
-  };
-
-  const first = item.media?.[0];
-
-  return (
-    <View
-      style={{
-        backgroundColor: C.card,
-        borderRadius: 17,
-        overflow: "hidden",
-        marginBottom: 15,
-        borderWidth: 1,
-        borderColor: C.border,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          padding: 12,
-          gap: 8,
-        }}
-      >
-        {item.userPhoto ? (
-          <Image
-            source={{ uri: item.userPhoto }}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-            }}
-          />
-        ) : (
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: C.background,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Feather
-              name="user"
-              size={18}
-              color={C.textMuted}
-            />
-          </View>
-        )}
-
-        <Text
-          style={{
-            flex: 1,
-            color: C.text,
-            fontSize: 15,
-            fontWeight: "800",
-          }}
-          numberOfLines={1}
-        >
-          {item.userName || "مستخدم"}
-        </Text>
-      </View>
-
-      {first ? (
-        first.type === "video" ? (
-          <View
-            style={{
-              width: "100%",
-              height: 300,
-              backgroundColor: "#111",
-            }}
-          >
-            <Video
-              source={{ uri: first.url }}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
-              isLooping
-            />
-          </View>
-        ) : (
-          <Image
-            source={{ uri: first.url }}
-            style={{
-              width: "100%",
-              height: 300,
-              backgroundColor: C.background,
-            }}
-            resizeMode="contain"
-          />
-        )
-      ) : (
-        <View
-          style={{
-            height: 220,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: C.background,
-          }}
-        >
-          <Ionicons
-            name="restaurant-outline"
-            size={50}
-            color={C.accent}
-          />
-        </View>
-      )}
-
-      <View style={{ padding: 12 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
-          <Text
-            style={{
-              flex: 1,
-              color: C.text,
-              fontSize: 17,
-              fontWeight: "900",
-              textAlign: "right",
-            }}
-            numberOfLines={2}
-          >
-            {item.name}
-          </Text>
-
-          <Text
-            style={{
-              color: C.accent,
-              fontSize: 16,
-              fontWeight: "900",
-            }}
-          >
-            {Number(item.price || 0).toLocaleString("en-US")} د.ع
-          </Text>
-        </View>
-
-        {!!item.appetizers?.trim() && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              marginTop: 10,
-            }}
-          >
-            <Ionicons
-              name="restaurant-outline"
-              size={17}
-              color={C.accent}
-            />
-            <Text
-              style={{
-                flex: 1,
-                color: C.textSecondary,
-                fontSize: 13,
-                textAlign: "right",
-              }}
-            >
-              {item.appetizers}
-            </Text>
-          </View>
-        )}
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginTop: 12,
-            gap: 20,
-          }}
-        >
-          <Pressable
-            onPress={() => void handleLike()}
-            disabled={liking}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <Ionicons
-              name={liked ? "heart" : "heart-outline"}
-              size={23}
-              color={liked ? "#e53935" : C.text}
-            />
-            <Text style={{ color: C.text }}>
-              {likesCount}
-            </Text>
-          </Pressable>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <Ionicons
-              name="chatbubble-outline"
-              size={22}
-              color={C.text}
-            />
-            <Text style={{ color: C.text }}>
-              {item.commentsCount || 0}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 export default function DashboardScreen() {
   const {
     productId: sharedProductId,
@@ -1162,12 +891,6 @@ const isFocused = useIsFocused();
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsRefreshing, setProductsRefreshing] = useState(false);
-
-  // ── Food ──
-  const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
-  const [foodLoading, setFoodLoading] = useState(true);
-  const [foodRefreshing, setFoodRefreshing] = useState(false);
-
   const [smartFeedSeed, setSmartFeedSeed] = useState(0);
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [sharePost, setSharePost] = useState<HomeFeedPost | null>(null);
@@ -2014,38 +1737,6 @@ const isFocused = useIsFocused();
     await loadProducts(true);
   }, [loadProducts]);
 
-  // ── Food feed ──
-  const loadFoodItems = useCallback(async (showSpinner = false) => {
-    if (showSpinner) setFoodRefreshing(true);
-
-    try {
-      const data = await fetchFoodItems();
-      setFoodItems(data);
-    } catch (error) {
-      console.error("fetchFoodItems failed:", error);
-
-      if (showSpinner) {
-        Alert.alert(
-          "خطأ",
-          "تعذّر تحديث المأكولات، حاول مجدداً."
-        );
-      }
-    } finally {
-      setFoodLoading(false);
-      setFoodRefreshing(false);
-    }
-  }, []);
-
-  const onFoodRefresh = useCallback(async () => {
-    await loadFoodItems(true);
-  }, [loadFoodItems]);
-
-  useEffect(() => {
-    if (activeCategory === ("food" as any)) {
-      void loadFoodItems(false);
-    }
-  }, [activeCategory, loadFoodItems]);
-
   // Buyer: keep a live map of productId → orderId for MY pending orders
   useEffect(() => {
     if (!userId) return;
@@ -2498,8 +2189,7 @@ const isFocused = useIsFocused();
                 }
 
                 if (item.key === "food") {
-                  setActiveCategory("food" as any);
-                  void loadFoodItems(false);
+                  router.push("/food" as any);
                   return;
                 }
 
@@ -2741,55 +2431,6 @@ const isFocused = useIsFocused();
                       <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
                       <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
                       <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
-                    </View>
-                  )
-                }
-              />
-            ) : (activeCategory as any) === "food" ? (
-              /* ══ FOOD VIEW ══ */
-              <FlatList
-                key="feed-list-food"
-                data={foodItems}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={[
-                  styles.listContent,
-                  { paddingBottom: bottomPad + 20 },
-                ]}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={foodRefreshing}
-                    onRefresh={onFoodRefresh}
-                    tintColor={C.accent}
-                  />
-                }
-                showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <FoodDashboardCard item={item} />
-                )}
-                ListEmptyComponent={
-                  foodLoading ? (
-                    <View style={styles.emptyState}>
-                      <ActivityIndicator
-                        size="large"
-                        color={C.accent}
-                      />
-                      <Text style={styles.emptySubtitle}>
-                        جارٍ تحميل المأكولات...
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <Ionicons
-                        name="restaurant-outline"
-                        size={52}
-                        color={C.textMuted}
-                      />
-                      <Text style={styles.emptyTitle}>
-                        لا توجد أطباق منشورة بعد
-                      </Text>
-                      <Text style={styles.emptySubtitle}>
-                        كن أول من يضيف طبقًا إلى قسم المأكولات
-                      </Text>
                     </View>
                   )
                 }

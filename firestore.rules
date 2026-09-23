@@ -384,6 +384,45 @@ service cloud.firestore {
       }
     }
 
+
+    // ============================================================
+    // المأكولات والأطباق
+    // ============================================================
+    match /foodItems/{foodId} {
+      allow read, write: if isSignedIn();
+
+      // إعجابات الطبق
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow delete: if isSignedIn()
+          && request.auth.uid == likerId;
+
+        allow update: if false;
+      }
+
+      // تعليقات الطبق
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
+
+        // إعجابات تعليقات الطبق
+        match /likes/{likerId} {
+          allow read: if isSignedIn();
+
+          allow create: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow delete: if isSignedIn()
+            && request.auth.uid == likerId;
+
+          allow update: if false;
+        }
+      }
+    }
+
     // ============================================================
     // القصص
     // ============================================================

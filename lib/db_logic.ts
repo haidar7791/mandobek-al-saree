@@ -4390,3 +4390,126 @@ export async function leaveGroup(
 
   await updateDoc(ref, patch);
 }
+
+
+export type FoodMedia = {
+  url: string;
+  type: "image" | "video";
+};
+
+export type FoodItem = {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string | null;
+  name: string;
+  price: number;
+  appetizers?: string;
+  media: FoodMedia[];
+  likesCount: number;
+  commentsCount: number;
+  createdAt: any;
+};
+
+export type FoodComment = {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string | null;
+  text: string;
+  createdAt: any;
+};
+
+export const addFoodItem = async (
+  item: Omit<FoodItem, "id">
+): Promise<string> => {
+  const refDoc = await addDoc(collection(db, "foodItems"), {
+    ...item,
+    createdAt: serverTimestamp(),
+    likesCount: 0,
+    commentsCount: 0,
+  });
+  return refDoc.id;
+};
+
+export const fetchFoodItems = async (): Promise<FoodItem[]> => {
+  const q = query(
+    collection(db, "foodItems"),
+    orderBy("createdAt", "desc")
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<FoodItem, "id">),
+  }));
+};
+
+export const getIsFoodLiked = async (
+  foodId: string,
+  userId: string
+): Promise<boolean> => {
+  const likeRef = doc(db, "foodItems", foodId, "likes", userId);
+  const snap = await getDoc(likeRef);
+  return snap.exists();
+};
+
+export const toggleFoodLike = async (
+  foodId: string,
+  userId: string
+): Promise<boolean> => {
+  const likeRef = doc(db, "foodItems", foodId, "likes", userId);
+  const foodRef = doc(db, "foodItems", foodId);
+
+  const snap = await getDoc(likeRef);
+
+  if (snap.exists()) {
+    await deleteDoc(likeRef);
+    await updateDoc(foodRef, { likesCount: increment(-1) });
+    return false;
+  }
+
+  await setDoc(likeRef, {
+    userId,
+    createdAt: serverTimestamp(),
+  });
+
+  await updateDoc(foodRef, { likesCount: increment(1) });
+  return true;
+};
+
+export const fetchFoodComments = async (
+  foodId: string
+): Promise<FoodComment[]> => {
+  const q = query(
+    collection(db, "foodItems", foodId, "comments"),
+    orderBy("createdAt", "asc")
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<FoodComment, "id">),
+  }));
+};
+
+export const addFoodComment = async (
+  foodId: string,
+  comment: Omit<FoodComment, "id">
+): Promise<string> => {
+  const commentRef = await addDoc(
+    collection(db, "foodItems", foodId, "comments"),
+    {
+      ...comment,
+      createdAt: serverTimestamp(),
+    }
+  );
+
+  await updateDoc(doc(db, "foodItems", foodId), {
+    commentsCount: increment(1),
+  });
+
+  return commentRef.id;
+};
