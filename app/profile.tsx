@@ -644,6 +644,31 @@ export default function ProfileScreen() {
 
       </View>
 
+      {specialty === "restaurant" && (
+        <View style={styles.restaurantOwnerCard}>
+          <View style={styles.restaurantOwnerInfo}>
+            <View style={styles.restaurantOwnerIcon}>
+              <Ionicons name="restaurant-outline" size={23} color={C.accent} />
+            </View>
+
+            <View style={styles.restaurantOwnerText}>
+              <Text style={styles.restaurantOwnerTitle}>إدارة المطعم</Text>
+              <Text style={styles.restaurantOwnerSubtitle}>
+                أضف وجباتك وأدر قائمة مطعمك
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={styles.restaurantOwnerButton}
+            onPress={() => navigateWithHomeBase("/add-food" as any)}
+          >
+            <Feather name="plus" size={16} color={C.primary} />
+            <Text style={styles.restaurantOwnerButtonText}>إضافة طبق</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* ══════════════════════════════════════════
           HORIZONTAL PROFILE TABS
       ══════════════════════════════════════════ */}
@@ -1024,6 +1049,36 @@ export default function ProfileScreen() {
                 </Pressable>
               ))}
 
+              {/* ── Restaurant ── */}
+              <Text style={styles.spCategoryHeader}>المطاعم</Text>
+              {[
+                { key: "restaurant", label: "مطعم" },
+              ].map((item) => (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.spOptionRow,
+                    editSpecialty === item.key && styles.spOptionRowActive,
+                  ]}
+                  onPress={() => {
+                    setEditSpecialty(item.key);
+                    setSpecialtyPickerVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.spOptionLabel,
+                      editSpecialty === item.key && styles.spOptionLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {editSpecialty === item.key && (
+                    <Feather name="check" size={16} color={C.primary} />
+                  )}
+                </Pressable>
+              ))}
+
               {/* ── Home  services ── */}
               <Text style={styles.spCategoryHeader}>خدمات المنزل</Text>
               {[
@@ -1336,6 +1391,71 @@ const styles = StyleSheet.create({
   },
 
   // ── Three controls below the hero ──
+  restaurantOwnerCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 4,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  restaurantOwnerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+
+  restaurantOwnerIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginRight: 11,
+  },
+
+  restaurantOwnerText: {
+    flex: 1,
+  },
+
+  restaurantOwnerTitle: {
+    color: "#FFF",
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  restaurantOwnerSubtitle: {
+    color: C.textMuted,
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: "right",
+  },
+
+  restaurantOwnerButton: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: C.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+
+  restaurantOwnerButtonText: {
+    color: C.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   controlRow: {
     flexDirection: "row",
     gap: 8,

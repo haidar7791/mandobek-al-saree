@@ -65,13 +65,26 @@ export const DELIVERY_SERVICES = [
   { key: "courier", label: "مندوب", icon: "package" },
 ];
 
-export type ServiceCategory = "home" | "car" | "general" | "delivery";
+export const RESTAURANT_SPECIALTY = {
+  key: "restaurant",
+  label: "مطعم",
+  icon: "coffee",
+};
 
-export const ALL_SPECIALTIES = [...HOME_SERVICES, ...CAR_SERVICES, ...GENERAL_SERVICES, ...DELIVERY_SERVICES];
+export type ServiceCategory = "home" | "car" | "general" | "delivery" | "restaurant";
+
+export const ALL_SPECIALTIES = [
+  RESTAURANT_SPECIALTY,
+  ...HOME_SERVICES,
+  ...CAR_SERVICES,
+  ...GENERAL_SERVICES,
+  ...DELIVERY_SERVICES,
+];
 
 const REMOVED_SPECIALTY_KEYS = new Set(["shovel", "roller", "backhoe"]);
 
 export function getCategoryForSpecialty(key: string): ServiceCategory {
+  if (key === RESTAURANT_SPECIALTY.key) return "restaurant";
   if (HOME_SERVICES.find((s) => s.key === key)) return "home";
   if (CAR_SERVICES.find((s) => s.key === key)) return "car";
   if (DELIVERY_SERVICES.find((s) => s.key === key)) return "delivery";

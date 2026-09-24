@@ -144,7 +144,7 @@ const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 
 const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 });
 const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
-type CategoryTab = "home" | "products" | "food" | "services";
+type CategoryTab = "home" | "products" | "food" | "restaurants" | "services";
 
 const SERVICE_CATEGORY_TABS: {
   key: ServiceCategory;
@@ -173,6 +173,8 @@ function ArtisanCard({
       ? calcDistanceKm(userLocation, artisan.location)
       : null;
 
+  const isRestaurant = artisan.specialty === "restaurant";
+
   const initials = artisan.name
     .split(" ")
     .map((w) => w[0])
@@ -180,39 +182,250 @@ function ArtisanCard({
     .slice(0, 2)
     .toUpperCase();
 
+  const rating =
+    typeof artisan.rating === "number" && artisan.rating > 0
+      ? artisan.rating.toFixed(1)
+      : "جديد";
+
+  const distanceText =
+    distance !== null
+      ? distance < 1
+        ? `${Math.round(distance * 1000)} م`
+        : `${distance.toFixed(1)} كم`
+      : "غير محددة";
+
+  /*
+   * Restaurant cards use the profile photo as a premium banner until a
+   * dedicated restaurant cover image is available in the profile schema.
+   * This keeps the card visually rich without inventing a database field.
+   */
+  if (isRestaurant) {
+    return (
+      <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.restaurantCard,
+            pressed && { transform: [{ scale: 0.985 }], opacity: 0.96 },
+          ]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigateWithHomeBase({
+              pathname: "/artisan-profile",
+              params: {
+                artisanId: artisan.id,
+                artisan: JSON.stringify(artisan),
+              },
+            });
+          }}
+        >
+          <View style={styles.restaurantHero}>
+            {artisan.photoUri ? (
+              <Image
+                source={{ uri: artisan.photoUri }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient
+                colors={["#24345D", "#0D1834"]}
+                style={StyleSheet.absoluteFill}
+              >
+                <Text style={styles.restaurantBannerInitials}>
+                  {initials}
+                </Text>
+              </LinearGradient>
+            )}
+
+            <LinearGradient
+              colors={[
+                "rgba(7,12,25,0.05)",
+                "rgba(7,12,25,0.30)",
+                "rgba(7,12,25,0.94)",
+              ]}
+              locations={[0, 0.45, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+
+            {isFeaturedActive(artisan) && (
+              <View style={styles.restaurantFeaturedBadge}>
+                <Ionicons name="star" size={12} color={C.primary} />
+                <Text style={styles.restaurantFeaturedText}>مميز</Text>
+              </View>
+            )}
+
+            <View style={styles.restaurantLogoWrap}>
+              {artisan.photoUri ? (
+                <Image
+                  source={{ uri: artisan.photoUri }}
+                  style={styles.restaurantLogo}
+                  resizeMode="cover"
+                />
+              ) : (
+                <LinearGradient
+                  colors={[C.primary, "#1E2F60"]}
+                  style={styles.restaurantLogo}
+                >
+                  <Text style={styles.restaurantLogoInitials}>
+                    {initials}
+                  </Text>
+                </LinearGradient>
+              )}
+
+              <View
+                style={[
+                  styles.restaurantStatusDot,
+                  artisan.isAvailable
+                    ? styles.restaurantStatusOpen
+                    : styles.restaurantStatusClosed,
+                ]}
+              />
+            </View>
+
+            <View style={styles.restaurantHeroText}>
+              <Text
+                style={styles.restaurantName}
+                numberOfLines={1}
+              >
+                {artisan.name}
+              </Text>
+
+              <Text
+                style={styles.restaurantCuisine}
+                numberOfLines={1}
+              >
+                مأكولات عراقية وعالمية • مطعم
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.restaurantInfoBar}>
+            <View style={styles.restaurantInfoItem}>
+              <Ionicons
+                name="star"
+                size={16}
+                color="#F6C945"
+              />
+              <Text style={styles.restaurantInfoValue}>
+                {rating}
+              </Text>
+            </View>
+
+            <View style={styles.restaurantInfoDivider} />
+
+            <View style={styles.restaurantInfoItem}>
+              <Feather
+                name="clock"
+                size={15}
+                color={C.accent}
+              />
+              <Text style={styles.restaurantInfoValue}>
+                20-30 دقيقة
+              </Text>
+            </View>
+
+            <View style={styles.restaurantInfoDivider} />
+
+            <View style={styles.restaurantInfoItem}>
+              <View
+                style={[
+                  styles.restaurantLiveDot,
+                  artisan.isAvailable
+                    ? styles.restaurantStatusOpen
+                    : styles.restaurantStatusClosed,
+                ]}
+              />
+              <Text
+                style={[
+                  styles.restaurantInfoValue,
+                  artisan.isAvailable
+                    ? styles.restaurantOpenText
+                    : styles.restaurantClosedText,
+                ]}
+              >
+                {artisan.isAvailable ? "مفتوح الآن" : "مغلق"}
+              </Text>
+            </View>
+
+            <View style={styles.restaurantInfoDivider} />
+
+            <View style={styles.restaurantInfoItem}>
+              <Feather
+                name="map-pin"
+                size={15}
+                color={C.accent}
+              />
+              <Text style={styles.restaurantInfoValue}>
+                {distanceText}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
+  const distanceLabel =
+    distance !== null
+      ? distance < 1
+        ? `${Math.round(distance * 1000)} م`
+        : `${distance.toFixed(1)} كم`
+      : "موقع غير متاح";
+
   return (
     <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
       <Pressable
-        style={({ pressed }) => [styles.artisanCard, pressed && { opacity: 0.92 }]}
+        style={({ pressed }) => [
+          styles.artisanCard,
+          pressed && { opacity: 0.92 },
+        ]}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          // Pass the already-fetched artisan object along so the profile screen
-          // can render instantly instead of waiting on a fresh Firestore read.
           navigateWithHomeBase({
             pathname: "/artisan-profile",
-            params: { artisanId: artisan.id, artisan: JSON.stringify(artisan) },
+            params: {
+              artisanId: artisan.id,
+              artisan: JSON.stringify(artisan),
+            },
           });
         }}
       >
         <View style={styles.cardLeft}>
           {artisan.photoUri ? (
-            <Image source={{ uri: artisan.photoUri }} style={styles.artisanPhoto} />
+            <Image
+              source={{ uri: artisan.photoUri }}
+              style={styles.artisanPhoto}
+            />
           ) : (
             <View style={styles.artisanInitials}>
-              <LinearGradient colors={[C.primary, "#1E2F60"]} style={StyleSheet.absoluteFill} />
+              <LinearGradient
+                colors={[C.primary, "#1E2F60"]}
+                style={StyleSheet.absoluteFill}
+              />
               <Text style={styles.initialsText}>{initials}</Text>
             </View>
           )}
-          <View style={[styles.availDot, artisan.isAvailable ? styles.availOnline : styles.availOffline]} />
+          <View
+            style={[
+              styles.availDot,
+              artisan.isAvailable
+                ? styles.availOnline
+                : styles.availOffline,
+            ]}
+          />
         </View>
 
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
             <View style={styles.specialtyBadge}>
-              <Text style={styles.specialtyText}>{getSpecialtyLabel(artisan.specialty)}</Text>
+              <Text style={styles.specialtyText}>
+                {getSpecialtyLabel(artisan.specialty)}
+              </Text>
             </View>
-            <Text style={styles.artisanName} numberOfLines={1}>{artisan.name}</Text>
+            <Text style={styles.artisanName} numberOfLines={1}>
+              {artisan.name}
+            </Text>
           </View>
+
           {isFeaturedActive(artisan) && (
             <View style={styles.featuredBadgeRow}>
               <View style={styles.featuredBadge}>
@@ -222,33 +435,47 @@ function ArtisanCard({
             </View>
           )}
 
-
           {artisan.bio ? (
-            <Text style={styles.artisanBio} numberOfLines={4}>{artisan.bio}</Text>
+            <Text style={styles.artisanBio} numberOfLines={4}>
+              {artisan.bio}
+            </Text>
           ) : null}
+
           <View style={styles.cardFooter}>
-            {distance !== null ? (
-              <View style={styles.distancePill}>
-                <Feather name="map-pin" size={11} color={C.accent} />
-                <Text style={styles.distanceText}>
-                  {distance < 1
-                    ? `${Math.round(distance * 1000)} م`
-                    : `${distance.toFixed(1)} كم`}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.distancePill}>
-                <Feather name="map-pin" size={11} color={C.textMuted} />
-                <Text style={[styles.distanceText, { color: C.textMuted }]}>موقع غير متاح</Text>
-              </View>
-            )}
-            <Text style={[styles.availText, artisan.isAvailable ? styles.availOnlineText : styles.availOfflineText]}>
+            <View style={styles.distancePill}>
+              <Feather
+                name="map-pin"
+                size={11}
+                color={distance !== null ? C.accent : C.textMuted}
+              />
+              <Text
+                style={[
+                  styles.distanceText,
+                  distance === null && { color: C.textMuted },
+                ]}
+              >
+                {distanceLabel}
+              </Text>
+            </View>
+
+            <Text
+              style={[
+                styles.availText,
+                artisan.isAvailable
+                  ? styles.availOnlineText
+                  : styles.availOfflineText,
+              ]}
+            >
               {artisan.isAvailable ? "متاح الآن" : "غير متاح"}
             </Text>
           </View>
         </View>
 
-        <Feather name="chevron-left" size={18} color={C.textMuted} />
+        <Feather
+          name="chevron-left"
+          size={18}
+          color={C.textMuted}
+        />
       </Pressable>
     </Animated.View>
   );
@@ -2133,6 +2360,47 @@ const isFocused = useIsFocused();
     searchQuery,
   ]);
 
+  const filteredRestaurants = React.useMemo(() => {
+    let result = artisans.filter(
+      (a) =>
+        typeof a.specialty === "string" &&
+        a.specialty === "restaurant"
+    );
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter((a) => {
+        const specialtyLabel = getSpecialtyLabel(a.specialty || "").toLowerCase();
+        return (
+          a.name?.toLowerCase().includes(q) ||
+          specialtyLabel.includes(q) ||
+          a.bio?.toLowerCase().includes(q) ||
+          a.phone?.includes(q)
+        );
+      });
+    }
+
+    if (userLocation) {
+      result.sort((a, b) => {
+        const aFeat = isFeaturedActive(a) ? 0 : 1;
+        const bFeat = isFeaturedActive(b) ? 0 : 1;
+        if (aFeat !== bFeat) return aFeat - bFeat;
+
+        const da = a.location ? calcDistanceKm(userLocation, a.location) : Infinity;
+        const db = b.location ? calcDistanceKm(userLocation, b.location) : Infinity;
+        return da - db;
+      });
+    } else {
+      result.sort((a, b) => {
+        const aFeat = isFeaturedActive(a) ? 0 : 1;
+        const bFeat = isFeaturedActive(b) ? 0 : 1;
+        return aFeat - bFeat;
+      });
+    }
+
+    return result;
+  }, [artisans, userLocation, searchQuery]);
+
   // Smart feed: one sponsored slot first, then a rotating mix of engagement,
   // recency, interest, and affinity. The seed changes only on pull-to-refresh.
   const sortedProducts = React.useMemo(
@@ -2471,7 +2739,7 @@ const isFocused = useIsFocused();
           {[
             { key: "home" as CategoryTab, icon: "home-outline" as const },
             { key: "products" as CategoryTab, icon: "bag-handle-outline" as const },
-            { key: "food" as const, icon: "restaurant-outline" as const },
+            { key: "restaurants" as const, icon: "restaurant-outline" as const },
             { key: "services" as CategoryTab, icon: "construct-outline" as const },
           ].map((item) => (
             <Pressable
@@ -2497,8 +2765,13 @@ const isFocused = useIsFocused();
                   setActiveServiceCategory("home");
                 }
 
+                if (item.key === "restaurants") {
+                  setActiveCategory("restaurants");
+                  return;
+                }
+
                 if (item.key === "food") {
-                  setActiveCategory("food" as any);
+                  setActiveCategory("food");
                   void loadFoodItems(false);
                   return;
                 }
@@ -2512,7 +2785,9 @@ const isFocused = useIsFocused();
                     ? "المنتجات"
                     : item.key === "food"
                       ? "المأكولات"
-                      : "الخدمات"
+                      : item.key === "restaurants"
+                        ? "المطاعم"
+                        : "الخدمات"
               }
            >
               <View
@@ -2741,6 +3016,56 @@ const isFocused = useIsFocused();
                       <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
                       <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
                       <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
+                    </View>
+                  )
+                }
+              />
+            ) : (activeCategory as any) === "restaurants" ? (
+              /* ══ RESTAURANTS VIEW ══ */
+              <FlatList
+                key="feed-list-restaurants"
+                data={filteredRestaurants}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={[
+                  styles.listContent,
+                  { paddingBottom: bottomPad + 20 },
+                ]}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={C.accent}
+                  />
+                }
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => (
+                  <ArtisanCard
+                    artisan={item}
+                    userLocation={userLocation}
+                    index={index}
+                  />
+                )}
+                ListEmptyComponent={
+                  loading ? (
+                    <View style={styles.emptyState}>
+                      <ActivityIndicator size="large" color={C.accent} />
+                      <Text style={styles.emptySubtitle}>
+                        جارٍ تحميل المطاعم...
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Ionicons
+                        name="restaurant-outline"
+                        size={52}
+                        color={C.textMuted}
+                      />
+                      <Text style={styles.emptyTitle}>
+                        لا توجد مطاعم حالياً
+                      </Text>
+                      <Text style={styles.emptySubtitle}>
+                        ستظهر هنا حسابات أصحاب تخصص مطعم
+                      </Text>
                     </View>
                   )
                 }
@@ -4109,6 +4434,170 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   sortedText: { fontSize: 11, fontFamily: undefined, color: C.accent },
+  restaurantCard: {
+    width: "100%",
+    marginBottom: 16,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 7,
+  },
+
+  restaurantHero: {
+    height: 220,
+    width: "100%",
+    position: "relative",
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+
+  restaurantBannerInitials: {
+    position: "absolute",
+    alignSelf: "center",
+    top: 72,
+    fontSize: 54,
+    fontWeight: "900",
+    color: "rgba(255,255,255,0.20)",
+  },
+
+  restaurantFeaturedBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.94)",
+  },
+
+  restaurantFeaturedText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: C.primary,
+  },
+
+  restaurantLogoWrap: {
+    position: "absolute",
+    right: 18,
+    bottom: 48,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    padding: 3,
+    backgroundColor: "#FFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  restaurantLogo: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  restaurantLogoInitials: {
+    fontSize: 23,
+    fontWeight: "900",
+    color: C.accent,
+  },
+
+  restaurantStatusDot: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    bottom: 2,
+    left: 2,
+    borderWidth: 3,
+    borderColor: "#FFF",
+  },
+
+  restaurantStatusOpen: {
+    backgroundColor: "#22C55E",
+  },
+
+  restaurantStatusClosed: {
+    backgroundColor: "#EF4444",
+  },
+
+  restaurantHeroText: {
+    paddingHorizontal: 18,
+    paddingBottom: 17,
+    paddingRight: 108,
+  },
+
+  restaurantName: {
+    color: "#FFF",
+    fontSize: 20,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  restaurantCuisine: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 5,
+    textAlign: "right",
+  },
+
+  restaurantInfoBar: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: C.card,
+  },
+
+  restaurantInfoItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+
+  restaurantInfoValue: {
+    color: C.text,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  restaurantInfoDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+
+  restaurantLiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  restaurantOpenText: {
+    color: "#22C55E",
+  },
+
+  restaurantClosedText: {
+    color: "#EF4444",
+  },
+
   artisanCard: {
     backgroundColor: C.card, borderRadius: 16, padding: 14,
     flexDirection: "row", alignItems: "center", gap: 12,

@@ -1,507 +1,150 @@
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
-import { Video, ResizeMode } from "expo-av";
-import Colors from "@/constants/colors";
-const C = Colors.light;
-import {
-  FoodItem,
-  fetchFoodItems,
-  getIsFoodLiked,
-  toggleFoodLike,
-} from "../lib/db_logic";
-import { auth } from "../lib/firebase";
+import React,{useCallback,useMemo,useState}from"react";
+import{ActivityIndicator,FlatList,Image,Pressable,RefreshControl,StyleSheet,Text,TextInput,View}from"react-native";
+import{Ionicons,Feather}from"@expo/vector-icons";
+import{router,useFocusEffect}from"expo-router";
+import{fetchFoodItems,FoodItem}from"../lib/db_logic";
+import Colors from"@/constants/colors";
 
+const C=Colors.light;
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
+const cats=[
+["all","الكل"],
+["grills","مشويات 🍢"],
+["fast","وجبات سريعة 🍔"],
+["iraqi","مأكولات شعبية 🍲"],
+["dessert","حلويات ومشروبات 🍰"]
+];
 
-function FoodMedia({ item }: { item: FoodItem }) {
-  const first = item.media?.[0];
+function typeOf(x:FoodItem){
+ const s=(x.name+" "+(x.appetizers||"")).toLowerCase();
+ if(/مشوي|كباب|تكة|شيش/.test(s))return"grills";
+ if(/برجر|برغر|بيتزا|شاورما|زنجر/.test(s))return"fast";
+ if(/مندي|كبسة|برياني|دولمة|تشريب|قوزي|عراقي/.test(s))return"iraqi";
+ if(/حلويات|كيك|بقلاوة|كنافة|عصير|مشروب|قهوة|شاي/.test(s))return"dessert";
+ return"all";
+}
 
-  if (!first) {
-    return (
-      <View style={styles.emptyMedia}>
-        <Ionicons
-          name="restaurant-outline"
-          size={42}
-          color={C.accent}
-        />
-      </View>
-    );
-  }
+export default function FoodScreen(){
+ const[items,setItems]=useState<FoodItem[]>([]);
+ const[q,setQ]=useState("");
+ const[cat,setCat]=useState("all");
+ const[loading,setLoading]=useState(true);
+ const[refresh,setRefresh]=useState(false);
 
-  if (first.type === "video") {
-    return <FoodVideo uri={first.url} />;
-  }
+ const load=useCallback(async()=>{
+  try{setItems(await fetchFoodItems())}
+  catch(e){console.error(e)}
+  finally{setLoading(false);setRefresh(false)}
+ },[]);
 
-  return (
-    <Image
-      source={{ uri: first.url }}
-      style={styles.media}
-      resizeMode="contain"
+ useFocusEffect(useCallback(()=>{load()},[load]));
+
+ const restaurants=useMemo(()=>{
+  const map=new Map<string,FoodItem[]>();
+  items.forEach(x=>{
+   const k=x.userId||x.id;
+   if(!map.has(k))map.set(k,[]);
+   map.get(k)!.push(x);
+  });
+
+  return [...map].map(([id,dishes])=>{
+   const first=dishes[0];
+   const image=first.media?.find(m=>m.type==="image")?.url||first.media?.[0]?.url;
+   return{id,dishes,name:first.userName||"مطعم",image};
+  }).filter(r=>{
+   const s=q.toLowerCase();
+   return(!s||r.name.toLowerCase().includes(s)||r.dishes.some(x=>x.name.toLowerCase().includes(s)))
+   &&(cat==="all"||r.dishes.some(x=>typeOf(x)===cat));
+  });
+ },[items,q,cat]);
+
+ if(loading)return<View style={S.center}><ActivityIndicator size="large" color={C.accent}/><Text style={S.muted}>جاري تحميل المطاعم...</Text></View>;
+
+ return<View style={S.root}>
+  <View style={S.header}>
+   <Pressable onPress={()=>router.back()}><Feather name="arrow-right" size={24} color="#fff"/></Pressable>
+   <Text style={S.headerText}>المطاعم</Text>
+   <Ionicons name="restaurant-outline" size={24} color={C.accent}/>
+  </View>
+
+  <FlatList
+   data={restaurants}
+   keyExtractor={x=>x.id}
+   contentContainerStyle={S.list}
+   refreshControl={<RefreshControl refreshing={refresh} onRefresh={()=>{setRefresh(true);load()}}/>}
+   ListHeaderComponent={<>
+    <View style={S.search}>
+     <Ionicons name="search-outline" size={21} color={C.textMuted}/>
+     <TextInput
+      value={q}
+      onChangeText={setQ}
+      placeholder="ابحث عن مطعم أو وجبة..."
+      placeholderTextColor={C.textMuted}
+      style={S.input}
+      textAlign="right"
+     />
+    </View>
+
+    <FlatList
+     data={cats}
+     horizontal
+     inverted
+     keyExtractor={x=>x[0]}
+     showsHorizontalScrollIndicator={false}
+     contentContainerStyle={S.cats}
+     renderItem={({item})=>
+      <Pressable onPress={()=>setCat(item[0])} style={[S.cat,cat===item[0]&&S.catActive]}>
+       <Text style={[S.catText,cat===item[0]&&S.catTextActive]}>{item[1]}</Text>
+      </Pressable>
+     }
     />
-  );
+
+    <Text style={S.title}>اكتشف المطاعم</Text>
+   </>}
+   renderItem={({item:r})=>
+    <Pressable
+     style={S.card}
+     onPress={()=>router.push(("/restaurant/" + r.id) as any)}
+    >
+     {r.image?<Image source={{uri:r.image}} style={S.image}/>:<View style={S.placeholder}><Ionicons name="restaurant-outline" size={55} color={C.accent}/></View>}
+
+     <View style={S.info}>
+      <Text style={S.name}>{r.name}</Text>
+      <View style={S.row}>
+       <Text style={S.meta}>⭐ 4.8</Text>
+       <Text style={S.meta}>⏱ 25-35 دقيقة</Text>
+       <Text style={S.open}>● مفتوح الآن</Text>
+      </View>
+     </View>
+    </Pressable>
+   }
+   ListEmptyComponent={<View style={S.center}><Text style={S.empty}>لا توجد مطاعم حالياً</Text></View>}
+  />
+ </View>
 }
 
-function FoodVideo({ uri }: { uri: string }) {
-  return (
-    <View style={styles.videoWrap}>
-      <Video
-        source={{ uri }}
-        style={styles.media}
-        resizeMode={ResizeMode.CONTAIN}
-        useNativeControls
-        isLooping
-      />
-    </View>
-  );
-}
-
-function FoodCard({ item }: { item: FoodItem }) {
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(
-    item.likesCount || 0
-  );
-  const [liking, setLiking] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    const checkLike = async () => {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-
-      try {
-        const value = await getIsFoodLiked(item.id, uid);
-        if (active) setLiked(value);
-      } catch (error) {
-        console.error("food like check failed:", error);
-      }
-    };
-
-    void checkLike();
-
-    return () => {
-      active = false;
-    };
-  }, [item.id]);
-
-  const handleLike = async () => {
-    const uid = auth.currentUser?.uid;
-
-    if (!uid || liking) return;
-
-    setLiking(true);
-
-    try {
-      const nextLiked = await toggleFoodLike(item.id, uid);
-
-      setLiked(nextLiked);
-      setLikesCount((count) =>
-        Math.max(0, count + (nextLiked ? 1 : -1))
-      );
-    } catch (error: any) {
-      Alert.alert(
-        "تعذر الإعجاب",
-        error?.message || "حدث خطأ."
-      );
-    } finally {
-      setLiking(false);
-    }
-  };
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.ownerRow}>
-        {item.userPhoto ? (
-          <Image
-            source={{ uri: item.userPhoto }}
-            style={styles.avatar}
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Feather name="user" size={18} color={C.textMuted} />
-          </View>
-        )}
-
-        <Text style={styles.ownerName} numberOfLines={1}>
-          {item.userName || "مستخدم"}
-        </Text>
-      </View>
-
-      <FoodMedia item={item} />
-
-      <View style={styles.info}>
-        <View style={styles.namePriceRow}>
-          <Text style={styles.foodName} numberOfLines={2}>
-            {item.name}
-          </Text>
-
-          <Text style={styles.price}>
-            {Number(item.price || 0).toLocaleString("en-US")} د.ع
-          </Text>
-        </View>
-
-        {!!item.appetizers?.trim() && (
-          <View style={styles.appetizersRow}>
-            <Ionicons
-              name="restaurant-outline"
-              size={17}
-              color={C.accent}
-            />
-            <Text style={styles.appetizers}>
-              {item.appetizers}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.action}
-            onPress={() => void handleLike()}
-            disabled={liking}
-          >
-            <Ionicons
-              name={liked ? "heart" : "heart-outline"}
-              size={23}
-              color={liked ? "#e53935" : C.text}
-            />
-            <Text style={styles.actionText}>
-              {likesCount}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.action}
-            onPress={() =>
-              Alert.alert(
-                "التعليقات",
-                "سيتم فتح قسم التعليقات في الخطوة التالية."
-              )
-            }
-          >
-            <Ionicons
-              name="chatbubble-outline"
-              size={22}
-              color={C.text}
-            />
-            <Text style={styles.actionText}>
-              {item.commentsCount || 0}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-export default function FoodScreen() {
-  const [items, setItems] = useState<FoodItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = async () => {
-    try {
-      const result = await fetchFoodItems();
-      setItems(result);
-    } catch (error: any) {
-      console.error("fetch food failed:", error);
-
-      Alert.alert(
-        "تعذر تحميل المأكولات",
-        error?.message || "حدث خطأ أثناء تحميل الأطباق."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [])
-  );
-
-  const refresh = () => {
-    setRefreshing(true);
-    void load();
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={C.accent} />
-        <Text style={styles.loadingText}>
-          جاري تحميل المأكولات...
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <Pressable
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
-          <Feather name="arrow-right" size={22} color="#FFF" />
-        </Pressable>
-
-        <View style={styles.headerTitle}>
-          <Ionicons
-            name="restaurant-outline"
-            size={23}
-            color={C.accent}
-          />
-          <Text style={styles.headerText}>
-            المأكولات
-          </Text>
-        </View>
-
-        <View style={styles.backBtn} />
-      </View>
-
-      {items.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons
-            name="restaurant-outline"
-            size={58}
-            color={C.accent}
-          />
-          <Text style={styles.emptyTitle}>
-            لا توجد أطباق منشورة بعد
-          </Text>
-          <Text style={styles.emptyText}>
-            كن أول من يضيف طبقًا إلى قسم المأكولات
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <FoodCard item={item} />
-          )}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: C.background,
-  },
-
-  header: {
-    height: 62,
-    backgroundColor: C.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-  },
-
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headerTitle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  headerText: {
-    color: "#FFF",
-    fontSize: 19,
-    fontWeight: "900",
-  },
-
-  list: {
-    padding: 12,
-    paddingBottom: 35,
-  },
-
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 17,
-    overflow: "hidden",
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-
-  ownerRow: {
-    minHeight: 51,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-
-  avatarPlaceholder: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: C.background,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  ownerName: {
-    flex: 1,
-    color: C.text,
-    fontSize: 14,
-    fontWeight: "800",
-    textAlign: "right",
-  },
-
-  media: {
-    width: "100%",
-    height: SCREEN_WIDTH * 0.78,
-    backgroundColor: "#111",
-  },
-
-  videoWrap: {
-    width: "100%",
-    height: SCREEN_WIDTH * 0.78,
-    backgroundColor: "#111",
-  },
-
-  emptyMedia: {
-    width: "100%",
-    height: SCREEN_WIDTH * 0.78,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.background,
-  },
-
-  info: {
-    padding: 13,
-  },
-
-  namePriceRow: {
-    flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  foodName: {
-    flex: 1,
-    color: C.text,
-    fontSize: 18,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-
-  price: {
-    color: C.accent,
-    fontSize: 16,
-    fontWeight: "900",
-  },
-
-  appetizersRow: {
-    flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    gap: 6,
-    marginTop: 8,
-  },
-
-  appetizers: {
-    flex: 1,
-    color: C.textMuted,
-    fontSize: 13,
-    textAlign: "right",
-    lineHeight: 20,
-  },
-
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 24,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    marginTop: 12,
-    paddingTop: 10,
-  },
-
-  action: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  actionText: {
-    color: C.text,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  loading: {
-    flex: 1,
-    backgroundColor: C.background,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-
-  loadingText: {
-    color: C.textMuted,
-    fontSize: 13,
-  },
-
-  empty: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 30,
-  },
-
-  emptyTitle: {
-    color: C.text,
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 15,
-  },
-
-  emptyText: {
-    color: C.textMuted,
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 7,
-  },
+const S=StyleSheet.create({
+ root:{flex:1,backgroundColor:C.background},
+ header:{height:62,backgroundColor:C.primary,flexDirection:"row",alignItems:"center",justifyContent:"space-between",paddingHorizontal:16},
+ headerText:{color:"#fff",fontSize:21,fontWeight:"900"},
+ list:{padding:12,paddingBottom:30},
+ search:{height:52,borderRadius:16,backgroundColor:C.card,borderWidth:1,borderColor:C.border,flexDirection:"row-reverse",alignItems:"center",paddingHorizontal:14,gap:8,marginBottom:10},
+ input:{flex:1,color:C.text,fontSize:14},
+ cats:{gap:8,paddingVertical:3},
+ cat:{paddingHorizontal:15,height:40,borderRadius:20,backgroundColor:C.card,borderWidth:1,borderColor:C.border,justifyContent:"center"},
+ catActive:{backgroundColor:C.primary,borderColor:C.primary},
+ catText:{color:C.text,fontSize:12,fontWeight:"800"},
+ catTextActive:{color:"#fff"},
+ title:{fontSize:20,fontWeight:"900",color:C.text,textAlign:"right",marginVertical:16},
+ card:{backgroundColor:C.card,borderRadius:20,overflow:"hidden",marginBottom:15,borderWidth:1,borderColor:C.border},
+ image:{width:"100%",height:190},
+ placeholder:{height:190,alignItems:"center",justifyContent:"center",backgroundColor:C.background},
+ info:{padding:14,alignItems:"flex-end"},
+ name:{fontSize:19,fontWeight:"900",color:C.text},
+ row:{flexDirection:"row-reverse",gap:12,marginTop:9},
+ meta:{fontSize:11,color:C.textMuted},
+ open:{fontSize:11,color:"#22C55E",fontWeight:"800"},
+ center:{flex:1,alignItems:"center",justifyContent:"center",gap:10},
+ muted:{color:C.textMuted},
+ empty:{color:C.text,fontSize:16,fontWeight:"800"}
 });
