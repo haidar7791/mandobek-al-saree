@@ -117,6 +117,9 @@ export interface ArtisanProfile {
   rating: number;
   reviewCount: number;
   isAvailable: boolean;
+  coverUri?: string | null;
+  restaurantCategory?: string;
+  estimatedDelivery?: string;
   featuredUntil?: string | null;
   isPromoted?: boolean;
   createdAt: string;
@@ -256,6 +259,9 @@ function userDocToArtisanProfile(userId: string, data: UserProfile): ArtisanProf
     rating: data.rating ?? 0,
     reviewCount: data.reviewCount ?? 0,
     isAvailable: data.isAvailable ?? true,
+    coverUri: data.coverUri ?? null,
+    restaurantCategory: data.restaurantCategory ?? "",
+    estimatedDelivery: data.estimatedDelivery ?? "",
     featuredUntil: data.featuredUntil ?? null,
     createdAt:
       typeof data.createdAt === "string"
@@ -2297,6 +2303,9 @@ export interface UserProfile {
   rating?: number;
   reviewCount?: number;
   isAvailable?: boolean;
+  coverUri?: string | null;
+  restaurantCategory?: string;
+  estimatedDelivery?: string;
   balance?: number;
   followCount?: number;
   likesCount?: number;
@@ -2533,6 +2542,18 @@ export const updateUserNameAcrossContent = async (
         ownerName: cleanName,
         sellerDisplayName: cleanName,
       },
+    });
+  });
+
+  const foodSnap = await getDocs(collection(db, "foodItems"));
+  foodSnap.docs.forEach((d) => {
+    const data = d.data() as any;
+    if (String(data.userId || "") !== userId) return;
+    if (updatedPaths.has(d.ref.path)) return;
+    updatedPaths.add(d.ref.path);
+    refsAndData.push({
+      ref: d.ref,
+      data: { userName: cleanName },
     });
   });
 
@@ -4418,6 +4439,9 @@ export type FoodItem = {
   name: string;
   price: number;
   appetizers?: string;
+  description?: string;
+  category?: "main" | "appetizer" | "drink" | "dessert";
+  isPopular?: boolean;
   media: FoodMedia[];
   likesCount: number;
   commentsCount: number;
@@ -4457,6 +4481,29 @@ export const fetchFoodItems = async (): Promise<FoodItem[]> => {
     id: d.id,
     ...(d.data() as Omit<FoodItem, "id">),
   }));
+};
+
+export const updateFoodItem = async (
+  foodId: string,
+  updates: Partial<Pick<FoodItem, "name" | "price" | "appetizers" | "description" | "category" | "isPopular" | "media">>
+): Promise<void> => {
+  const userId = auth.currentUser?.uid;
+  if (!userId) throw new Error("AUTH_REQUIRED");
+  const foodRef = doc(db, "foodItems", foodId);
+  const foodSnapshot = await getDoc(foodRef);
+  if (!foodSnapshot.exists()) throw new Error("FOOD_NOT_FOUND");
+  if (foodSnapshot.data().userId !== userId) throw new Error("NOT_FOOD_OWNER");
+  await updateDoc(foodRef, updates);
+};
+
+export const deleteFoodItem = async (foodId: string): Promise<void> => {
+  const userId = auth.currentUser?.uid;
+  if (!userId) throw new Error("AUTH_REQUIRED");
+  const foodRef = doc(db, "foodItems", foodId);
+  const foodSnapshot = await getDoc(foodRef);
+  if (!foodSnapshot.exists()) return;
+  if (foodSnapshot.data().userId !== userId) throw new Error("NOT_FOOD_OWNER");
+  await deleteDoc(foodRef);
 };
 
 export const getIsFoodLiked = async (

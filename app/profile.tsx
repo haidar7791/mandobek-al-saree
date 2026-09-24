@@ -661,10 +661,10 @@ export default function ProfileScreen() {
 
           <Pressable
             style={styles.restaurantOwnerButton}
-            onPress={() => navigateWithHomeBase("/add-food" as any)}
+            onPress={() => navigateWithHomeBase("/restaurant-manager" as any)}
           >
-            <Feather name="plus" size={16} color={C.primary} />
-            <Text style={styles.restaurantOwnerButtonText}>إضافة طبق</Text>
+            <Feather name="settings" size={16} color={C.primary} />
+            <Text style={styles.restaurantOwnerButtonText}>لوحة المطعم</Text>
           </Pressable>
         </View>
       )}

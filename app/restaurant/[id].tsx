@@ -1,9 +1,9 @@
 
 import React,{useCallback,useState}from"react";
-import{ActivityIndicator,FlatList,Image,Pressable,RefreshControl,StyleSheet,Text,View}from"react-native";
+import{ActivityIndicator,FlatList,Image,Pressable,RefreshControl,ScrollView,StyleSheet,Text,View}from"react-native";
 import{Ionicons,Feather}from"@expo/vector-icons";
 import{router,useLocalSearchParams,useFocusEffect}from"expo-router";
-import{fetchFoodItems,FoodItem}from"../../lib/db_logic";
+import{fetchFoodItems,getUserProfile,FoodItem,UserProfile}from"../../lib/db_logic";
 import Colors from"@/constants/colors";
 import {getCart,getCartCount,getCartTotal} from"../../lib/food_cart";
 
@@ -12,6 +12,8 @@ const C=Colors.light;
 export default function Restaurant(){
  const{id}=useLocalSearchParams<{id?:string}>();
  const[items,setItems]=useState<FoodItem[]>([]);
+ const[profile,setProfile]=useState<UserProfile|null>(null);
+ const[activeCategory,setActiveCategory]=useState<"all"|"main"|"appetizer"|"drink"|"dessert">("all");
  const[loading,setLoading]=useState(true);
  const[refreshing,setRefreshing]=useState(false);
  const[cartCount,setCartCount]=useState(0);
@@ -24,8 +26,9 @@ export default function Restaurant(){
 
  const load=useCallback(async()=>{
   try{
-   const all=await fetchFoodItems();
+    const [all, restaurantProfile]=await Promise.all([fetchFoodItems(),id?getUserProfile(id):Promise.resolve(null)]);
    setItems(all.filter(x=>x.userId===id));
+    setProfile(restaurantProfile);
   }finally{
    setLoading(false);
    setRefreshing(false);
@@ -37,14 +40,15 @@ export default function Restaurant(){
   updateCart();
  },[load]));
 
- const name=items[0]?.userName||"المطعم";
- const cover=items[0]?.media?.find(x=>x.type==="image")?.url||items[0]?.media?.[0]?.url;
+ const name=profile?.name||items[0]?.userName||"المطعم";
+ const cover=profile?.coverUri||items[0]?.media?.find(x=>x.type==="image")?.url||items[0]?.media?.[0]?.url;
+ const visibleItems=activeCategory==="all"?items:items.filter(item=>(item.category||"main")===activeCategory);
 
  if(loading)return<View style={S.center}><ActivityIndicator size="large" color={C.accent}/><Text style={S.muted}>جاري تحميل المطعم...</Text></View>;
 
  return<View style={S.root}>
   <FlatList
-   data={items}
+    data={visibleItems}
    keyExtractor={x=>x.id}
    contentContainerStyle={S.list}
    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true);load()}}/>}
@@ -57,19 +61,22 @@ export default function Restaurant(){
      <View style={S.heroText}>
       <Text style={S.name}>{name}</Text>
       <View style={S.metaRow}>
-       <Text style={S.meta}>⭐ 4.8</Text>
-       <Text style={S.meta}>⏱ 25-35 دقيقة</Text>
-       <Text style={S.open}>● مفتوح الآن</Text>
+        {!!profile?.restaurantCategory&&<Text style={S.meta}>{profile.restaurantCategory}</Text>}
+        <Text style={S.meta}>⏱ {profile?.estimatedDelivery||"25-35 دقيقة"}</Text>
+        <Text style={[S.open,!(profile?.isAvailable??true)&&S.closed]}>{profile?.isAvailable===false?"● مغلق الآن":"● مفتوح الآن"}</Text>
       </View>
      </View>
     </View>
 
-    <View style={S.tabs}>
-     <Text style={S.tabActive}>قائمة الطعام</Text>
-     <Text style={S.tab}>العروض الخاصة</Text>
-     <Text style={S.tab}>المقبلات</Text>
-     <Text style={S.tab}>المشروبات</Text>
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.tabs}>
+      {([
+       ["all","قائمة الطعام"],["main","الأطباق الرئيسية"],["appetizer","المقبلات"],["drink","المشروبات"],["dessert","الحلويات"]
+      ] as const).map(([key,label])=>
+       <Pressable key={key} onPress={()=>setActiveCategory(key)} style={activeCategory===key?S.tabActive:S.tab}>
+        <Text style={activeCategory===key?S.tabActiveText:S.tabText}>{label}</Text>
+       </Pressable>
+      )}
+     </ScrollView>
 
     <Text style={S.heading}>الأطباق</Text>
    </>}
@@ -82,14 +89,14 @@ export default function Restaurant(){
 
      <View style={S.dishInfo}>
       <Text style={S.dishName} numberOfLines={2}>{item.name}</Text>
-      {!!item.appetizers&&<Text style={S.description} numberOfLines={2}>{item.appetizers}</Text>}
+       {!!(item.description||item.appetizers)&&<Text style={S.description} numberOfLines={2}>{item.description||item.appetizers}</Text>}
       <Text style={S.price}>{Number(item.price||0).toLocaleString()} د.ع</Text>
      </View>
 
      <View style={S.add}><Ionicons name="add" size={24} color="#fff"/></View>
     </Pressable>
    }
-   ListEmptyComponent={<View style={S.center}><Ionicons name="restaurant-outline" size={55} color={C.accent}/><Text style={S.empty}>لا توجد أطباق حالياً</Text></View>}
+    ListEmptyComponent={<View style={S.center}><Ionicons name="restaurant-outline" size={55} color={C.accent}/><Text style={S.empty}>لا توجد أطباق حالياً</Text></View>}
   />
  </View>
 }
@@ -107,10 +114,13 @@ const S=StyleSheet.create({
  name:{color:"#fff",fontSize:27,fontWeight:"900"},
  metaRow:{flexDirection:"row-reverse",gap:13,marginTop:9},
  meta:{color:"#fff",fontSize:12,fontWeight:"800"},
- open:{color:"#4ade80",fontSize:12,fontWeight:"800"},
- tabs:{flexDirection:"row-reverse",gap:8,padding:13,borderBottomWidth:1,borderBottomColor:C.border},
- tab:{paddingHorizontal:13,paddingVertical:10,borderRadius:18,color:C.textMuted,fontSize:12,fontWeight:"800"},
- tabActive:{paddingHorizontal:15,paddingVertical:10,borderRadius:18,backgroundColor:C.primary,color:"#fff",fontSize:12,fontWeight:"900"},
+  open:{color:"#4ade80",fontSize:12,fontWeight:"800"},
+  closed:{color:"#FDA4AF"},
+  tabs:{flexDirection:"row-reverse",gap:8,padding:13,borderBottomWidth:1,borderBottomColor:C.border},
+  tab:{paddingHorizontal:13,paddingVertical:10,borderRadius:18,backgroundColor:C.card,borderWidth:1,borderColor:C.border},
+  tabText:{color:C.textMuted,fontSize:12,fontWeight:"800"},
+  tabActive:{paddingHorizontal:15,paddingVertical:10,borderRadius:18,backgroundColor:C.primary,borderWidth:1,borderColor:C.primary},
+  tabActiveText:{color:"#fff",fontSize:12,fontWeight:"900"},
  heading:{fontSize:21,fontWeight:"900",color:C.text,textAlign:"right",paddingHorizontal:15,paddingVertical:12},
  dish:{marginHorizontal:13,marginBottom:12,padding:10,borderRadius:18,backgroundColor:C.card,borderWidth:1,borderColor:C.border,flexDirection:"row-reverse",alignItems:"center"},
  dishImage:{width:105,height:105,borderRadius:15},

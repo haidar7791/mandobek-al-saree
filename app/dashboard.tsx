@@ -219,9 +219,9 @@ function ArtisanCard({
           }}
         >
           <View style={styles.restaurantHero}>
-            {artisan.photoUri ? (
+            {artisan.coverUri || artisan.photoUri ? (
               <Image
-                source={{ uri: artisan.photoUri }}
+                source={{ uri: artisan.coverUri || artisan.photoUri || undefined }}
                 style={StyleSheet.absoluteFill}
                 resizeMode="cover"
               />
@@ -293,7 +293,7 @@ function ArtisanCard({
                 style={styles.restaurantCuisine}
                 numberOfLines={1}
               >
-                مأكولات عراقية وعالمية • مطعم
+                {artisan.restaurantCategory || "مطعم"}
               </Text>
             </View>
           </View>
@@ -319,7 +319,7 @@ function ArtisanCard({
                 color={C.accent}
               />
               <Text style={styles.restaurantInfoValue}>
-                20-30 دقيقة
+                {artisan.estimatedDelivery || "20-30 دقيقة"}
               </Text>
             </View>
 
