@@ -423,6 +423,36 @@ service cloud.firestore {
       }
     }
 
+
+    // ============================================================
+    // طلبات المطاعم
+    // ============================================================
+
+    match /foodOrders/{orderId} {
+      allow read: if isSignedIn()
+        && (
+          resource.data.customerId == request.auth.uid
+          || resource.data.restaurantId == request.auth.uid
+        );
+
+      allow create: if isSignedIn()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.restaurantId != request.auth.uid
+        && request.resource.data.status == "pending";
+
+      allow update: if isSignedIn()
+        && (
+          resource.data.customerId == request.auth.uid
+          || resource.data.restaurantId == request.auth.uid
+        );
+
+      allow delete: if isSignedIn()
+        && (
+          resource.data.customerId == request.auth.uid
+          || resource.data.restaurantId == request.auth.uid
+        );
+    }
+
     // ============================================================
     // القصص
     // ============================================================

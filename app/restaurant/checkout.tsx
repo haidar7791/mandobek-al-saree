@@ -1,8 +1,9 @@
 import React,{useState}from"react";
-import{Pressable,ScrollView,StyleSheet,Text,View}from"react-native";
+import{Alert,Pressable,ScrollView,StyleSheet,Text,View}from"react-native";
 import{Ionicons,Feather}from"@expo/vector-icons";
 import{router,useFocusEffect}from"expo-router";
-import{getCart,getCartTotal,CartItem}from"../../lib/food_cart";
+import{getCart,getCartTotal,CartItem,clearCart}from"../../lib/food_cart";
+import{createFoodOrder}from"../../lib/db_logic";
 import Colors from"@/constants/colors";
 
 const C=Colors.light;
@@ -10,6 +11,7 @@ const C=Colors.light;
 export default function Checkout(){
  const[cart,setCart]=useState<CartItem[]>([]);
  const[payment,setPayment]=useState<"cash"|"wallet">("cash");
+ const[submitting,setSubmitting]=useState(false);
 
  useFocusEffect(
   React.useCallback(()=>{
@@ -19,12 +21,67 @@ export default function Checkout(){
 
  const total=getCartTotal();
 
- const confirmOrder=()=>{
-  /*
-   * ربط إرسال الطلب بقاعدة البيانات/Backend
-   * سيتم في مرحلة ربط الطلبات الفعلية.
-   */
-  router.replace("/active-order" as any);
+ const confirmOrder=async()=>{
+  if(submitting||cart.length===0)return;
+
+  const restaurantId=cart[0]?.item.userId;
+
+  if(!restaurantId){
+   Alert.alert("خطأ","تعذر تحديد المطعم.");
+   return;
+  }
+
+  const differentRestaurant=cart.some(
+   x=>x.item.userId!==restaurantId
+  );
+
+  if(differentRestaurant){
+   Alert.alert(
+    "السلة تحتوي مطاعم مختلفة",
+    "لا يمكن إرسال طلب واحد من أكثر من مطعم."
+   );
+   return;
+  }
+
+  try{
+   setSubmitting(true);
+
+   const restaurantName=cart[0]?.item.userName||"المطعم";
+
+   const items=cart.map(x=>({
+    foodId:x.item.id,
+    name:x.item.name,
+    price:Number(x.item.price||0),
+    quantity:x.quantity,
+    imageUrl:
+     x.item.media?.find(m=>m.type==="image")?.url
+     ||x.item.media?.[0]?.url
+     ||null,
+   }));
+
+   const orderId=await createFoodOrder({
+    restaurantId,
+    restaurantName,
+    items,
+    total,
+    paymentMethod:payment,
+   });
+
+   clearCart();
+
+   router.replace({
+    pathname:"/restaurant/order" as any,
+    params:{orderId},
+   } as any);
+  }catch(error){
+   console.error("createFoodOrder error:",error);
+   Alert.alert(
+    "تعذر إرسال الطلب",
+    "حدث خطأ أثناء إرسال طلبك للمطعم. حاول مرة أخرى."
+   );
+  }finally{
+   setSubmitting(false);
+  }
  };
 
  return(
@@ -129,13 +186,13 @@ export default function Checkout(){
 
    <View style={S.bottom}>
     <Pressable
-     style={[S.confirm,cart.length===0&&S.disabled]}
-     disabled={cart.length===0}
+     style={[S.confirm,(cart.length===0||submitting)&&S.disabled]}
+     disabled={cart.length===0||submitting}
      onPress={confirmOrder}
     >
      <Ionicons name="paper-plane-outline" size={21} color="#fff"/>
      <Text style={S.confirmText}>
-      تأكيد الطلب وإرساله للمطعم
+      {submitting?"جاري إرسال الطلب...":"تأكيد الطلب وإرساله للمطعم"}
      </Text>
     </Pressable>
    </View>

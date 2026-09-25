@@ -74,6 +74,7 @@ export const RESTAURANT_SPECIALTY = {
 export type ServiceCategory = "home" | "car" | "general" | "delivery" | "restaurant";
 
 export const ALL_SPECIALTIES = [
+  RESTAURANT_SPECIALTY,
   ...HOME_SERVICES,
   ...CAR_SERVICES,
   ...GENERAL_SERVICES,
@@ -117,7 +118,6 @@ export interface ArtisanProfile {
   reviewCount: number;
   isAvailable: boolean;
   coverUri?: string | null;
-  restaurantLogoUri?: string | null;
   restaurantCategory?: string;
   estimatedDelivery?: string;
   featuredUntil?: string | null;
@@ -2304,7 +2304,6 @@ export interface UserProfile {
   reviewCount?: number;
   isAvailable?: boolean;
   coverUri?: string | null;
-  restaurantLogoUri?: string | null;
   restaurantCategory?: string;
   estimatedDelivery?: string;
   balance?: number;

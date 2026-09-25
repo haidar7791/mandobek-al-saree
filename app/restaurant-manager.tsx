@@ -109,7 +109,7 @@ export default function RestaurantManagerScreen() {
       setEstimatedDelivery(profile.estimatedDelivery || "20–30 دقيقة");
       setIsAvailable(profile.isAvailable ?? true);
       setCoverUri(profile.coverUri || null);
-      setLogoUri(profile.photoUri || null);
+      setLogoUri(profile.restaurantLogoUri || null);
       setFoods(allFood.filter((item) => item.userId === user.uid));
     } catch (error) {
       console.error("load restaurant manager failed:", error);
@@ -209,7 +209,7 @@ export default function RestaurantManagerScreen() {
         await setUserProfile(userId, { coverUri: url });
         setCoverUri(url);
       } else {
-        await setUserProfile(userId, { photoUri: url });
+        await setUserProfile(userId, { restaurantLogoUri: url });
         setLogoUri(url);
       }
     } catch (error) {

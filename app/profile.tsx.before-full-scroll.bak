@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import RestaurantMenuManager from "@/components/RestaurantMenuManager";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getOptionalCurrentLocation } from "../lib/location";
 import {
@@ -56,18 +57,6 @@ import FollowersModal from "@/components/FollowersModal";
 import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { navigateWithHomeBase } from "@/lib/navigation";
-import {
-  addFoodItem,
-  deleteFoodItem,
-  fetchFoodItems,
-  updateFoodItem,
-  type FoodItem,
-} from "@/lib/db_logic";
-import RestaurantDishEditorModal, {
-  type RestaurantDishCategory,
-  type RestaurantDishDraft,
-} from "@/components/RestaurantDishEditorModal";
-
 
 const C = Colors.light;
 
@@ -75,86 +64,7 @@ const IRAQI_PHONE_REGEX = /^07\d{9}$/;
 const PROFILE_POST_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:profilePostPublishProgress:${userId}`;
 
 // ─── Component ────────────────────────────────────────────────────────────────
-
 export default function ProfileScreen() {
-
-  const saveRestaurantDish = async (draft: RestaurantDishDraft) => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    setSavingRestaurantDish(true);
-
-    try {
-      const media = draft.imageUri
-        ? [{ type: "image" as const, url: draft.imageUri }]
-        : [];
-
-      const data = {
-        name: draft.name.trim(),
-        price: Number(draft.price),
-        description: draft.description.trim(),
-        appetizers: draft.description.trim(),
-        category: draft.category,
-        isPopular: draft.isPopular,
-        media,
-      };
-
-      if (editingRestaurantDish) {
-        await updateFoodItem(editingRestaurantDish.id, data);
-      } else {
-        const id = await addFoodItem({
-          ...data,
-          userId: user.uid,
-          userName: user.displayName || "مطعم",
-          userPhoto: user.photoURL || null,
-          likesCount: 0,
-          commentsCount: 0,
-          createdAt: Date.now(),
-        });
-
-        setRestaurantFoods((current) => [
-          {
-            id,
-            ...data,
-            userId: user.uid,
-            userName: user.displayName || "مطعم",
-            userPhoto: user.photoURL || null,
-            likesCount: 0,
-            commentsCount: 0,
-            createdAt: Date.now(),
-          },
-          ...current,
-        ]);
-      }
-
-      if (editingRestaurantDish) {
-        setRestaurantFoods((current) =>
-          current.map((item) =>
-            item.id === editingRestaurantDish.id
-              ? { ...item, ...data }
-              : item
-          )
-        );
-      }
-      setEditingRestaurantDish(null);
-    } catch (error) {
-      console.error("save restaurant dish failed:", error);
-    } finally {
-      setSavingRestaurantDish(false);
-    }
-  };
-
-  const deleteRestaurantDish = async (dish: FoodItem) => {
-    try {
-      await deleteFoodItem(dish.id);
-      setRestaurantFoods((current) =>
-        current.filter((item) => item.id !== dish.id)
-      );
-    } catch (error) {
-      console.error("delete restaurant dish failed:", error);
-    }
-  };
-
   const insets = useSafeAreaInsets();
 
   // ── Profile state ──────────────────────────────────────────────────────────
@@ -163,26 +73,7 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
-  const loadRestaurantFoods = async () => {
-    if (specialty !== "restaurant" || !auth.currentUser) return;
-    try {
-      const all = await fetchFoodItems();
-      setRestaurantFoods(
-        all.filter((item) => item.userId === auth.currentUser?.uid)
-      );
-    } catch (error) {
-      console.error("load restaurant foods failed:", error);
-    }
-  };
-
-
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
-  const [restaurantFoods, setRestaurantFoods] = useState<FoodItem[]>([]);
-  const [restaurantTab, setRestaurantTab] =
-    useState<"main" | "appetizer" | "drink" | "dessert">("main");
-  const [editingRestaurantDish, setEditingRestaurantDish] = useState<FoodItem | null>(null);
-  const [savingRestaurantDish, setSavingRestaurantDish] = useState(false);
-
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
   const [followCount, setFollowCount] = useState(0);
@@ -758,30 +649,35 @@ export default function ProfileScreen() {
         <View style={styles.restaurantOwnerCard}>
           <View style={styles.restaurantOwnerInfo}>
             <View style={styles.restaurantOwnerIcon}>
-              <Ionicons name="restaurant-outline" size={24} color={C.accent} />
-            </View>
+              </View>
 
             <View style={styles.restaurantOwnerText}>
-              <Text style={styles.restaurantOwnerTitle}>إدارة المطعم</Text>
+              
               <Text style={styles.restaurantOwnerSubtitle}>
-                إدارة بيانات المطعم والأطباق والمشروبات
+                 و
               </Text>
             </View>
           </View>
 
           <Pressable
             style={styles.restaurantOwnerButton}
-            onPress={() => router.push("/restaurant-manager" as any)}
-            accessibilityRole="button"
-            accessibilityLabel="إدارة المطعم"
+            onPress={() => navigateWithHomeBase("/restaurant-manager" as any)}
           >
             <Feather name="settings" size={16} color={C.primary} />
-            <Text style={styles.restaurantOwnerButtonText}>إدارة المطعم</Text>
+            
           </Pressable>
         </View>
       )}
 
-      {/* ══════════════════════════════════════════
+            {specialty === "restaurant" && uid ? (
+        <RestaurantMenuManager
+          userId={uid}
+          restaurantName={name}
+          restaurantPhoto={photoUri}
+        />
+      ) : null}
+
+{/* ══════════════════════════════════════════
           HORIZONTAL PROFILE TABS
       ══════════════════════════════════════════ */}
       <View style={styles.tabsBar} accessibilityRole="tablist">
@@ -1503,186 +1399,6 @@ const styles = StyleSheet.create({
   },
 
   // ── Three controls below the hero ──
-  restaurantMenuSection: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 8,
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-
-  restaurantMenuHeader: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-
-  restaurantMenuTitle: {
-    color: C.text,
-    fontSize: 17,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-
-  restaurantMenuSubtitle: {
-    color: C.textMuted,
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: "right",
-  },
-
-  restaurantMenuTab: {
-    flex: 1,
-    minHeight: 62,
-    paddingHorizontal: 4,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: "rgba(255,255,255,0.025)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  restaurantMenuTabActive: {
-    backgroundColor: "rgba(201,168,76,0.13)",
-    borderColor: "rgba(201,168,76,0.55)",
-  },
-
-  restaurantMenuTabEmoji: {
-    fontSize: 17,
-    marginBottom: 2,
-  },
-
-  restaurantMenuTabText: {
-    color: C.textMuted,
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
-  restaurantMenuTabTextActive: {
-    color: C.text,
-  },
-
-  restaurantMenuTabCount: {
-    color: C.textMuted,
-    fontSize: 8,
-    marginTop: 2,
-    fontWeight: "800",
-  },
-
-  restaurantMenuTabCountActive: {
-    color: C.accent,
-  },
-
-  restaurantAddDishText: {
-    color: C.accent,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  restaurantDishList: {
-    gap: 9,
-  },
-
-  restaurantProfileDish: {
-    minHeight: 86,
-    borderRadius: 15,
-    backgroundColor: "rgba(255,255,255,0.035)",
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 8,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 9,
-  },
-
-  restaurantProfileDishImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 12,
-  },
-
-  restaurantProfileDishPlaceholder: {
-    width: 68,
-    height: 68,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(201,168,76,0.08)",
-  },
-
-  restaurantProfileDishInfo: {
-    flex: 1,
-    alignItems: "flex-end",
-    minWidth: 0,
-  },
-
-  restaurantProfileDishName: {
-    width: "100%",
-    color: C.text,
-    fontSize: 13,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-
-  restaurantProfileDishDescription: {
-    width: "100%",
-    color: C.textMuted,
-    fontSize: 9,
-    lineHeight: 15,
-    marginTop: 3,
-    textAlign: "right",
-  },
-
-  restaurantProfileDishPrice: {
-    color: C.accent,
-    fontSize: 11,
-    fontWeight: "900",
-    marginTop: 4,
-    textAlign: "right",
-  },
-
-  restaurantProfileDishActions: {
-    gap: 6,
-  },
-
-  restaurantDishAction: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  restaurantEmptyMenu: {
-    minHeight: 125,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderStyle: "dashed",
-    paddingVertical: 18,
-  },
-
-  restaurantEmptyMenuTitle: {
-    color: C.textSecondary,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 7,
-  },
-
-  restaurantEmptyMenuText: {
-    color: C.textMuted,
-    fontSize: 9,
-    marginTop: 3,
-  },
-
   restaurantOwnerCard: {
     marginHorizontal: 16,
     marginTop: 14,

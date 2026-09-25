@@ -210,9 +210,10 @@ function ArtisanCard({
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             navigateWithHomeBase({
-              pathname: "/restaurant/[id]",
+              pathname: "/artisan-profile",
               params: {
-                id: artisan.id,
+                artisanId: artisan.id,
+                artisan: JSON.stringify(artisan),
               },
             });
           }}
@@ -2574,7 +2575,19 @@ const isFocused = useIsFocused();
 
                 <View style={styles.newMenuDivider} />
 
-                
+                <Pressable
+                  style={styles.newMenuItem}
+                  onPress={() => navigateWithHomeBase("/add-food" as any)}
+                >
+                  <Ionicons
+                    name="restaurant-outline"
+                    size={20}
+                    color="#111"
+                  />
+                  <Text style={styles.newMenuText}>
+                    إضافة طبق طعام
+                  </Text>
+                </Pressable>
               </View>
             )}
           </View>
