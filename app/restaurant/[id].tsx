@@ -60,6 +60,12 @@ export default function RestaurantScreen() {
     setRestaurantCartTotal(getCartTotal());
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      refreshRestaurantCart();
+    }, [])
+  );
+
 
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const restaurantId = Array.isArray(id) ? id[0] : id;
