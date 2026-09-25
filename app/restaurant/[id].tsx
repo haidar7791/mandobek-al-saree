@@ -19,6 +19,7 @@ import {
   UserProfile,
 } from "../../lib/db_logic";
 import Colors from "@/constants/colors";
+import { getCart, getCartTotal } from "../../lib/food_cart";
 
 const C = Colors.light;
 
@@ -49,6 +50,17 @@ const CATEGORY_ICONS: Record<Category, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function RestaurantScreen() {
+  const [restaurantCartCount, setRestaurantCartCount] = useState(0);
+  const [restaurantCartTotal, setRestaurantCartTotal] = useState(0);
+
+  const refreshRestaurantCart = () => {
+    setRestaurantCartCount(
+      getCart().reduce((sum, item) => sum + item.quantity, 0)
+    );
+    setRestaurantCartTotal(getCartTotal());
+  };
+
+
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const restaurantId = Array.isArray(id) ? id[0] : id;
 
@@ -437,7 +449,28 @@ export default function RestaurantScreen() {
           </>
         }
       />
-    </View>
+    
+      {restaurantCartCount > 0 && (
+        <Pressable
+          style={S.restaurantCartBar}
+          onPress={() => router.push("/restaurant/cart" as any)}
+        >
+          <View style={S.restaurantCartIcon}>
+            <Ionicons name="cart" size={22} color="#fff" />
+            <Text style={S.restaurantCartBadge}>
+              {restaurantCartCount}
+            </Text>
+          </View>
+
+          <Text style={S.restaurantCartText}>
+            عرض السلة · {restaurantCartTotal.toLocaleString()} د.ع
+          </Text>
+
+          <Ionicons name="chevron-back" size={22} color="#fff" />
+        </Pressable>
+      )}
+
+</View>
   );
 }
 
@@ -857,5 +890,52 @@ const S = StyleSheet.create({
     color: C.textMuted,
     fontSize: 11,
     textAlign: "center",
+  },
+
+  restaurantCartBar:{
+    position:"absolute",
+    left:14,
+    right:14,
+    bottom:16,
+    minHeight:58,
+    borderRadius:18,
+    backgroundColor:"#111",
+    flexDirection:"row-reverse",
+    alignItems:"center",
+    paddingHorizontal:16,
+    elevation:8,
+    shadowOpacity:0.2,
+    shadowRadius:8,
+    shadowOffset:{width:0,height:4},
+  },
+  restaurantCartIcon:{
+    width:38,
+    height:38,
+    borderRadius:12,
+    backgroundColor:"#f39c12",
+    alignItems:"center",
+    justifyContent:"center",
+    marginLeft:10,
+  },
+  restaurantCartBadge:{
+    position:"absolute",
+    top:-5,
+    right:-5,
+    minWidth:18,
+    height:18,
+    borderRadius:9,
+    backgroundColor:"#e74c3c",
+    color:"#fff",
+    fontSize:10,
+    fontWeight:"900",
+    textAlign:"center",
+    paddingTop:2,
+  },
+  restaurantCartText:{
+    flex:1,
+    color:"#fff",
+    fontSize:14,
+    fontWeight:"900",
+    textAlign:"right",
   },
 });

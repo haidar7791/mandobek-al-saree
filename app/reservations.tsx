@@ -518,50 +518,54 @@ function FoodOrderCard({
           </View>
         </View>
 
-        <Text
-          style={[
-            styles.poInfoLine,
-            { textAlign: "right" },
-          ]}
-        >
-          <Text style={styles.poFieldLabel}>
-            العميل:{" "}
-          </Text>
-          <Text style={styles.poFieldValue}>
-            {order.customerName}
-          </Text>
-        </Text>
+        {isRestaurant && (
+          <>
+            <Text
+              style={[
+                styles.poInfoLine,
+                { textAlign: "right" },
+              ]}
+            >
+              <Text style={styles.poFieldLabel}>
+                العميل:{" "}
+              </Text>
+              <Text style={styles.poFieldValue}>
+                {order.customerName}
+              </Text>
+            </Text>
 
-        {!!order.customerPhone && (
-          <Text
-            style={[
-              styles.poInfoLine,
-              { textAlign: "right" },
-            ]}
-          >
-            <Text style={styles.poFieldLabel}>
-              الهاتف:{" "}
-            </Text>
-            <Text style={styles.poFieldValue}>
-              {order.customerPhone}
-            </Text>
-          </Text>
-        )}
+            {!!order.customerPhone && (
+              <Text
+                style={[
+                  styles.poInfoLine,
+                  { textAlign: "right" },
+                ]}
+              >
+                <Text style={styles.poFieldLabel}>
+                  الهاتف:{" "}
+                </Text>
+                <Text style={styles.poFieldValue}>
+                  {order.customerPhone}
+                </Text>
+              </Text>
+            )}
 
-        {!!order.customerAddress && (
-          <Text
-            style={[
-              styles.poInfoLine,
-              { textAlign: "right" },
-            ]}
-          >
-            <Text style={styles.poFieldLabel}>
-              العنوان:{" "}
-            </Text>
-            <Text style={styles.poFieldValue}>
-              {order.customerAddress}
-            </Text>
-          </Text>
+            {!!order.customerAddress && (
+              <Text
+                style={[
+                  styles.poInfoLine,
+                  { textAlign: "right" },
+                ]}
+              >
+                <Text style={styles.poFieldLabel}>
+                  العنوان:{" "}
+                </Text>
+                <Text style={styles.poFieldValue}>
+                  {order.customerAddress}
+                </Text>
+              </Text>
+            )}
+          </>
         )}
 
         <View
@@ -642,78 +646,82 @@ function FoodOrderCard({
           </Text>
         </View>
 
-        <Text
-          style={[
-            styles.poInfoLine,
-            {
-              textAlign: "right",
-              marginTop: 7,
-            },
-          ]}
-        >
-          <Text style={styles.poFieldLabel}>
-            الدفع:{" "}
+        {isRestaurant && (
+          <Text
+            style={[
+              styles.poInfoLine,
+              {
+                textAlign: "right",
+                marginTop: 7,
+              },
+            ]}
+          >
+            <Text style={styles.poFieldLabel}>
+              الدفع:{" "}
+            </Text>
+            <Text style={styles.poFieldValue}>
+              {order.paymentMethod === "wallet"
+                ? "المحفظة"
+                : "عند الاستلام"}
+            </Text>
           </Text>
-          <Text style={styles.poFieldValue}>
-            {order.paymentMethod === "wallet"
-              ? "المحفظة"
-              : "عند الاستلام"}
-          </Text>
-        </Text>
+        )}
 
-        <View
-          style={{
-            flexDirection: "row-reverse",
-            gap: 8,
-            marginTop: 10,
-          }}
-        >
-          {!!order.customerPhone && (
-            <TouchableOpacity
-              style={[
-                styles.poContactBtn,
-                { flex: 1 },
-              ]}
-              onPress={callCustomer}
-            >
-              <Feather
-                name="phone"
-                size={15}
-                color="#FFF"
-              />
-              <Text
-                style={
-                  styles.poContactBtnText
-                }
+        {isRestaurant && (
+          <View
+            style={{
+              flexDirection: "row-reverse",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            {!!order.customerPhone && (
+              <TouchableOpacity
+                style={[
+                  styles.poContactBtn,
+                  { flex: 1 },
+                ]}
+                onPress={callCustomer}
               >
-                اتصال
-              </Text>
-            </TouchableOpacity>
-          )}
+                <Feather
+                  name="phone"
+                  size={15}
+                  color="#FFF"
+                />
+                <Text
+                  style={
+                    styles.poContactBtnText
+                  }
+                >
+                  اتصال
+                </Text>
+              </TouchableOpacity>
+            )}
 
-          {!!order.customerLocation && (
-            <TouchableOpacity
-              style={[
-                styles.poLocationBtn,
-                { flex: 1 },
-              ]}
-              onPress={openMap}
-            >
-              <Feather
-                name="map-pin"
-                size={15}
-                color={C.accent}
-              />
-              <Text
-                style={
-                  styles.poLocationBtnText
-                }
+            {!!order.customerLocation && (
+              <TouchableOpacity
+                style={[
+                  styles.poLocationBtn,
+                  { flex: 1 },
+                ]}
+                onPress={openMap}
               >
-                الموقع
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+                <Feather
+                  name="map-pin"
+                  size={15}
+                  color={C.accent}
+                />
+                <Text
+                  style={
+                    styles.poLocationBtnText
+                  }
+                >
+                  الموقع
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {isRestaurant &&
         order.status === "pending" ? (
