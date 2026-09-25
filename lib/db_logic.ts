@@ -4608,6 +4608,11 @@ export type FoodOrder = {
   items: FoodOrderItem[];
   total: number;
   paymentMethod: FoodOrderPayment;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerLocation?: GeoLocation | null;
+  walletCharged?: boolean;
+  walletRefunded?: boolean;
   status: FoodOrderStatus;
   createdAt: any;
   updatedAt?: any;
@@ -4619,6 +4624,9 @@ export const createFoodOrder = async (input: {
   items: FoodOrderItem[];
   total: number;
   paymentMethod: FoodOrderPayment;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerLocation?: GeoLocation | null;
 }): Promise<string> => {
   const user = auth.currentUser;
   if (!user) throw new Error("AUTH_REQUIRED");
@@ -4631,18 +4639,93 @@ export const createFoodOrder = async (input: {
     user.email?.split("@")[0] ||
     "عميل";
 
-  const orderRef = await addDoc(collection(db, "foodOrders"), {
-    restaurantId: input.restaurantId,
-    restaurantName: input.restaurantName,
-    customerId: user.uid,
-    customerName,
-    items: input.items,
-    total: Number(input.total || 0),
-    paymentMethod: input.paymentMethod,
-    status: "pending",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  const total = Number(input.total || 0);
+
+  if (input.paymentMethod === "wallet") {
+    const walletRef = doc(db, "wallets", user.uid);
+    const orderRef = doc(collection(db, "foodOrders"));
+
+    await runTransaction(db, async (tx) => {
+      const walletSnap = await tx.get(walletRef);
+
+      const walletData =
+        walletSnap.exists()
+          ? walletSnap.data()
+          : {};
+
+      const balance =
+        Number(walletData.balance || 0);
+
+      if (balance < total) {
+        throw new Error(
+          "INSUFFICIENT_WALLET_BALANCE"
+        );
+      }
+
+      tx.set(
+        walletRef,
+        {
+          balance: balance - total,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      tx.set(orderRef, {
+        restaurantId: input.restaurantId,
+        restaurantName: input.restaurantName,
+        customerId: user.uid,
+        customerName,
+        customerPhone: input.customerPhone || "",
+        customerAddress: input.customerAddress || "",
+        customerLocation:
+          input.customerLocation || null,
+        items: input.items,
+        total,
+        paymentMethod: input.paymentMethod,
+        walletCharged: true,
+        walletRefunded: false,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+
+    await createActivityNotification({
+      recipientId: input.restaurantId,
+      actorId: user.uid,
+      type: "purchase",
+      title: "طلب مطعم جديد",
+      body: `${customerName} أرسل طلبًا جديدًا من مطعمك`,
+      entityId: orderRef.id,
+      entityType: "order",
+      action: "new",
+    });
+
+    return orderRef.id;
+  }
+
+  const orderRef = await addDoc(
+    collection(db, "foodOrders"),
+    {
+      restaurantId: input.restaurantId,
+      restaurantName: input.restaurantName,
+      customerId: user.uid,
+      customerName,
+      customerPhone: input.customerPhone || "",
+      customerAddress: input.customerAddress || "",
+      customerLocation:
+        input.customerLocation || null,
+      items: input.items,
+      total,
+      paymentMethod: input.paymentMethod,
+      walletCharged: false,
+      walletRefunded: false,
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
+  );
 
   await createActivityNotification({
     recipientId: input.restaurantId,
@@ -4758,10 +4841,47 @@ export const updateFoodOrderStatus = async (
     throw new Error("NOT_FOOD_ORDER_PARTICIPANT");
   }
 
-  await updateDoc(orderRef, {
-    status,
-    updatedAt: serverTimestamp(),
-  });
+  if (
+    status === "rejected" &&
+    data.paymentMethod === "wallet" &&
+    data.walletCharged &&
+    !data.walletRefunded
+  ) {
+    const walletRef = doc(
+      db,
+      "wallets",
+      data.customerId
+    );
+
+    await runTransaction(db, async (tx) => {
+      const walletSnap = await tx.get(walletRef);
+
+      const balance = Number(
+        walletSnap.data()?.balance || 0
+      );
+
+      tx.set(
+        walletRef,
+        {
+          balance:
+            balance + Number(data.total || 0),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      tx.update(orderRef, {
+        status,
+        walletRefunded: true,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } else {
+    await updateDoc(orderRef, {
+      status,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
   if (isRestaurant && data.customerId) {
     const action =

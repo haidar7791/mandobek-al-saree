@@ -32,6 +32,9 @@ import {
   hideServiceRequestsForUser,
   subscribeToSellerProductOrders,
   subscribeToBuyerProductOrders,
+  subscribeToRestaurantFoodOrders,
+  subscribeToCustomerFoodOrders,
+  updateFoodOrderStatus,
   respondToProductOrder,
   bulkDeleteProductOrders,
   buildChatId,
@@ -41,6 +44,8 @@ import {
   type ServiceRequest,
   type ServiceRequestStatus,
   type ProductOrder,
+  type FoodOrder,
+  type FoodOrderStatus,
   type OrderSharePayload,
 } from "../lib/db_logic";
 import Colors from "@/constants/colors";
@@ -369,11 +374,546 @@ function RequestCard({
   );
 }
 
+
+function FoodOrderCard({
+  order,
+  isRestaurant,
+}: {
+  order: FoodOrder;
+  isRestaurant: boolean;
+}) {
+  const cfg =
+    order.status === "pending"
+      ? {
+          label: "🟡 قيد الانتظار",
+          color: "#F59E0B",
+          bg: "rgba(245,158,11,.1)",
+        }
+      : order.status === "accepted"
+      ? {
+          label: "🟢 تم القبول",
+          color: "#22C55E",
+          bg: "rgba(34,197,94,.1)",
+        }
+      : order.status === "preparing"
+      ? {
+          label: "🔵 قيد التحضير",
+          color: "#3B82F6",
+          bg: "rgba(59,130,246,.1)",
+        }
+      : order.status === "ready"
+      ? {
+          label: "🟣 جاهز",
+          color: "#8B5CF6",
+          bg: "rgba(139,92,246,.1)",
+        }
+      : order.status === "completed"
+      ? {
+          label: "🟢 مكتمل",
+          color: "#16A34A",
+          bg: "rgba(22,163,74,.1)",
+        }
+      : order.status === "rejected"
+      ? {
+          label: "🔴 مرفوض",
+          color: "#EF4444",
+          bg: "rgba(239,68,68,.1)",
+        }
+      : {
+          label: "⚪ ملغي",
+          color: "#6B7280",
+          bg: "rgba(107,114,128,.1)",
+        };
+
+  const openMap = () => {
+    if (!order.customerLocation) {
+      Alert.alert(
+        "الموقع",
+        "لم يحدد العميل موقعه."
+      );
+      return;
+    }
+
+    const { lat, lng } =
+      order.customerLocation;
+
+    Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+    );
+  };
+
+  const callCustomer = () => {
+    if (!order.customerPhone) {
+      Alert.alert(
+        "رقم الهاتف",
+        "لا يوجد رقم هاتف محفوظ."
+      );
+      return;
+    }
+
+    Linking.openURL(
+      `tel:${order.customerPhone}`
+    );
+  };
+
+  const changeStatus = async (
+    status: FoodOrderStatus
+  ) => {
+    try {
+      await updateFoodOrderStatus(
+        order.id,
+        status
+      );
+    } catch (error) {
+      console.error(error);
+      Alert.alert(
+        "خطأ",
+        "تعذر تحديث حالة الطلب."
+      );
+    }
+  };
+
+  return (
+    <Animated.View
+      entering={FadeInDown.springify()}
+    >
+      <View style={styles.card}>
+        <View
+          style={{
+            flexDirection: "row-reverse",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <Text
+            style={{
+              color: C.text,
+              fontSize: 16,
+              fontWeight: "900",
+            }}
+          >
+            {isRestaurant
+              ? "طلب جديد من عميل"
+              : order.restaurantName}
+          </Text>
+
+          <View
+            style={{
+              backgroundColor: cfg.bg,
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              borderRadius: 10,
+            }}
+          >
+            <Text
+              style={{
+                color: cfg.color,
+                fontWeight: "800",
+                fontSize: 11,
+              }}
+            >
+              {cfg.label}
+            </Text>
+          </View>
+        </View>
+
+        <Text
+          style={[
+            styles.poInfoLine,
+            { textAlign: "right" },
+          ]}
+        >
+          <Text style={styles.poFieldLabel}>
+            العميل:{" "}
+          </Text>
+          <Text style={styles.poFieldValue}>
+            {order.customerName}
+          </Text>
+        </Text>
+
+        {!!order.customerPhone && (
+          <Text
+            style={[
+              styles.poInfoLine,
+              { textAlign: "right" },
+            ]}
+          >
+            <Text style={styles.poFieldLabel}>
+              الهاتف:{" "}
+            </Text>
+            <Text style={styles.poFieldValue}>
+              {order.customerPhone}
+            </Text>
+          </Text>
+        )}
+
+        {!!order.customerAddress && (
+          <Text
+            style={[
+              styles.poInfoLine,
+              { textAlign: "right" },
+            ]}
+          >
+            <Text style={styles.poFieldLabel}>
+              العنوان:{" "}
+            </Text>
+            <Text style={styles.poFieldValue}>
+              {order.customerAddress}
+            </Text>
+          </Text>
+        )}
+
+        <View
+          style={{
+            marginTop: 8,
+            borderTopWidth: 1,
+            borderTopColor: C.border,
+            paddingTop: 8,
+          }}
+        >
+          {order.items.map(item => (
+            <View
+              key={item.foodId}
+              style={styles.foodOrderItemRow}
+            >
+              <Text
+                style={{
+                  flex: 1,
+                  color: C.text,
+                  textAlign: "right",
+                  fontSize: 13,
+                }}
+              >
+                {item.name} × {item.quantity}
+              </Text>
+
+              <Text
+                style={{
+                  color: C.text,
+                  fontWeight: "800",
+                  marginLeft: 10,
+                }}
+              >
+                {(
+                  item.price *
+                  item.quantity
+                ).toLocaleString(
+                  "ar-IQ-u-nu-latn"
+                )}{" "}
+                د.ع
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row-reverse",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 10,
+            paddingTop: 10,
+            borderTopWidth: 1,
+            borderTopColor: C.border,
+          }}
+        >
+          <Text
+            style={{
+              color: C.text,
+              fontWeight: "900",
+              fontSize: 15,
+            }}
+          >
+            الإجمالي
+          </Text>
+
+          <Text
+            style={{
+              color: C.accent,
+              fontWeight: "900",
+              fontSize: 17,
+            }}
+          >
+            {Number(order.total || 0).toLocaleString(
+              "ar-IQ-u-nu-latn"
+            )}{" "}
+            د.ع
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.poInfoLine,
+            {
+              textAlign: "right",
+              marginTop: 7,
+            },
+          ]}
+        >
+          <Text style={styles.poFieldLabel}>
+            الدفع:{" "}
+          </Text>
+          <Text style={styles.poFieldValue}>
+            {order.paymentMethod === "wallet"
+              ? "المحفظة"
+              : "عند الاستلام"}
+          </Text>
+        </Text>
+
+        <View
+          style={{
+            flexDirection: "row-reverse",
+            gap: 8,
+            marginTop: 10,
+          }}
+        >
+          {!!order.customerPhone && (
+            <TouchableOpacity
+              style={[
+                styles.poContactBtn,
+                { flex: 1 },
+              ]}
+              onPress={callCustomer}
+            >
+              <Feather
+                name="phone"
+                size={15}
+                color="#FFF"
+              />
+              <Text
+                style={
+                  styles.poContactBtnText
+                }
+              >
+                اتصال
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {!!order.customerLocation && (
+            <TouchableOpacity
+              style={[
+                styles.poLocationBtn,
+                { flex: 1 },
+              ]}
+              onPress={openMap}
+            >
+              <Feather
+                name="map-pin"
+                size={15}
+                color={C.accent}
+              />
+              <Text
+                style={
+                  styles.poLocationBtnText
+                }
+              >
+                الموقع
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {isRestaurant &&
+        order.status === "pending" ? (
+          <View
+            style={[
+              styles.actionRow,
+              { marginTop: 10 },
+            ]}
+          >
+            <Pressable
+              style={[
+                styles.actionBtn,
+                styles.rejectBtn,
+              ]}
+              onPress={() =>
+                Alert.alert(
+                  "رفض الطلب",
+                  "هل تريد رفض هذا الطلب؟",
+                  [
+                    {
+                      text: "إلغاء",
+                      style: "cancel",
+                    },
+                    {
+                      text: "رفض",
+                      style: "destructive",
+                      onPress: () =>
+                        changeStatus(
+                          "rejected"
+                        ),
+                    },
+                  ]
+                )
+              }
+            >
+              <Feather
+                name="x"
+                size={16}
+                color="#FFF"
+              />
+              <Text
+                style={styles.actionBtnText}
+              >
+                رفض
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.actionBtn,
+                styles.acceptBtn,
+              ]}
+              onPress={() =>
+                changeStatus("accepted")
+              }
+            >
+              <Feather
+                name="check"
+                size={16}
+                color="#FFF"
+              />
+              <Text
+                style={styles.actionBtnText}
+              >
+                قبول
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {isRestaurant &&
+        order.status === "accepted" ? (
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.acceptBtn,
+              { marginTop: 10 },
+            ]}
+            onPress={() =>
+              changeStatus("preparing")
+            }
+          >
+            <Feather
+              name="loader"
+              size={16}
+              color="#FFF"
+            />
+            <Text
+              style={styles.actionBtnText}
+            >
+              بدء التحضير
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {isRestaurant &&
+        order.status === "preparing" ? (
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.acceptBtn,
+              { marginTop: 10 },
+            ]}
+            onPress={() =>
+              changeStatus("ready")
+            }
+          >
+            <Feather
+              name="check-circle"
+              size={16}
+              color="#FFF"
+            />
+            <Text
+              style={styles.actionBtnText}
+            >
+              الطلب جاهز
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {isRestaurant &&
+        order.status === "ready" ? (
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.acceptBtn,
+              { marginTop: 10 },
+            ]}
+            onPress={() =>
+              changeStatus("completed")
+            }
+          >
+            <Feather
+              name="check-circle"
+              size={16}
+              color="#FFF"
+            />
+            <Text
+              style={styles.actionBtnText}
+            >
+              تم التسليم
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {!isRestaurant &&
+        ["pending","accepted","preparing","ready"].includes(
+          order.status
+        ) ? (
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.rejectBtn,
+              { marginTop: 10 },
+            ]}
+            onPress={() =>
+              Alert.alert(
+                "إلغاء الطلب",
+                "هل تريد إلغاء هذا الطلب؟",
+                [
+                  {
+                    text: "لا",
+                    style: "cancel",
+                  },
+                  {
+                    text: "نعم",
+                    style: "destructive",
+                    onPress: () =>
+                      changeStatus(
+                        "cancelled"
+                      ),
+                  },
+                ]
+              )
+            }
+          >
+            <Feather
+              name="x-circle"
+              size={16}
+              color="#FFF"
+            />
+            <Text
+              style={styles.actionBtnText}
+            >
+              إلغاء الطلب
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function ReservationsScreen({ inline = false }: { inline?: boolean }) {
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
   const [buyerOrders, setBuyerOrders] = useState<ProductOrder[]>([]);
+  const [restaurantFoodOrders, setRestaurantFoodOrders] = useState<FoodOrder[]>([]);
+  const [customerFoodOrders, setCustomerFoodOrders] = useState<FoodOrder[]>([]);
   const { tab: requestedTab } = useLocalSearchParams<{ tab?: string }>();
   const initialTab: Tab =
     requestedTab === "myProducts" || requestedTab === "myOrders" || requestedTab === "history"
@@ -502,6 +1042,36 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
       (orders) => setBuyerOrders(orders),
       () => setBuyerOrders([])
     );
+    return unsub;
+  }, []);
+
+  // Restaurant food orders
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const unsub =
+      subscribeToRestaurantFoodOrders(
+        user.uid,
+        orders => setRestaurantFoodOrders(orders),
+        () => setRestaurantFoodOrders([])
+      );
+
+    return unsub;
+  }, []);
+
+  // Customer food orders
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const unsub =
+      subscribeToCustomerFoodOrders(
+        user.uid,
+        orders => setCustomerFoodOrders(orders),
+        () => setCustomerFoodOrders([])
+      );
+
     return unsub;
   }, []);
 
@@ -927,14 +1497,35 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
             productOrders.length === 0 && { flex: 1 },
           ]}
           ListHeaderComponent={
-            pendingProductOrders.length > 0 ? (
-              <View style={styles.productOrdersHeader}>
-                <View style={styles.pendingDot} />
-                <Text style={styles.productOrdersHeaderText}>
-                  بانتظار ردك ({pendingProductOrders.length})
-                </Text>
-              </View>
-            ) : null
+            <View>
+              {restaurantFoodOrders.length > 0 ? (
+                <View>
+                  <View style={styles.productOrdersHeader}>
+                    <View style={styles.pendingDot} />
+                    <Text style={styles.productOrdersHeaderText}>
+                      طلبات المطاعم ({restaurantFoodOrders.length})
+                    </Text>
+                  </View>
+
+                  {restaurantFoodOrders.map(o =>
+                    <FoodOrderCard
+                      key={`food-${o.id}`}
+                      order={o}
+                      isRestaurant
+                    />
+                  )}
+                </View>
+              ) : null}
+
+              {pendingProductOrders.length > 0 ? (
+                <View style={styles.productOrdersHeader}>
+                  <View style={styles.pendingDot} />
+                  <Text style={styles.productOrdersHeaderText}>
+                    بانتظار ردك ({pendingProductOrders.length})
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           }
           renderItem={({ item: order }) => {
             const cfg =
@@ -1122,8 +1713,30 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: bottomPad + (productSelectMode && selectedOrderIds.size > 0 ? 100 : 20) },
-            buyerOrders.length === 0 && { flex: 1 },
+            buyerOrders.length === 0 &&
+            customerFoodOrders.length === 0 &&
+            { flex: 1 },
           ]}
+          ListHeaderComponent={
+            customerFoodOrders.length > 0 ? (
+              <View>
+                <View style={styles.productOrdersHeader}>
+                  <View style={styles.pendingDot} />
+                  <Text style={styles.productOrdersHeaderText}>
+                    طلبات المطاعم ({customerFoodOrders.length})
+                  </Text>
+                </View>
+
+                {customerFoodOrders.map(o =>
+                  <FoodOrderCard
+                    key={`customer-food-${o.id}`}
+                    order={o}
+                    isRestaurant={false}
+                  />
+                )}
+              </View>
+            ) : null
+          }
           renderItem={({ item: order }) => {
             const cfg =
               order.status === "pending"
@@ -1515,6 +2128,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 4,
   },
+  foodOrderItemRow: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+
   poContactBtnText: {
     fontSize: 14,
     fontFamily: undefined,

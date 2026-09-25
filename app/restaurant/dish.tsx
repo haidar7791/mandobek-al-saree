@@ -1,11 +1,14 @@
 
 import React,{useCallback,useState}from"react";
-import{ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,Text,View}from"react-native";
+import{ActivityIndicator,Alert,Image,Pressable,ScrollView,StyleSheet,Text,View}from"react-native";
 import{Ionicons,Feather}from"@expo/vector-icons";
 import{router,useLocalSearchParams}from"expo-router";
 import{fetchFoodItems,FoodItem}from"../../lib/db_logic";
 import Colors from"@/constants/colors";
-import {addToCart} from"../../lib/food_cart";
+import {
+  addToCart,
+  getCartRestaurantId
+} from"../../lib/food_cart";
 
 const C=Colors.light;
 
@@ -34,6 +37,31 @@ export default function DishScreen(){
  const total=price*qty;
 
  const handleAdd=()=>{
+  const currentRestaurantId =
+    getCartRestaurantId();
+
+  if (
+    currentRestaurantId &&
+    currentRestaurantId !== item.userId
+  ) {
+    Alert.alert(
+      "السلة تحتوي مطعماً آخر",
+      "يجب إفراغ السلة قبل إضافة وجبة من مطعم آخر.",
+      [
+        {
+          text: "إلغاء",
+          style: "cancel",
+        },
+        {
+          text: "فتح السلة",
+          onPress: () =>
+            router.push("/restaurant/cart" as any),
+        },
+      ]
+    );
+    return;
+  }
+
   addToCart(item,qty);
   router.back();
  };

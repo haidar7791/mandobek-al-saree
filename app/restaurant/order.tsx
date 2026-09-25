@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -236,6 +237,57 @@ export default function RestaurantOrderScreen() {
             <Text style={S.infoLabel}>العميل</Text>
           </View>
 
+          {!!order.customerPhone && (
+            <Pressable
+              style={S.infoRow}
+              onPress={() =>
+                Linking.openURL(
+                  `tel:${order.customerPhone}`
+                )
+              }
+            >
+              <Text style={S.infoValue}>
+                {order.customerPhone}
+              </Text>
+              <Text style={S.infoLabel}>
+                الهاتف
+              </Text>
+            </Pressable>
+          )}
+
+          {!!order.customerAddress && (
+            <View style={S.infoRow}>
+              <Text style={S.infoValue}>
+                {order.customerAddress}
+              </Text>
+              <Text style={S.infoLabel}>
+                العنوان
+              </Text>
+            </View>
+          )}
+
+          {order.customerLocation && (
+            <Pressable
+              style={S.mapOrderButton}
+              onPress={() => {
+                const {lat,lng} =
+                  order.customerLocation!;
+                Linking.openURL(
+                  `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+                );
+              }}
+            >
+              <Feather
+                name="map-pin"
+                size={18}
+                color="#FFF"
+              />
+              <Text style={S.mapOrderButtonText}>
+                فتح موقع التوصيل على الخريطة
+              </Text>
+            </Pressable>
+          )}
+
           <View style={S.infoRow}>
             <Text style={S.infoValue}>
               {order.paymentMethod === "cash"
@@ -377,6 +429,21 @@ export default function RestaurantOrderScreen() {
 }
 
 const S = StyleSheet.create({
+  mapOrderButton: {
+    minHeight: 48,
+    borderRadius: 13,
+    backgroundColor: C.primary,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 10,
+  },
+  mapOrderButtonText: {
+    color: "#FFF",
+    fontWeight: "800",
+    fontSize: 13,
+  },
   root: {
     flex: 1,
     backgroundColor: C.background,
