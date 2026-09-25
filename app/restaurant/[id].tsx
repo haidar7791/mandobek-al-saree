@@ -902,7 +902,7 @@ const S = StyleSheet.create({
     position:"absolute",
     left:14,
     right:14,
-    bottom:16,
+    bottom:31,
     minHeight:58,
     borderRadius:18,
     backgroundColor:"#111",
