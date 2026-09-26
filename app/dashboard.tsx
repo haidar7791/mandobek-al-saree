@@ -253,9 +253,9 @@ function ArtisanCard({
             )}
 
             <View style={styles.restaurantLogoWrap}>
-              {artisan.photoUri ? (
+              {artisan.restaurantLogoUri ? (
                 <Image
-                  source={{ uri: artisan.photoUri }}
+                  source={{ uri: artisan.restaurantLogoUri }}
                   style={styles.restaurantLogo}
                   resizeMode="cover"
                 />
