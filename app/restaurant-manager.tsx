@@ -46,8 +46,7 @@ const restaurantTypes = [
   "حلويات",
 ];
 
-const menuTabs: { key: "popular" | RestaurantDishCategory; label: string; emoji: string }[] = [
-  { key: "popular", label: "الأكثر طلباً", emoji: "🔥" },
+const menuTabs: { key: RestaurantDishCategory; label: string; emoji: string }[] = [
   { key: "main", label: "الأطباق الرئيسية", emoji: "🍢" },
   { key: "appetizer", label: "المقبلات", emoji: "🥗" },
   { key: "drink", label: "المشروبات", emoji: "🥤" },
@@ -67,12 +66,11 @@ export default function RestaurantManagerScreen() {
   const [loadError, setLoadError] = useState("");
   const [name, setName] = useState("");
   const [restaurantType, setRestaurantType] = useState(restaurantTypes[0]);
-  const [estimatedDelivery, setEstimatedDelivery] = useState("20–30 دقيقة");
   const [isAvailable, setIsAvailable] = useState(true);
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [logoUri, setLogoUri] = useState<string | null>(null);
   const [foods, setFoods] = useState<FoodItem[]>([]);
-  const [activeMenuTab, setActiveMenuTab] = useState<(typeof menuTabs)[number]["key"]>("popular");
+  const [activeMenuTab, setActiveMenuTab] = useState<(typeof menuTabs)[number]["key"]>("main");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [uploadingBrandImage, setUploadingBrandImage] = useState<BrandImage | null>(null);
@@ -106,7 +104,7 @@ export default function RestaurantManagerScreen() {
       setName(profile.name || "");
       initialNameRef.current = profile.name || "";
       setRestaurantType(profile.restaurantCategory || restaurantTypes[0]);
-      setEstimatedDelivery(profile.estimatedDelivery || "20–30 دقيقة");
+
       setIsAvailable(profile.isAvailable ?? true);
       setCoverUri(profile.coverUri || null);
       setLogoUri(profile.restaurantLogoUri || null);
@@ -126,20 +124,14 @@ export default function RestaurantManagerScreen() {
   );
 
   const visibleFoods = useMemo(() => {
-    if (activeMenuTab === "popular") return foods.filter((food) => food.isPopular);
     return foods.filter((food) => (food.category || "main") === activeMenuTab);
   }, [activeMenuTab, foods]);
 
   const saveRestaurantInfo = async () => {
     const cleanName = name.trim();
-    const cleanDelivery = estimatedDelivery.trim();
     if (!userId) return;
     if (!cleanName) {
       Alert.alert("اسم المطعم مطلوب", "اكتب اسم المطعم قبل حفظ التغييرات.");
-      return;
-    }
-    if (!cleanDelivery) {
-      Alert.alert("وقت التوصيل مطلوب", "أدخل متوسط وقت تجهيز وتوصيل الطلب.");
       return;
     }
     setSavingProfile(true);
@@ -148,7 +140,6 @@ export default function RestaurantManagerScreen() {
         specialty: "restaurant",
         role: "artisan",
         restaurantCategory: restaurantType,
-        estimatedDelivery: cleanDelivery,
       };
       if (cleanName !== initialNameRef.current) changes.name = cleanName;
       await setUserProfile(userId, changes);
@@ -241,7 +232,6 @@ export default function RestaurantManagerScreen() {
         description,
         appetizers: description,
         category: draft.category,
-        isPopular: draft.isPopular,
         media,
       };
 
@@ -304,21 +294,6 @@ export default function RestaurantManagerScreen() {
     ]);
   };
 
-  const togglePopular = async (dish: FoodItem) => {
-    const next = !dish.isPopular;
-    setFoods((current) =>
-      current.map((food) => (food.id === dish.id ? { ...food, isPopular: next } : food)),
-    );
-    try {
-      await updateFoodItem(dish.id, { isPopular: next });
-    } catch (error) {
-      console.error("update popular dish failed:", error);
-      setFoods((current) =>
-        current.map((food) => (food.id === dish.id ? { ...food, isPopular: !next } : food)),
-      );
-      Alert.alert("تعذر تحديث الطبق", "حاول مرة أخرى.");
-    }
-  };
 
   if (loading) {
     return (
@@ -486,23 +461,7 @@ export default function RestaurantManagerScreen() {
               );
             })}
           </View>
-
-          <Text style={styles.fieldLabel}>وقت التجهيز والتوصيل المتوقع</Text>
-          <View style={styles.deliveryInputRow}>
-            <Text style={styles.deliveryUnit}>دقيقة</Text>
-            <TextInput
-              value={estimatedDelivery}
-              onChangeText={setEstimatedDelivery}
-              placeholder="20–30 دقيقة"
-              placeholderTextColor={C.textMuted}
-              style={styles.deliveryInput}
-              textAlign="right"
-              maxLength={30}
-            />
-            <Feather name="clock" size={17} color={C.textMuted} />
-          </View>
-
-          <Pressable
+<Pressable
             onPress={() => void saveRestaurantInfo()}
             disabled={savingProfile}
             style={[styles.saveProfileButton, savingProfile && { opacity: 0.7 }]}
@@ -537,9 +496,7 @@ export default function RestaurantManagerScreen() {
           >
             {menuTabs.map((tab) => {
               const selected = activeMenuTab === tab.key;
-              const count = tab.key === "popular"
-                ? foods.filter((food) => food.isPopular).length
-                : foods.filter((food) => (food.category || "main") === tab.key).length;
+              const count = foods.filter((food) => (food.category || "main") === tab.key).length;
               return (
                 <Pressable
                   key={tab.key}
@@ -564,7 +521,7 @@ export default function RestaurantManagerScreen() {
                 <Ionicons name="restaurant-outline" size={27} color={C.accent} />
               </View>
               <Text style={styles.emptyMenuTitle}>
-                {activeMenuTab === "popular" ? "لا توجد أطباق ضمن الأكثر طلباً" : "لا توجد أطباق في هذه الفئة"}
+                لا توجد أطباق في هذه الفئة
               </Text>
               <Text style={styles.emptyMenuHint}>أضف طبقاً أو غيّر الفئة لمتابعة إدارة قائمتك.</Text>
               <Pressable onPress={() => openDishEditor()} style={styles.emptyAddButton}>
@@ -602,13 +559,6 @@ export default function RestaurantManagerScreen() {
                       </Text>
                     </View>
                     <View style={styles.dishActions}>
-                      <Pressable
-                        onPress={() => void togglePopular(dish)}
-                        style={[styles.actionIcon, dish.isPopular && styles.popularAction]}
-                        accessibilityLabel={dish.isPopular ? "إزالة من الأكثر طلباً" : "إضافة إلى الأكثر طلباً"}
-                      >
-                        <Ionicons name={dish.isPopular ? "star" : "star-outline"} size={17} color={dish.isPopular ? "#B78111" : C.textMuted} />
-                      </Pressable>
                       <Pressable onPress={() => openDishEditor(dish)} style={styles.actionIcon} accessibilityLabel="تعديل الطبق">
                         <Feather name="edit-2" size={15} color={C.textSecondary} />
                       </Pressable>
@@ -695,9 +645,6 @@ const styles = StyleSheet.create({
   typeChipSelected: { backgroundColor: "rgba(201,168,76,0.16)", borderColor: C.accent },
   typeChipText: { color: C.textSecondary, fontSize: 11, fontWeight: "700" },
   typeChipTextSelected: { color: C.text, fontWeight: "900" },
-  deliveryInputRow: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, flexDirection: "row-reverse", alignItems: "center", paddingHorizontal: 13, gap: 9 },
-  deliveryInput: { flex: 1, color: C.text, fontSize: 13, minHeight: 46 },
-  deliveryUnit: { color: C.textMuted, fontSize: 11, fontWeight: "700" },
   saveProfileButton: { minHeight: 48, backgroundColor: C.primary, borderRadius: 14, marginTop: 18, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8 },
   saveProfileText: { color: "#FFF", fontSize: 13, fontWeight: "900" },
   menuSection: { marginHorizontal: 16, padding: 16, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
@@ -729,5 +676,4 @@ const styles = StyleSheet.create({
   dishPrice: { color: "#A98020", fontSize: 12, fontWeight: "900", marginTop: 5, textAlign: "right" },
   dishActions: { gap: 5 },
   actionIcon: { width: 31, height: 31, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
-  popularAction: { backgroundColor: "rgba(245,193,73,0.16)", borderColor: "rgba(193,138,22,0.28)" },
 });
