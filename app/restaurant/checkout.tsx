@@ -19,7 +19,7 @@ import{
 }from"../../lib/db_logic";
 import Colors from"@/constants/colors";
 import*as Location from"expo-location";
-import{WebView}from"react-native-webview";
+
 
 const C=Colors.light;
 
@@ -279,44 +279,6 @@ export default function Checkout(){
     ):null}
 
     <Text style={S.sectionTitle}>
-     تحديد الموقع على الخريطة
-    </Text>
-
-    <View style={S.mapContainer}>
-     <WebView
-      source={{
-       html:`
-       <!doctype html>
-       <html dir="rtl">
-       <head>
-        <meta name="viewport"
-          content="width=device-width,initial-scale=1"/>
-        <style>
-         html,body,#map{
-          margin:0;
-          padding:0;
-          width:100%;
-          height:100%;
-         }
-        </style>
-       </head>
-       <body>
-        <div id="map"></div>
-        <script>
-         const map=document.getElementById("map");
-         map.innerHTML=
-          "<div style='height:100%;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#555'>"+
-          "يمكنك استخدام موقعي الحالي ثم فتح الخريطة لتحديد الموقع"+
-          "</div>";
-        </script>
-       </body>
-       </html>`
-      }}
-      style={{flex:1}}
-     />
-    </View>
-
-    <Text style={S.sectionTitle}>
      طريقة الدفع
     </Text>
 
@@ -423,6 +385,7 @@ export default function Checkout(){
     <Pressable
      style={[
       S.confirm,
+      {transform:[{translateY:-20}]},
       (cart.length===0||submitting)&&
        S.disabled
      ]}
@@ -529,14 +492,7 @@ const S=StyleSheet.create({
   color:C.primary,
   fontWeight:"800"
  },
- mapContainer:{
-  height:220,
-  borderRadius:16,
-  overflow:"hidden",
-  borderWidth:1,
-  borderColor:C.border,
-  backgroundColor:C.card
- },
+ 
  payment:{
   minHeight:76,
   borderRadius:16,
