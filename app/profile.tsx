@@ -756,27 +756,16 @@ export default function ProfileScreen() {
 
       {specialty === "restaurant" && (
         <View style={styles.restaurantOwnerCard}>
-          <View style={styles.restaurantOwnerInfo}>
-            <View style={styles.restaurantOwnerIcon}>
-              <Ionicons name="restaurant-outline" size={24} color={C.accent} />
-            </View>
-
-            <View style={styles.restaurantOwnerText}>
-              <Text style={styles.restaurantOwnerTitle}>إدارة المطعم</Text>
-              <Text style={styles.restaurantOwnerSubtitle}>
-                إدارة بيانات المطعم والأطباق والمشروبات
-              </Text>
-            </View>
-          </View>
-
           <Pressable
             style={styles.restaurantOwnerButton}
             onPress={() => router.push("/restaurant-manager" as any)}
             accessibilityRole="button"
             accessibilityLabel="إدارة المطعم"
           >
-            <Feather name="settings" size={16} color={C.primary} />
-            <Text style={styles.restaurantOwnerButtonText}>إدارة المطعم</Text>
+            <Feather name="settings" size={21} color={C.primary} />
+            <Text style={styles.restaurantOwnerButtonText}>
+              إدارة المطعم
+            </Text>
           </Pressable>
         </View>
       )}
@@ -1684,68 +1673,36 @@ const styles = StyleSheet.create({
   },
 
   restaurantOwnerCard: {
-    marginHorizontal: 16,
-    marginTop: 14,
+    width: "100%",
+    marginTop: 6,
     marginBottom: 4,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    flexDirection: "row",
+    paddingHorizontal: 0,
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  restaurantOwnerInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-
-  restaurantOwnerIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginRight: 11,
-  },
-
-  restaurantOwnerText: {
-    flex: 1,
-  },
-
-  restaurantOwnerTitle: {
-    color: "#FFF",
-    fontSize: 15,
-    fontWeight: "800",
-    textAlign: "right",
-  },
-
-  restaurantOwnerSubtitle: {
-    color: C.textMuted,
-    fontSize: 11,
-    marginTop: 4,
-    textAlign: "right",
   },
 
   restaurantOwnerButton: {
-    minHeight: 38,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    width: "100%",
+    minHeight: 58,
+    borderRadius: 15,
     backgroundColor: C.accent,
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
 
   restaurantOwnerButtonText: {
     color: C.primary,
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
   },
 
   controlRow: {
