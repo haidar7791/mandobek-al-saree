@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Modal,
+  Alert,
   ActivityIndicator,
   FlatList,
   Image,
@@ -11,14 +13,18 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+  
 
 import {
+  addReview,
+  getReviews,
   fetchFoodItems,
   getUserProfile,
   FoodItem,
   UserProfile,
 } from "../../lib/db_logic";
 import Colors from "@/constants/colors";
+import { auth } from "../../lib/firebase";
 import { getCart, getCartTotal } from "../../lib/food_cart";
 
 const C = Colors.light;
@@ -44,6 +50,109 @@ const CATEGORY_ICONS: Record<Category, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function RestaurantScreen() {
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [ratingSaving, setRatingSaving] = useState(false);
+
+  const openRatingModal = () => {
+    setSelectedRating(0);
+    setRatingModalVisible(true);
+  };
+
+  const submitRating = async () => {
+    console.log("[RATING] submitRating بدأ", {
+      selectedRating,
+      ratingSaving,
+      restaurantId,
+    });
+
+    if (ratingSaving) {
+      return;
+    }
+
+    if (!selectedRating) {
+      Alert.alert("تنبيه", "اختر عدد النجوم أولاً.");
+      return;
+    }
+
+    if (!restaurantId) {
+      Alert.alert("خطأ", "لم يتم تحديد المطعم بشكل صحيح.");
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+
+    if (!currentUser?.uid) {
+      Alert.alert("تنبيه", "يجب تسجيل الدخول أولاً لإضافة تقييم.");
+      return;
+    }
+
+    try {
+      setRatingSaving(true);
+
+      const clientId = currentUser.uid;
+      const clientName = currentUser.displayName || "مستخدم فورس";
+      const ratingValue = Number(selectedRating);
+      const targetRestaurantId = String(restaurantId);
+
+      console.log("[RATING] بدء حفظ التقييم:", {
+        restaurantId: targetRestaurantId,
+        clientId,
+        ratingValue,
+      });
+
+      await addReview({
+        artisanId: targetRestaurantId,
+
+        clientId,
+        clientName,
+        rating: ratingValue,
+        comment: "",
+      });
+
+      // تحقق فعلي من أن التقييم أصبح موجوداً في Firestore.
+      const savedReviews = await getReviews(targetRestaurantId);
+      const savedReview = savedReviews.find(
+        (review) =>
+          review.clientId === clientId &&
+          Number(review.rating) === ratingValue
+      );
+
+      if (!savedReview) {
+        throw new Error("تم تنفيذ الحفظ لكن لم يتم العثور على التقييم بعد الحفظ.");
+      }
+
+      console.log("[RATING] تم حفظ التقييم والتحقق منه بنجاح:", savedReview);
+
+      // تحديث بيانات المطعم على الشاشة مباشرة.
+      try {
+        const refreshedProfile = await getUserProfile(targetRestaurantId);
+        if (refreshedProfile) {
+          setProfile(refreshedProfile);
+        }
+      } catch (refreshError) {
+        console.warn("[RATING] تعذر تحديث بيانات المطعم على الشاشة:", refreshError);
+      }
+
+      setRatingModalVisible(false);
+      setSelectedRating(0);
+
+      Alert.alert(
+        "تم بنجاح",
+        "تم إرسال تقييمك وحفظه بنجاح، وسيظهر عدد التقييمات والتقييم الجديد على المطعم."
+      );
+    } catch (error) {
+      console.error("[RATING] فشل حفظ التقييم:", error);
+
+      Alert.alert(
+        "تعذر حفظ التقييم",
+        "لم يتم حفظ التقييم. تأكد من اتصال الإنترنت ثم حاول مرة أخرى."
+      );
+    } finally {
+      setRatingSaving(false);
+    }
+  };
+
   const [restaurantCartCount, setRestaurantCartCount] = useState(0);
   const [restaurantCartTotal, setRestaurantCartTotal] = useState(0);
 
@@ -143,7 +252,8 @@ export default function RestaurantScreen() {
   }
 
   return (
-    <View style={S.screen}>
+    <>
+      <View style={S.screen}>
       <FlatList
         data={visibleItems}
         keyExtractor={(item) => item.id}
@@ -274,37 +384,35 @@ export default function RestaurantScreen() {
             </View>
 
             <View style={S.infoCard}>
-              <View style={S.infoItem}>
-                <Ionicons
-                  name="star"
-                  size={18}
-                  color="#F5C842"
-                />
-                <Text style={S.infoValue}>
-                  {typeof profile.rating === "number" &&
-                  profile.rating > 0
-                    ? profile.rating.toFixed(1)
-                    : "جديد"}
-                </Text>
-                <Text style={S.infoLabel}>التقييم</Text>
-              </View>
+              <Pressable
+                style={S.infoItem}
+                onPress={openRatingModal}
+              >
+                <View style={S.ratingButtonRow}>
+                  <Ionicons
+                    name="star"
+                    size={21}
+                    color="#F5C842"
+                  />
+                  <Text style={S.infoValue}>
+                    {typeof profile.rating === "number" &&
+                    profile.rating > 0
+                      ? profile.rating.toFixed(1)
+                      : "جديد"}
+                  </Text>
 
-              <View style={S.infoDivider} />
+                  {typeof profile.reviewCount === "number" &&
+                  profile.reviewCount > 0 && (
+                    <Text style={S.reviewCountText}>
+                      ({profile.reviewCount} تقييم)
+                    </Text>
+                  )}
+                </View>
 
-              <View style={S.infoItem}>
-                <Ionicons
-                  name="time-outline"
-                  size={18}
-                  color={C.accent}
-                />
-                <Text style={S.infoValue}>
-                  {profile.estimatedDelivery ||
-                    "25-35 دقيقة"}
-                </Text>
                 <Text style={S.infoLabel}>
-                  وقت التوصيل
+                  اضغط للتقييم
                 </Text>
-              </View>
+              </Pressable>
 
               <View style={S.infoDivider} />
 
@@ -463,6 +571,90 @@ export default function RestaurantScreen() {
       )}
 
 </View>
+      <Modal
+        visible={ratingModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRatingModalVisible(false)}
+      >
+        <View style={S.ratingModalOverlay}>
+          <View style={S.ratingModalCard}>
+            <Text style={S.ratingModalTitle}>
+              قيّم المطعم
+            </Text>
+
+            <Text style={S.ratingModalHint}>
+              اختر عدد النجوم التي يستحقها المطعم
+            </Text>
+
+            <View style={S.ratingStarsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Pressable
+                  key={star}
+                  onPress={() => setSelectedRating(star)}
+                  hitSlop={8}
+                  style={S.ratingStarButton}
+                >
+                  <Ionicons
+                    name={
+                      star <= selectedRating
+                        ? "star"
+                        : "star-outline"
+                    }
+                    size={38}
+                    color="#F5C842"
+                  />
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={S.selectedRatingText}>
+              {selectedRating
+                ? `${selectedRating} من 5`
+                : "لم يتم اختيار تقييم"}
+            </Text>
+
+            <View style={S.ratingModalActions}>
+              <Pressable
+                style={S.ratingCancelButton}
+                onPress={() => setRatingModalVisible(false)}
+              >
+                <Text style={S.ratingCancelText}>
+                  إلغاء
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  S.ratingSubmitButton,
+                  ratingSaving && S.ratingSubmitDisabled,
+                ]}
+                disabled={ratingSaving}
+                onPress={() => {
+                  console.log("[RATING] تم الضغط على زر إرسال التقييم", {
+                    selectedRating,
+                    ratingSaving,
+                    restaurantId,
+                  });
+
+                  if (!selectedRating) {
+                    Alert.alert("تنبيه", "اختر عدد النجوم أولاً.");
+                    return;
+                  }
+
+                  submitRating();
+                }}
+              >
+                <Text style={S.ratingSubmitText}>
+                  {ratingSaving ? "جارٍ الحفظ..." : "إرسال التقييم"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+
   );
 }
 
@@ -619,6 +811,108 @@ const S = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
+  },
+
+  ratingButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+
+  reviewCountText: {
+    fontSize: 10,
+    color: C.textMuted,
+  },
+
+  ratingModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+
+  ratingModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: C.card,
+    borderRadius: 22,
+    padding: 22,
+    alignItems: "center",
+  },
+
+  ratingModalTitle: {
+    fontSize: 21,
+    fontWeight: "800",
+    color: C.text,
+    marginBottom: 7,
+  },
+
+  ratingModalHint: {
+    fontSize: 12,
+    color: C.textMuted,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+
+  ratingStarsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  ratingStarButton: {
+    padding: 2,
+  },
+
+  selectedRatingText: {
+    marginTop: 12,
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.text,
+  },
+
+  ratingModalActions: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 22,
+  },
+
+  ratingCancelButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.inputBg,
+  },
+
+  ratingCancelText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.textMuted,
+  },
+
+  ratingSubmitButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accent,
+  },
+
+  ratingSubmitDisabled: {
+    opacity: 0.45,
+  },
+
+  ratingSubmitText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 
   infoValue: {

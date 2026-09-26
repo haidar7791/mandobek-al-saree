@@ -182,10 +182,13 @@ function ArtisanCard({
     .slice(0, 2)
     .toUpperCase();
 
+  const reviewCount =
+    typeof artisan.reviewCount === "number" ? artisan.reviewCount : 0;
+
   const rating =
     typeof artisan.rating === "number" && artisan.rating > 0
       ? artisan.rating.toFixed(1)
-      : "جديد";
+      : null;
 
   const distanceText =
     distance !== null
@@ -301,25 +304,17 @@ function ArtisanCard({
             <View style={styles.restaurantInfoItem}>
               <Ionicons
                 name="star"
-                size={16}
+                size={18}
                 color="#F6C945"
               />
               <Text style={styles.restaurantInfoValue}>
-                {rating}
+                {rating ? rating : "جديد"}
               </Text>
-            </View>
-
-            <View style={styles.restaurantInfoDivider} />
-
-            <View style={styles.restaurantInfoItem}>
-              <Feather
-                name="clock"
-                size={15}
-                color={C.accent}
-              />
-              <Text style={styles.restaurantInfoValue}>
-                {artisan.estimatedDelivery || "20-30 دقيقة"}
-              </Text>
+              {reviewCount > 0 && (
+                <Text style={styles.restaurantReviewCount}>
+                  ({reviewCount} تقييم)
+                </Text>
+              )}
             </View>
 
             <View style={styles.restaurantInfoDivider} />
@@ -4559,6 +4554,12 @@ const styles = StyleSheet.create({
     gap: 5,
   },
 
+  restaurantReviewCount: {
+    fontSize: 10,
+    fontFamily: undefined,
+    color: C.textMuted,
+    marginStart: 3,
+  },
   restaurantInfoValue: {
     color: C.text,
     fontSize: 11,
