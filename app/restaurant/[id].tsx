@@ -24,16 +24,12 @@ import { getCart, getCartTotal } from "../../lib/food_cart";
 const C = Colors.light;
 
 type Category =
-  | "all"
-  | "popular"
   | "main"
   | "appetizer"
   | "drink"
   | "dessert";
 
 const CATEGORY_LABELS: Record<Category, string> = {
-  all: "قائمة الطعام",
-  popular: "الأكثر طلباً",
   main: "الأطباق الرئيسية",
   appetizer: "المقبلات",
   drink: "المشروبات",
@@ -41,8 +37,6 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 const CATEGORY_ICONS: Record<Category, keyof typeof Ionicons.glyphMap> = {
-  all: "restaurant-outline",
-  popular: "flame-outline",
   main: "fast-food-outline",
   appetizer: "leaf-outline",
   drink: "cafe-outline",
@@ -72,7 +66,7 @@ export default function RestaurantScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [items, setItems] = useState<FoodItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState<Category>("all");
+  const [activeCategory, setActiveCategory] = useState<Category>("main");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -108,8 +102,6 @@ export default function RestaurantScreen() {
 
   const counts = useMemo(() => {
     return {
-      all: items.length,
-      popular: items.filter((item) => item.isPopular).length,
       main: items.filter((item) => item.category === "main").length,
       appetizer: items.filter((item) => item.category === "appetizer").length,
       drink: items.filter((item) => item.category === "drink").length,
@@ -118,10 +110,6 @@ export default function RestaurantScreen() {
   }, [items]);
 
   const visibleItems = useMemo(() => {
-    if (activeCategory === "all") return items;
-    if (activeCategory === "popular") {
-      return items.filter((item) => item.isPopular);
-    }
     return items.filter((item) => item.category === activeCategory);
   }, [activeCategory, items]);
 
@@ -371,8 +359,6 @@ export default function RestaurantScreen() {
               horizontal
               inverted
               data={[
-                "all",
-                "popular",
                 "main",
                 "appetizer",
                 "drink",
