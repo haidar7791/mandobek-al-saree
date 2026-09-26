@@ -4635,9 +4635,10 @@ export const createFoodOrder = async (input: {
   if (!input.restaurantId) throw new Error("RESTAURANT_REQUIRED");
   if (!input.items.length) throw new Error("EMPTY_FOOD_ORDER");
 
+  const profile = await getUserProfile(user.uid);
   const customerName =
-    user.displayName ||
-    user.email?.split("@")[0] ||
+    profile?.name?.trim() ||
+    user.displayName?.trim() ||
     "عميل";
 
   const total = Number(input.total || 0);

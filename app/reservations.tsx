@@ -689,14 +689,62 @@ function FoodOrderCard({
                   color="#FFF"
                 />
                 <Text
-                  style={
-                    styles.poContactBtnText
-                  }
+                  style={styles.poContactBtnText}
                 >
                   اتصال
                 </Text>
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity
+              style={[
+                styles.poContactBtn,
+                { flex: 1 },
+              ]}
+              onPress={() => {
+                const currentUser = auth.currentUser;
+
+                if (!currentUser) {
+                  Alert.alert(
+                    "تنبيه",
+                    "يجب تسجيل الدخول أولاً"
+                  );
+                  return;
+                }
+
+                if (!order.customerId) {
+                  Alert.alert(
+                    "تنبيه",
+                    "تعذر تحديد العميل."
+                  );
+                  return;
+                }
+
+                const chatId = buildChatId(
+                  currentUser.uid,
+                  order.customerId
+                );
+
+                router.push({
+                  pathname: "/chat",
+                  params: {
+                    chatId,
+                    otherUserId: order.customerId,
+                    userId: order.customerId,
+                    name: order.customerName || "العميل",
+                  },
+                } as any);
+              }}
+            >
+              <Feather
+                name="message-circle"
+                size={15}
+                color="#FFF"
+              />
+              <Text style={styles.poContactBtnText}>
+                دردشة
+              </Text>
+            </TouchableOpacity>
 
             {!!order.customerLocation && (
               <TouchableOpacity
@@ -775,7 +823,7 @@ function FoodOrderCard({
                 styles.acceptBtn,
               ]}
               onPress={() =>
-                changeStatus("accepted")
+                changeStatus("completed")
               }
             >
               <Feather
@@ -817,55 +865,9 @@ function FoodOrderCard({
           </Pressable>
         ) : null}
 
-        {isRestaurant &&
-        order.status === "preparing" ? (
-          <Pressable
-            style={[
-              styles.actionBtn,
-              styles.acceptBtn,
-              { marginTop: 10 },
-            ]}
-            onPress={() =>
-              changeStatus("ready")
-            }
-          >
-            <Feather
-              name="check-circle"
-              size={16}
-              color="#FFF"
-            />
-            <Text
-              style={styles.actionBtnText}
-            >
-              الطلب جاهز
-            </Text>
-          </Pressable>
-        ) : null}
 
-        {isRestaurant &&
-        order.status === "ready" ? (
-          <Pressable
-            style={[
-              styles.actionBtn,
-              styles.acceptBtn,
-              { marginTop: 10 },
-            ]}
-            onPress={() =>
-              changeStatus("completed")
-            }
-          >
-            <Feather
-              name="check-circle"
-              size={16}
-              color="#FFF"
-            />
-            <Text
-              style={styles.actionBtnText}
-            >
-              تم التسليم
-            </Text>
-          </Pressable>
-        ) : null}
+
+
 
         {!isRestaurant &&
         ["pending","accepted","preparing","ready"].includes(
@@ -1502,7 +1504,8 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: bottomPad + 20 },
-            productOrders.length === 0 && { flex: 1 },
+            productOrders.length === 0 &&
+            restaurantFoodOrders.length === 0 && { flex: 1 },
           ]}
           ListHeaderComponent={
             <View>

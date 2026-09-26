@@ -154,10 +154,7 @@ export default function Checkout(){
 
    clearCart();
 
-   router.replace({
-    pathname:"/restaurant/order" as any,
-    params:{orderId},
-   } as any);
+   router.replace("/dashboard" as any);
 
   }catch(error){
    console.error(
