@@ -31,6 +31,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { createActivityNotification } from "./notifications";
+import type { ProductCategory } from "./product_categories";
 
 // ─── Artisan Specialties ──────────────────────────────────────────────────────
 
@@ -3737,6 +3738,7 @@ export interface Product {
   soldAt?: string | null;
   colors?: string[];
   sizes?: string[];
+  category?: ProductCategory;
   createdAt: string;
 }
 
@@ -3831,6 +3833,7 @@ export const createProduct = async (data: {
   sellerPhone: string;
   colors?: string[];
   sizes?: string[];
+  category: ProductCategory;
 }): Promise<string> => {
   const docRef = doc(collection(db, "products"));
   if (data.localMedia.length === 0) throw new Error("At least one media item is required");
@@ -3867,6 +3870,7 @@ export const createProduct = async (data: {
     sellerFeaturedUntil,
     colors: (data.colors ?? []).filter((c) => c.trim()),
     sizes: (data.sizes ?? []).filter((s) => s.trim()),
+    category: data.category,
     status: "available",
     soldAt: null,
     createdAt: new Date().toISOString(),

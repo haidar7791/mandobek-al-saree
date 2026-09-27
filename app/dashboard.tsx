@@ -101,6 +101,11 @@ import ProductMediaCarousel, { normalizeProductMedia } from "@/components/Produc
 import ProductPurchaseButton from "@/components/ProductPurchaseButton";
 import { useVideoAudio } from "@/lib/video-audio-context";
 import { navigateWithHomeBase } from "@/lib/navigation";
+import {
+  normalizeProductCategory,
+  PRODUCT_CATEGORY_OPTIONS,
+  type ProductCategoryFilter,
+} from "@/lib/product_categories";
 
 const getRelativeTime = (dateValue: string | number | Date) => {
   const date = new Date(dateValue).getTime();
@@ -1392,6 +1397,8 @@ const isFocused = useIsFocused();
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsRefreshing, setProductsRefreshing] = useState(false);
+  const [activeProductCategory, setActiveProductCategory] =
+    useState<ProductCategoryFilter>("all");
 
   // ── Food ──
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
@@ -2413,15 +2420,21 @@ const isFocused = useIsFocused();
 
   // Filter sorted products by search query (empty query → all products)
   const filteredProducts = React.useMemo(() => {
-    if (!searchQuery.trim()) return sortedProducts;
     const q = searchQuery.toLowerCase().trim();
     return sortedProducts.filter(
-      (p) =>
-        p.title?.toLowerCase().includes(q) ||
-        p.sellerName?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q)
+      (p) => {
+        const matchesCategory =
+          activeProductCategory === "all" ||
+          normalizeProductCategory(p.category) === activeProductCategory;
+        const matchesSearch =
+          !q ||
+          p.title?.toLowerCase().includes(q) ||
+          p.sellerName?.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q);
+        return matchesCategory && matchesSearch;
+      },
     );
-  }, [sortedProducts, searchQuery]);
+  }, [activeProductCategory, sortedProducts, searchQuery]);
 
   // Shared products must open in the real marketplace feed, not a separate
   // details screen. Clear filters and scroll to the product's current live
@@ -2430,6 +2443,7 @@ const isFocused = useIsFocused();
     if (!sharedProductId || !products.length) return;
     setActiveCategory("products");
     if (searchQuery) setSearchQuery("");
+    if (activeProductCategory !== "all") setActiveProductCategory("all");
 
     const index = sortedProducts.findIndex((product) => product.id === sharedProductId);
     if (index < 0) return;
@@ -2443,7 +2457,14 @@ const isFocused = useIsFocused();
     };
     const timer = setTimeout(() => scrollToProduct(), 150);
     return () => clearTimeout(timer);
-  }, [sharedProductId, products, sortedProducts, searchQuery, activeCategory]);
+  }, [
+    sharedProductId,
+    products,
+    sortedProducts,
+    searchQuery,
+    activeCategory,
+    activeProductCategory,
+  ]);
 
   return (
     <View style={styles.root}>
@@ -2829,6 +2850,53 @@ const isFocused = useIsFocused();
       </LinearGradient>
 
       <View style={styles.stickyBar}>
+            {activeCategory === "products" && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.productCategoryTabs}
+                style={styles.productCategoryTabsWrapper}
+              >
+                {PRODUCT_CATEGORY_OPTIONS.map((tab) => {
+                  const selected = activeProductCategory === tab.key;
+                  return (
+                    <Pressable
+                      key={tab.key}
+                      style={[
+                        styles.productCategoryTab,
+                        selected && styles.productCategoryTabActive,
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setActiveProductCategory(tab.key);
+                        productsListRef.current?.scrollToOffset({
+                          offset: 0,
+                          animated: true,
+                        });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Feather
+                        name={tab.icon as keyof typeof Feather.glyphMap}
+                        size={13}
+                        color={selected ? C.primary : C.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.productCategoryTabText,
+                          selected && styles.productCategoryTabTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {tab.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+
             {activeCategory === "services" && (
               <ScrollView
                 horizontal
@@ -4351,6 +4419,43 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 6,
     flexDirection: "row",
+  },
+  productCategoryTabsWrapper: {
+    backgroundColor: "#FFF",
+    maxHeight: 58,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  productCategoryTabs: {
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 7,
+    flexDirection: "row",
+  },
+  productCategoryTab: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: C.background,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  productCategoryTabActive: {
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  productCategoryTabText: {
+    fontSize: 12,
+    fontFamily: undefined,
+    color: C.textSecondary,
+  },
+  productCategoryTabTextActive: {
+    color: C.primary,
+    fontWeight: "800",
   },
   serviceCatTab: {
     flex: 1,

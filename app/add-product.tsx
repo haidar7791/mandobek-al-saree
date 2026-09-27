@@ -24,6 +24,10 @@ import { auth } from "@/lib/firebase";
 import { createProduct, getUserProfile, type LocalProductMedia } from "@/lib/db_logic";
 import ProductMediaCarousel from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
+import {
+  PRODUCT_CATEGORY_OPTIONS,
+  type ProductCategory,
+} from "@/lib/product_categories";
 
 const C = Colors.light;
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
@@ -36,6 +40,7 @@ export default function AddProductScreen() {
   const [selectedMedia, setSelectedMedia] = useState<LocalProductMedia[]>([]);
   const [colors, setColors] = useState<string[]>([""]);
   const [sizes, setSizes] = useState<string[]>([""]);
+  const [category, setCategory] = useState<ProductCategory | null>(null);
   const [loading, setLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -80,6 +85,10 @@ export default function AddProductScreen() {
 
   const handlePublish = async () => {
     if (!title.trim()) { Alert.alert("خطأ", "يرجى إدخال اسم المنتج"); return; }
+    if (!category) {
+      Alert.alert("خطأ", "يرجى اختيار قسم المنتج");
+      return;
+    }
     const parsedPrice = parseFloat(price);
     if (!price || isNaN(parsedPrice) || parsedPrice <= 0) {
       Alert.alert("خطأ", "يرجى إدخال سعر صحيح"); return;
@@ -119,6 +128,7 @@ export default function AddProductScreen() {
         sellerPhone: profile?.phone || "",
         colors: validColors,
         sizes: validSizes,
+        category,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -128,6 +138,7 @@ export default function AddProductScreen() {
       setSelectedMedia([]);
       setColors([""]);
       setSizes([""]);
+      setCategory(null);
 
       Alert.alert("تم النشر ✓", "تم نشر منتجك في السوق بنجاح!");
     } catch (err: any) {
@@ -215,6 +226,39 @@ export default function AddProductScreen() {
                   autoCapitalize="none"
                   maxLength={80}
                 />
+              </View>
+            </View>
+
+            {/* Product category */}
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>
+                قسم المنتج <Text style={styles.required}>*</Text>
+              </Text>
+              <View style={styles.categoryGrid}>
+                {PRODUCT_CATEGORY_OPTIONS.filter((item) => item.key !== "all").map((item) => {
+                  const selected = category === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={[styles.categoryOption, selected && styles.categoryOptionSelected]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setCategory(item.key);
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                    >
+                      <Feather
+                        name={item.icon as keyof typeof Feather.glyphMap}
+                        size={15}
+                        color={selected ? C.primary : C.textSecondary}
+                      />
+                      <Text style={[styles.categoryOptionText, selected && styles.categoryOptionTextSelected]}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
@@ -400,6 +444,38 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "left" },
   required: { color: "#EF4444" },
   optional: { color: C.textMuted, fontFamily: undefined, fontSize: 11, textAlign: "left" },
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  categoryOption: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: C.inputBg,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  categoryOptionSelected: {
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  categoryOptionText: {
+    color: C.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  categoryOptionTextSelected: {
+    color: C.primary,
+  },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: C.inputBg, borderRadius: 12,
