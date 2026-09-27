@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { getApproximateLocationByIP, getOptionalCurrentLocation } from "../lib/location";
 import {
   View,
@@ -35,11 +35,14 @@ import {
   likeArtisan,
   unlikeArtisan,
   normalizeProfilePosts,
+  getProfilePostEngagement,
   type ArtisanProfile,
   type GeoLocation,
   type ProfilePost,
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
+import type { PublicProfileTabsRef } from "@/components/PublicProfileTabs";
+import ProfileCommentsModal from "@/components/ProfileCommentsModal";
 import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "../lib/notifications";
@@ -76,6 +79,8 @@ export default function ArtisanProfileScreen() {
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [followersVisible, setFollowersVisible] = useState(false);
+  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
+  const tabsRef = useRef<PublicProfileTabsRef>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -116,11 +121,17 @@ export default function ArtisanProfileScreen() {
           return;
         }
         setArtisan(artisanData);
-        const [artisanProfile, engagement] = await Promise.all([
+        const [artisanProfile, engagement, postEngagement] = await Promise.all([
           getUserProfile(artisanData.userId),
           getProfileEngagementCounts(artisanData.userId),
+          getProfilePostEngagement(artisanData.userId),
         ]);
-        setProfilePosts(normalizeProfilePosts(artisanProfile));
+        setProfilePosts(
+          normalizeProfilePosts(artisanProfile).map((post) => ({
+            ...post,
+            ...(postEngagement[post.id] || postEngagement[post.url] || {}),
+          })),
+        );
         setFollowCount(engagement.followCount);
         setLikesCount(engagement.likesCount);
       }
@@ -268,6 +279,13 @@ export default function ArtisanProfileScreen() {
     userLocation && artisan?.location
       ? calcDistanceKm(userLocation, artisan.location)
       : null;
+
+  const handlePublicProfileScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 420) {
+      tabsRef.current?.loadMore();
+    }
+  };
 
   if (loading || !artisan) {
     return (
@@ -422,10 +440,14 @@ export default function ArtisanProfileScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad + 20 }]}
         showsVerticalScrollIndicator={false}
+        onScroll={handlePublicProfileScroll}
+        scrollEventThrottle={100}
       >
         <PublicProfileTabs
+          ref={tabsRef}
           userId={artisan.userId}
           posts={profilePosts}
+          onComment={setCommentPost}
           onContentLiked={async () => {
             const engagement = await getProfileEngagementCounts(artisan.userId);
             setLikesCount(engagement.likesCount);
@@ -434,6 +456,20 @@ export default function ArtisanProfileScreen() {
       </ScrollView>
 
       {/* ─────────────── BOOKING MODAL ─────────────── */}
+      <ProfileCommentsModal
+        visible={!!commentPost}
+        post={commentPost}
+        postDocumentId={commentPost ? `${artisan.userId}_${commentPost.id}` : null}
+        onClose={() => setCommentPost(null)}
+        onCommentCountChange={(count) => {
+          if (!commentPost) return;
+          setProfilePosts((current) =>
+            current.map((item) =>
+              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
+            ),
+          );
+        }}
+      />
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}

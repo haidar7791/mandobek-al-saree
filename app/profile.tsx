@@ -41,7 +41,8 @@ import {
   updateArtisanPhotoIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
-  subscribeToProducts,
+  fetchSellerProductsPage,
+  getProfilePostEngagement,
   deleteProduct,
   type ProfilePost,
   type Product,
@@ -49,6 +50,7 @@ import {
 } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
 import ProfilePostFeed from "@/components/ProfilePostFeed";
+import ProfileCommentsModal from "@/components/ProfileCommentsModal";
 import ProfilePostComposerModal, {
   type ProfilePostDraftMedia,
 } from "@/components/ProfilePostComposerModal";
@@ -190,6 +192,8 @@ export default function ProfileScreen() {
   const [likesCount, setLikesCount] = useState(0);
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
+  const [visiblePostCount, setVisiblePostCount] = useState(3);
+  const [postsLoadingMore, setPostsLoadingMore] = useState(false);
   const [uploadingPost, setUploadingPost] = useState(false);
   const [profilePostPublishing, setProfilePostPublishing] = useState(false);
   const [profilePostPublishProgress, setProfilePostPublishProgress] = useState(0);
@@ -198,11 +202,15 @@ export default function ProfileScreen() {
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [productsLoadingMore, setProductsLoadingMore] = useState(false);
+  const [productsHasMore, setProductsHasMore] = useState(false);
+  const [productsCursor, setProductsCursor] = useState<any | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [followersVisible, setFollowersVisible] = useState(false);
   const [followingVisible, setFollowingVisible] = useState(false);
+  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
 
   // ── Edit modal state ───────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -270,22 +278,31 @@ export default function ProfileScreen() {
       profileLoadedRef.current = true;
       setPostsLoading(true);
       setProductsLoading(true);
+      setVisiblePostCount(3);
+      setProducts([]);
+      setProductsCursor(null);
+      setProductsHasMore(false);
 
-      const unsubscribeProducts = subscribeToProducts(
-        (allProducts) => {
-          setProducts(allProducts.filter((product) => product.sellerId === user.uid));
-          setProductsLoading(false);
-        },
-        () => {
+      const loadFirstProducts = async () => {
+        try {
+          const page = await fetchSellerProductsPage(user.uid, 3);
+          setProducts(page.products);
+          setProductsCursor(page.lastDoc);
+          setProductsHasMore(page.hasMore);
+        } catch (productError) {
+          console.error("load current profile products failed:", productError);
           setProducts([]);
+        } finally {
           setProductsLoading(false);
-        },
-      );
+        }
+      };
+      void loadFirstProducts();
 
       const load = async () => {
-        const [profile, engagement] = await Promise.all([
+        const [profile, engagement, postEngagement] = await Promise.all([
           getUserProfile(user.uid),
           getProfileEngagementCounts(user.uid),
+          getProfilePostEngagement(user.uid),
         ]);
 
         if (profile) {
@@ -300,20 +317,24 @@ export default function ProfileScreen() {
           );
           setBio(profile.bio || "");
           setFollowCount(engagement.followCount);
-
-          try {
-            const followingProfiles = await getFollowingProfiles(user.uid);
-            setFollowingCount(followingProfiles.length);
-          } catch (followingError) {
-            console.error(
-              "load current profile following count failed:",
-              followingError
-            );
-            setFollowingCount(0);
-          }
-
+           setFollowingCount(engagement.followingCount);
           setLikesCount(engagement.likesCount);
-          setProfilePosts(normalizeProfilePosts(profile));
+           setProfilePosts(
+             normalizeProfilePosts(profile).map((post) => ({
+               ...post,
+               ...(postEngagement[post.id] || postEngagement[post.url] || {}),
+             })),
+           );
+
+           // Older profiles do not have the denormalized counter yet. Resolve
+           // that legacy value in the background without blocking first paint.
+           if (!Object.prototype.hasOwnProperty.call(profile, "followingCount")) {
+             void getFollowingProfiles(user.uid)
+               .then((followingProfiles) => setFollowingCount(followingProfiles.length))
+               .catch((followingError) => {
+                 console.error("load current profile following count failed:", followingError);
+               });
+           }
         }
 
         setPostsLoading(false);
@@ -324,10 +345,8 @@ export default function ProfileScreen() {
 
       load().catch(() => {
         setPostsLoading(false);
-        setProductsLoading(false);
       });
-
-      return () => unsubscribeProducts();
+      return undefined;
     }, [])
   );
 
@@ -529,6 +548,41 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const loadMoreProfilePosts = () => {
+    if (postsLoadingMore || visiblePostCount >= profilePosts.length) return;
+    setPostsLoadingMore(true);
+    setVisiblePostCount((count) => Math.min(profilePosts.length, count + 3));
+    setPostsLoadingMore(false);
+  };
+
+  const loadMoreProfileProducts = async () => {
+    if (!uid || productsLoading || productsLoadingMore || !productsHasMore) return;
+    setProductsLoadingMore(true);
+    try {
+      const page = await fetchSellerProductsPage(uid, 3, productsCursor);
+      setProducts((current) => {
+        const existing = new Set(current.map((product) => product.id));
+        return [...current, ...page.products.filter((product) => !existing.has(product.id))];
+      });
+      setProductsCursor(page.lastDoc);
+      setProductsHasMore(page.hasMore);
+    } catch (error) {
+      console.error("load more current profile products failed:", error);
+    } finally {
+      setProductsLoadingMore(false);
+    }
+  };
+
+  const handleProfileScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height < contentSize.height - 420) return;
+    if (activeTab === "posts") {
+      loadMoreProfilePosts();
+    } else {
+      void loadMoreProfileProducts();
+    }
+  };
+
   // ── Edit Modal logic ───────────────────────────────────────────────────────
   const openEditModal = () => {
     setEditName(name);
@@ -645,6 +699,8 @@ export default function ProfileScreen() {
           contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={handleProfileScroll}
+          scrollEventThrottle={100}
         >
 
       {/* ══════════════════════════════════════════
@@ -826,7 +882,7 @@ export default function ProfileScreen() {
           {activeTab === "posts" ? (
             <View style={styles.card}>
               <ProfilePostFeed
-                posts={profilePosts}
+                posts={profilePosts.slice(0, visiblePostCount)}
                 loading={postsLoading}
                 canDelete
                 profileName={name || "مستخدم"}
@@ -838,6 +894,10 @@ export default function ProfileScreen() {
                 onAction={handleAddProfilePost}
                 actionDisabled={uploadingPost || profilePostPublishing}
                 onDoubleTapLike={async () => false}
+                onComment={setCommentPost}
+                onLoadMore={loadMoreProfilePosts}
+                loadingMore={postsLoadingMore}
+                hasMore={visiblePostCount < profilePosts.length}
               />
             </View>
           ) : (
@@ -876,8 +936,8 @@ export default function ProfileScreen() {
                         onPress={() => {
                           Haptics.selectionAsync();
                           navigateWithHomeBase({
-                            pathname: "/dashboard",
-                            params: { productId: product.id },
+                            pathname: "/product/[id]",
+                            params: { id: product.id, product: JSON.stringify(product) },
                           } as any);
                         }}
                         accessibilityRole="button"
@@ -905,14 +965,28 @@ export default function ProfileScreen() {
                             {product.description}
                           </Text>
                         )}
+                        <View style={styles.profileProductEngagement}>
+                          <View style={styles.profileProductEngagementItem}>
+                            <Ionicons name="heart-outline" size={14} color={C.textMuted} />
+                            <Text style={styles.profileProductEngagementText}>
+                              {product.likesCount ?? 0}
+                            </Text>
+                          </View>
+                          <View style={styles.profileProductEngagementItem}>
+                            <Ionicons name="chatbubble-outline" size={14} color={C.textMuted} />
+                            <Text style={styles.profileProductEngagementText}>
+                              {product.commentsCount ?? 0}
+                            </Text>
+                          </View>
+                        </View>
                         <View style={styles.profileProductActions}>
                           <Pressable
                             style={styles.profileProductViewBtn}
                             onPress={() => {
                               Haptics.selectionAsync();
                               navigateWithHomeBase({
-                                pathname: "/dashboard",
-                                params: { productId: product.id },
+                                pathname: "/product/[id]",
+                                params: { id: product.id, product: JSON.stringify(product) },
                               } as any);
                             }}
                             accessibilityRole="button"
@@ -940,6 +1014,11 @@ export default function ProfileScreen() {
                       </View>
                     </View>
                   ))}
+                  {productsLoadingMore ? (
+                    <View style={styles.productsLoading}>
+                      <ActivityIndicator size="small" color={C.accent} />
+                    </View>
+                  ) : null}
                 </View>
               )}
             </View>
@@ -980,6 +1059,21 @@ export default function ProfileScreen() {
           setPostCaption("");
         }}
         onPublish={publishPendingProfilePost}
+      />
+
+      <ProfileCommentsModal
+        visible={!!commentPost}
+        post={commentPost}
+        postDocumentId={commentPost ? `${uid}_${commentPost.id}` : null}
+        onClose={() => setCommentPost(null)}
+        onCommentCountChange={(count) => {
+          if (!commentPost) return;
+          setProfilePosts((current) =>
+            current.map((item) =>
+              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
+            ),
+          );
+        }}
       />
 
       <FollowersModal
@@ -1914,6 +2008,9 @@ const styles = StyleSheet.create({
   profileProductPrice: { backgroundColor: "#FFF8EC", borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
   profileProductPriceText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   profileProductDescription: { fontSize: 12, lineHeight: 20, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
+  profileProductEngagement: { flexDirection: "row-reverse", alignItems: "center", gap: 14 },
+  profileProductEngagementItem: { flexDirection: "row-reverse", alignItems: "center", gap: 4 },
+  profileProductEngagementText: { color: C.textMuted, fontSize: 11 },
   profileProductActions: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
   profileProductViewBtn: { flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 10 },
   profileProductViewText: { fontSize: 12, fontFamily: undefined, color: C.primary },

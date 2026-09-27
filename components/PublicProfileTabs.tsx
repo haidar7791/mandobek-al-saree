@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, View, Pressable } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -12,7 +12,7 @@ import {
   likeProfilePost,
   unlikeProduct,
   unlikeProfilePost,
-  subscribeToProducts,
+  fetchSellerProductsPage,
   type Product,
   type ProfilePost,
 } from "@/lib/db_logic";
@@ -27,18 +27,28 @@ type Props = {
   profileName?: string;
   profilePhotoUri?: string | null;
   onContentLiked?: () => void;
+  onComment?: (post: ProfilePost) => void;
 };
 
-export default function PublicProfileTabs({
+export type PublicProfileTabsRef = {
+  loadMore: () => void;
+};
+
+const PublicProfileTabs = forwardRef<PublicProfileTabsRef, Props>(function PublicProfileTabs({
   userId,
   posts,
   profileName = "مستخدم",
   profilePhotoUri,
   onContentLiked,
-}: Props) {
+  onComment,
+}, ref) {
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [productsLoadingMore, setProductsLoadingMore] = useState(false);
+  const [productsHasMore, setProductsHasMore] = useState(false);
+  const [productsCursor, setProductsCursor] = useState<any | null>(null);
+  const [visiblePostCount, setVisiblePostCount] = useState(3);
   const [productLikes, setProductLikes] = useState<Record<string, number>>({});
   const [postLikes, setPostLikes] = useState<Record<string, number>>({});
   const [productLikedIds, setProductLikedIds] = useState<Record<string, boolean>>({});
@@ -46,23 +56,61 @@ export default function PublicProfileTabs({
   const pendingProductLikes = React.useRef(new Set<string>());
   const pendingPostLikes = React.useRef(new Set<string>());
 
+  const loadMoreProducts = useCallback(async () => {
+    if (!userId || productsLoading || productsLoadingMore || !productsHasMore) return;
+    setProductsLoadingMore(true);
+    try {
+      const page = await fetchSellerProductsPage(userId, 3, productsCursor);
+      setProducts((current) => {
+        const existing = new Set(current.map((product) => product.id));
+        return [...current, ...page.products.filter((product) => !existing.has(product.id))];
+      });
+      setProductLikes((current) => ({
+        ...current,
+        ...Object.fromEntries(page.products.map((product) => [product.id, product.likesCount ?? 0])),
+      }));
+      setProductsCursor(page.lastDoc);
+      setProductsHasMore(page.hasMore);
+    } catch (error) {
+      console.warn("profile products page load failed", error);
+    } finally {
+      setProductsLoadingMore(false);
+    }
+  }, [productsCursor, productsHasMore, productsLoading, productsLoadingMore, userId]);
+
+  useImperativeHandle(ref, () => ({
+    loadMore: () => {
+      if (activeTab === "posts") {
+        setVisiblePostCount((count) => Math.min(posts.length, count + 3));
+      } else {
+        void loadMoreProducts();
+      }
+    },
+  }), [activeTab, loadMoreProducts, posts.length]);
+
   useEffect(() => {
     if (!userId) return;
     setProductsLoading(true);
-    const unsubscribe = subscribeToProducts(
-      (items) => {
-        const owned = items.filter((product) => product.sellerId === userId && product.status === "available");
-        setProducts(owned);
-        setProductLikes(Object.fromEntries(owned.map((product) => [product.id, product.likesCount ?? 0])));
+    setProducts([]);
+    setProductsCursor(null);
+    setProductsHasMore(false);
+    fetchSellerProductsPage(userId, 3)
+      .then((page) => {
+        setProducts(page.products);
+        setProductLikes(Object.fromEntries(page.products.map((product) => [product.id, product.likesCount ?? 0])));
+        setProductsCursor(page.lastDoc);
+        setProductsHasMore(page.hasMore);
+      })
+      .catch((error) => {
+        console.warn("profile products load failed", error);
         setProductsLoading(false);
-      },
-      () => {
-        setProducts([]);
-        setProductsLoading(false);
-      },
-    );
-    return unsubscribe;
+      })
+      .finally(() => setProductsLoading(false));
   }, [userId]);
+
+  useEffect(() => {
+    setVisiblePostCount(3);
+  }, [userId, posts]);
 
   useEffect(() => {
     const viewer = auth.currentUser;
@@ -178,16 +226,30 @@ export default function PublicProfileTabs({
       </View>
 
       {activeTab === "posts" ? (
-        <View style={styles.card}>
+         <View style={styles.card}>
           <ProfilePostFeed
-            posts={posts.map((post) => ({ ...post, likesCount: postLikes[post.id] ?? post.likesCount ?? 0 }))}
+            posts={posts.slice(0, visiblePostCount).map((post) => ({
+              ...post,
+              likesCount: postLikes[post.id] ?? post.likesCount ?? 0,
+            }))}
             showEmptyState
             title=""
             profileName={profileName}
             profilePhotoUri={profilePhotoUri}
             onDoubleTapLike={handleLikePost}
             onLike={handleLikePost}
+            onComment={onComment}
             isLiked={(postId) => !!postLikedIds[postId]}
+            onLoadMore={() => {
+              if (visiblePostCount < posts.length) {
+                setVisiblePostCount((count) => Math.min(posts.length, count + 3));
+              } else {
+                // The parent can call the same imperative method when its
+                // outer ScrollView reaches the end.
+                loadMoreProducts();
+              }
+            }}
+            hasMore={visiblePostCount < posts.length}
           />
         </View>
       ) : (
@@ -217,19 +279,25 @@ export default function PublicProfileTabs({
                     }}
                   />
                   <View style={styles.productBottomRow}>
-                    <Pressable
-                      style={styles.likesRow}
-                      onPress={() => {
-                        void handleLikeProduct(product).catch((error) => {
-                          Alert.alert("تعذر الإعجاب", error?.message || "حدث خطأ.");
-                        });
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={productLikedIds[product.id] ? "إلغاء إعجاب المنتج" : "الإعجاب بالمنتج"}
-                    >
-                      <Ionicons name={productLikedIds[product.id] ? "heart" : "heart-outline"} size={13} color={productLikedIds[product.id] ? "#EF4444" : C.textMuted} />
-                      <Text style={styles.likesText}>{productLikes[product.id] ?? product.likesCount ?? 0}</Text>
-                    </Pressable>
+                    <View style={styles.engagementGroup}>
+                      <Pressable
+                        style={styles.likesRow}
+                        onPress={() => {
+                          void handleLikeProduct(product).catch((error) => {
+                            Alert.alert("تعذر الإعجاب", error?.message || "حدث خطأ.");
+                          });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={productLikedIds[product.id] ? "إلغاء إعجاب المنتج" : "الإعجاب بالمنتج"}
+                      >
+                        <Ionicons name={productLikedIds[product.id] ? "heart" : "heart-outline"} size={15} color={productLikedIds[product.id] ? "#EF4444" : C.textMuted} />
+                        <Text style={styles.likesText}>{productLikes[product.id] ?? product.likesCount ?? 0}</Text>
+                      </Pressable>
+                      <View style={styles.likesRow} accessibilityLabel="عدد تعليقات المنتج">
+                        <Ionicons name="chatbubble-outline" size={14} color={C.textMuted} />
+                        <Text style={styles.likesText}>{product.commentsCount ?? 0}</Text>
+                      </View>
+                    </View>
 
                     {auth.currentUser?.uid !== product.sellerId && (
                       <ProductPurchaseButton
@@ -241,13 +309,20 @@ export default function PublicProfileTabs({
                   </View>
                 </View>
               ))}
+              {productsLoadingMore ? (
+                <View style={styles.productsMoreLoading}>
+                  <ActivityIndicator size="small" color={C.accent} />
+                </View>
+              ) : null}
             </View>
           )}
         </View>
       )}
     </View>
   );
-}
+});
+
+export default PublicProfileTabs;
 
 const styles = StyleSheet.create({
   root: { gap: 12 },
@@ -291,14 +366,14 @@ const styles = StyleSheet.create({
   empty: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: 7 },
   emptyTitle: { fontSize: 15, fontFamily: undefined, color: C.text },
   emptyHint: { fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "center" },
-  productsList: { gap: 14, flexDirection: "row", flexWrap: "wrap", columnGap: 4, rowGap: 4,},
-  productCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.background, borderWidth: 1, borderColor: C.border, width: "32%",},
+  productsList: { gap: 14 },
+  productCard: { borderRadius: 16, overflow: "hidden", backgroundColor: C.background, borderWidth: 1, borderColor: C.border, width: "100%" },
   productBottomRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 5,
-    paddingVertical: 2,
+    paddingVertical: 8,
   },
   likesRow: {
     flexDirection: "row",
@@ -306,9 +381,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     gap: 3,
   },
+  engagementGroup: { flexDirection: "row-reverse", alignItems: "center", gap: 12 },
   likesText: {
-    fontSize: 8,
+    fontSize: 11,
     fontFamily: undefined,
     color: C.text,
   },
+  productsMoreLoading: { alignItems: "center", paddingVertical: 8 },
 });

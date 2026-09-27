@@ -5,8 +5,7 @@
  * Shows: name, photo, bio, contact buttons, map + distance (when location available).
  * "طلب خدمة" is intentionally absent — clients offer no service.
  */
-import React, { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, Image, Platform,
   ActivityIndicator, ScrollView,
@@ -16,11 +15,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
 import {
   getUserProfile,
   getProfileEngagementCounts,
   getFollowingProfiles,
+  getProfilePostEngagement,
   getArtisanByUserId,
   buildChatId,
   normalizeProfilePosts,
@@ -33,6 +33,8 @@ import {
   type ProfilePost,
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
+import type { PublicProfileTabsRef } from "@/components/PublicProfileTabs";
+import ProfileCommentsModal from "@/components/ProfileCommentsModal";
 import { ShareModal } from "@/components/ShareModal";
 import FollowersModal from "@/components/FollowersModal";
 import FollowingModal from "@/components/FollowingModal";
@@ -69,6 +71,8 @@ export default function UserProfileScreen() {
   const [shareVisible, setShareVisible] = useState(false);
   const [followersVisible, setFollowersVisible] = useState(false);
   const [followingVisible, setFollowingVisible] = useState(false);
+  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
+  const tabsRef = useRef<PublicProfileTabsRef>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -104,36 +108,12 @@ export default function UserProfileScreen() {
           });
           const normalizedPosts = normalizeProfilePosts(p);
 
-          // مزامنة عدد الإعجابات من نفس مصدر الرئيسية: /posts
           try {
-            const postsSnap = await getDocs(
-              query(
-                collection(db, "posts"),
-                where("userId", "==", userId)
-              )
-            );
-
-            const likesByKey = new Map<string, number>();
-
-            postsSnap.docs.forEach((postDoc) => {
-              const data = postDoc.data() as any;
-              const likes = Number(data.likesCount ?? data.likes ?? 0);
-              const postId = String(data.postId || data.id || postDoc.id);
-              const url = String(data.url || data.mediaUrl || data.media?.url || "");
-
-              likesByKey.set(postDoc.id, likes);
-              if (postId) likesByKey.set(postId, likes);
-              if (url) likesByKey.set(url, likes);
-            });
-
+            const postEngagement = await getProfilePostEngagement(userId);
             setProfilePosts(
               normalizedPosts.map((post) => ({
                 ...post,
-                likesCount:
-                  likesByKey.get(post.id) ??
-                  likesByKey.get(post.url) ??
-                  post.likesCount ??
-                  0,
+                ...(postEngagement[post.id] || postEngagement[post.url] || {}),
               }))
             );
           } catch (error) {
@@ -143,25 +123,18 @@ export default function UserProfileScreen() {
           const engagement = await getProfileEngagementCounts(userId);
           if (cancelled) return;
           setFollowCount(engagement.followCount);
-
-          try {
-            const followingProfiles = await getFollowingProfiles(userId);
-
-            if (!cancelled) {
-              setFollowingCount(followingProfiles.length);
-            }
-          } catch (followingError) {
-            console.error(
-              "load following count failed:",
-              followingError
-            );
-
-            if (!cancelled) {
-              setFollowingCount(0);
-            }
-          }
-
+          setFollowingCount(engagement.followingCount);
           setLikesCount(engagement.likesCount);
+
+          if (!Object.prototype.hasOwnProperty.call(p, "followingCount")) {
+            void getFollowingProfiles(userId)
+              .then((followingProfiles) => {
+                if (!cancelled) setFollowingCount(followingProfiles.length);
+              })
+              .catch((followingError) => {
+                console.error("load following count failed:", followingError);
+              });
+          }
 
           const viewer = auth.currentUser;
           if (viewer && viewer.uid !== userId) {
@@ -250,6 +223,13 @@ export default function UserProfileScreen() {
       console.error("user profile like toggle failed:", err);
     } finally {
       setLikeLoading(false);
+    }
+  };
+
+  const handlePublicProfileScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 420) {
+      tabsRef.current?.loadMore();
     }
   };
 
@@ -346,6 +326,8 @@ export default function UserProfileScreen() {
           style={styles.bodyScroll}
           contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
           showsVerticalScrollIndicator={false}
+          onScroll={handlePublicProfileScroll}
+          scrollEventThrottle={100}
         >
           {/* ── Action buttons ── */}
           {!isOwnProfile && (
@@ -380,10 +362,12 @@ export default function UserProfileScreen() {
           )}
 
           <PublicProfileTabs
+            ref={tabsRef}
             userId={userId}
             posts={profilePosts}
             profileName={displayName}
             profilePhotoUri={photoUri}
+            onComment={setCommentPost}
             onContentLiked={async () => {
               const engagement = await getProfileEngagementCounts(userId);
               setLikesCount(engagement.likesCount);
@@ -391,6 +375,20 @@ export default function UserProfileScreen() {
           />
         </ScrollView>
       )}
+      <ProfileCommentsModal
+        visible={!!commentPost}
+        post={commentPost}
+        postDocumentId={commentPost ? `${userId}_${commentPost.id}` : null}
+        onClose={() => setCommentPost(null)}
+        onCommentCountChange={(count) => {
+          if (!commentPost) return;
+          setProfilePosts((current) =>
+            current.map((item) =>
+              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
+            ),
+          );
+        }}
+      />
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}

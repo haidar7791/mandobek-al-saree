@@ -804,6 +804,7 @@ export const getPromotedArtisans = async (): Promise<ArtisanProfile[]> => {
 
 export type ProfileEngagementCounts = {
   followCount: number;
+  followingCount: number;
   likesCount: number;
 };
 
@@ -822,6 +823,9 @@ export const getProfileEngagementCounts = async (
 
   return {
     followCount: followers.data().count,
+    followingCount: profileSnap.exists()
+      ? Math.max(0, Number((profileSnap.data() as any).followingCount ?? 0))
+      : 0,
     // Profile likes + likes received by products/posts owned by this user.
     likesCount: likes.data().count + contentLikes,
   };
@@ -834,10 +838,12 @@ export const getIsFollowing = async (followerId: string, artisanId: string): Pro
 
 export const followArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
   const profileRef = doc(db, "users", artisanId);
+  const followerProfileRef = doc(db, "users", followerId);
   const followRef = doc(db, "users", artisanId, "followers", followerId);
   const followed = await runTransaction(db, async (transaction) => {
-    const [profileSnap, followSnap] = await Promise.all([
+    const [profileSnap, followerProfileSnap, followSnap] = await Promise.all([
       transaction.get(profileRef),
+      transaction.get(followerProfileRef),
       transaction.get(followRef),
     ]);
     if (!profileSnap.exists()) {
@@ -846,6 +852,12 @@ export const followArtisan = async (followerId: string, artisanId: string): Prom
     if (followSnap.exists()) return false;
 
     transaction.set(followRef, { followedAt: serverTimestamp() });
+    if (
+      followerProfileSnap.exists()
+      && Object.prototype.hasOwnProperty.call(followerProfileSnap.data(), "followingCount")
+    ) {
+      transaction.update(followerProfileRef, { followingCount: increment(1) });
+    }
     return true;
   });
   if (followed) {
@@ -863,12 +875,28 @@ export const followArtisan = async (followerId: string, artisanId: string): Prom
 };
 
 export const unfollowArtisan = async (followerId: string, artisanId: string): Promise<boolean> => {
+  const followerProfileRef = doc(db, "users", followerId);
   const followRef = doc(db, "users", artisanId, "followers", followerId);
   return runTransaction(db, async (transaction) => {
-    const followSnap = await transaction.get(followRef);
+    const [followSnap, followerProfileSnap] = await Promise.all([
+      transaction.get(followRef),
+      transaction.get(followerProfileRef),
+    ]);
     if (!followSnap.exists()) return false;
 
     transaction.delete(followRef);
+    if (
+      followerProfileSnap.exists()
+      && Object.prototype.hasOwnProperty.call(followerProfileSnap.data(), "followingCount")
+    ) {
+      const currentFollowing = Math.max(
+        0,
+        Number((followerProfileSnap.data() as any).followingCount ?? 0),
+      );
+      transaction.update(followerProfileRef, {
+        followingCount: Math.max(0, currentFollowing - 1),
+      });
+    }
     return true;
   });
 };
@@ -2641,6 +2669,39 @@ export function normalizeProfilePosts(
     .concat(legacy);
 }
 
+export type ProfilePostEngagement = {
+  likesCount: number;
+  commentsCount: number;
+};
+
+/**
+ * Read the current aggregate counters from the top-level feed mirrors.
+ * Profile documents keep a legacy copy of these counters, so profile screens
+ * should prefer this source whenever a mirror exists.
+ */
+export const getProfilePostEngagement = async (
+  userId: string,
+): Promise<Record<string, ProfilePostEngagement>> => {
+  if (!userId) return {};
+  const snap = await getDocs(query(collection(db, "posts"), where("userId", "==", userId)));
+  const result: Record<string, ProfilePostEngagement> = {};
+
+  snap.docs.forEach((postDoc) => {
+    const data = postDoc.data() as any;
+    const engagement = {
+      likesCount: Math.max(0, Number(data.likesCount ?? data.likes ?? 0)),
+      commentsCount: Math.max(0, Number(data.commentsCount ?? data.comments ?? 0)),
+    };
+    const postId = String(data.postId || data.id || "");
+    const url = String(data.url || data.mediaUrl || data.media?.url || "");
+    result[postDoc.id] = engagement;
+    if (postId) result[postId] = engagement;
+    if (url) result[url] = engagement;
+  });
+
+  return result;
+};
+
 // ─── Portfolio Images ─────────────────────────────────────────────────────────
 
 async function uriToBlob(uri: string): Promise<Blob> {
@@ -4009,6 +4070,51 @@ export const fetchProductsOnce = async (): Promise<Product[]> => {
     return (b.createdAt || "").localeCompare(a.createdAt || "");
   });
   return products;
+};
+
+export type SellerProductsPage = {
+  products: Product[];
+  lastDoc: any | null;
+  hasMore: boolean;
+};
+
+/**
+ * Fetch only one seller's products for profile screens. This deliberately
+ * avoids the sellerId + createdAt composite query so existing projects do not
+ * need a new Firestore index just to open a profile.
+ */
+export const fetchSellerProductsPage = async (
+  sellerId: string,
+  pageSize = 3,
+  cursor: any | null = null,
+): Promise<SellerProductsPage> => {
+  if (!sellerId) return { products: [], lastDoc: null, hasMore: false };
+
+  const safePageSize = Math.max(1, pageSize);
+  const constraints: any[] = [
+    where("sellerId", "==", sellerId),
+    ...(cursor ? [startAfter(cursor)] : []),
+    limit(safePageSize + 1),
+  ];
+  const snap = await getDocs(query(collection(db, "products"), ...constraints));
+  const hasMore = snap.docs.length > safePageSize;
+  const pageDocs = snap.docs.slice(0, safePageSize);
+  const products = pageDocs
+    .map((d) => ({ id: d.id, ...d.data() } as Product))
+    .filter((product) => product.status === "available");
+
+  products.sort((a, b) => {
+    const priorityDelta = (b.priorityScore ?? 0) - (a.priorityScore ?? 0);
+    return priorityDelta !== 0
+      ? priorityDelta
+      : (b.createdAt || "").localeCompare(a.createdAt || "");
+  });
+
+  return {
+    products,
+    lastDoc: snap.docs[snap.docs.length - 1] ?? null,
+    hasMore,
+  };
 };
 
 /**

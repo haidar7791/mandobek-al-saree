@@ -9,7 +9,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -40,6 +39,9 @@ type Props = {
   onLike?: (post: ProfilePost) => Promise<boolean> | boolean;
   onComment?: (post: ProfilePost) => void;
   isLiked?: (postId: string) => boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
+  hasMore?: boolean;
 };
 
 export default function ProfilePostFeed({
@@ -59,6 +61,9 @@ export default function ProfilePostFeed({
   onLike,
   onComment,
   isLiked,
+  onLoadMore,
+  loadingMore = false,
+  hasMore = false,
 }: Props) {
   const [fullscreenPost, setFullscreenPost] = useState<ProfilePost | null>(null);
   const [heartPostId, setHeartPostId] = useState<string | null>(null);
@@ -248,15 +253,9 @@ export default function ProfilePostFeed({
                 <Pressable
                   style={styles.action}
                   onPress={() => {
-                    if (onComment) {
-                      onComment(post);
-                    } else {
-                      router.push({
-                        pathname: "/dashboard",
-                        params: { postId: post.id, openComments: "1" },
-                      } as any);
-                    }
+                    onComment?.(post);
                   }}
+                  disabled={!onComment}
                   accessibilityRole="button"
                   accessibilityLabel="التعليقات"
                 >
@@ -302,6 +301,21 @@ export default function ProfilePostFeed({
           );
         })}
       </View>
+      {onLoadMore && hasMore ? (
+        <Pressable
+          style={styles.loadMoreButton}
+          onPress={onLoadMore}
+          disabled={loadingMore}
+          accessibilityRole="button"
+          accessibilityLabel="تحميل المزيد من المنشورات"
+        >
+          {loadingMore ? (
+            <ActivityIndicator size="small" color={C.accent} />
+          ) : (
+            <Text style={styles.loadMoreText}>تحميل المزيد</Text>
+          )}
+        </Pressable>
+      ) : null}
 
       <Modal
         visible={!!fullscreenPost}
@@ -463,6 +477,16 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     textAlign: "center",
   },
+  loadMoreButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+  },
+  loadMoreText: { color: C.accent, fontSize: 12, fontWeight: "700" },
   fullscreen: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.96)",
