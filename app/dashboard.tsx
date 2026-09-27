@@ -789,22 +789,6 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
             <Text style={styles.homePostTime}>{post.createdAt ? getRelativeTime(post.createdAt) : "منذ لحظات"}</Text>
           </View>
         </TouchableOpacity>
-        {isOwner && (
-          <Pressable
-            style={styles.homePostDelete}
-            onPress={onDelete}
-            disabled={deleteLoading}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="حذف المنشور"
-          >
-            {deleteLoading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Feather name="trash-2" size={16} color="#FFF" />
-            )}
-          </Pressable>
-        )}
       </View>
 
       {!!post.description && (
@@ -864,6 +848,22 @@ const HomeFeedCard = React.memo(function HomeFeedCard({
             targetOwnerId={post.userId}
             style={styles.homePostReport}
           />
+        )}
+        {isOwner && (
+          <Pressable
+            style={styles.homePostDelete}
+            onPress={onDelete}
+            disabled={deleteLoading}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="حذف المنشور"
+          >
+            {deleteLoading ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Feather name="trash-2" size={16} color="#FFF" />
+            )}
+          </Pressable>
         )}
       </View>
     </View>

@@ -382,6 +382,8 @@ export default function UserProfileScreen() {
           <PublicProfileTabs
             userId={userId}
             posts={profilePosts}
+            profileName={displayName}
+            profilePhotoUri={photoUri}
             onContentLiked={async () => {
               const engagement = await getProfileEngagementCounts(userId);
               setLikesCount(engagement.likesCount);

@@ -637,6 +637,15 @@ export default function ProfileScreen() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
       {/* ══════════════════════════════════════════
           HEADER — avatar · name · specialty · bio · stats
@@ -812,15 +821,7 @@ export default function ProfileScreen() {
       {/* ══════════════════════════════════════════
           SCROLLABLE BODY
       ══════════════════════════════════════════ */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[styles.body, { paddingBottom: bottomPad + 24 }]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <View style={styles.body}>
 
           {activeTab === "posts" ? (
             <View style={styles.card}>
@@ -828,6 +829,8 @@ export default function ProfileScreen() {
                 posts={profilePosts}
                 loading={postsLoading}
                 canDelete
+                profileName={name || "مستخدم"}
+                profilePhotoUri={photoUri}
                 deletingPostId={deletingPostId}
                 onDelete={handleDeleteProfilePost}
                 showEmptyState
@@ -864,41 +867,78 @@ export default function ProfileScreen() {
               ) : (
                 <View style={styles.productsList}>
                   {products.map((product) => (
-                    <Pressable
+                    <View
                       key={product.id}
                       style={styles.profileProductCard}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        navigateWithHomeBase({
-                          pathname: "/dashboard",
-                          params: { productId: product.id },
-                        } as any);
-                      }}
                     >
-                      <ProductMediaCarousel
-                        media={normalizeProductMedia(product.media, product.imageUrl)}
-                        height={112}
-                        isVisible={false}
-                        showIndicators={false}
-                        onDoubleTapLike={async () => false}
-                      />
-
                       <Pressable
-                        style={styles.profileProductDeleteOverlay}
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          handleDeleteProduct(product);
+                        style={styles.profileProductMedia}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          navigateWithHomeBase({
+                            pathname: "/dashboard",
+                            params: { productId: product.id },
+                          } as any);
                         }}
-                        disabled={deletingProductId === product.id}
-                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`فتح المنتج ${product.title}`}
                       >
-                        {deletingProductId === product.id ? (
-                          <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                          <Feather name="trash-2" size={13} color="#FFF" />
-                        )}
+                        <ProductMediaCarousel
+                          media={normalizeProductMedia(product.media, product.imageUrl)}
+                          height={230}
+                          isVisible={false}
+                          showIndicators
+                          onDoubleTapLike={async () => false}
+                        />
                       </Pressable>
-                    </Pressable>
+                      <View style={styles.profileProductInfo}>
+                        <View style={styles.profileProductTitleRow}>
+                          <Text style={styles.profileProductTitle} numberOfLines={2}>{product.title}</Text>
+                          <View style={styles.profileProductPrice}>
+                            <Text style={styles.profileProductPriceText}>
+                              {product.price.toLocaleString("ar-IQ-u-nu-latn")} د.ع
+                            </Text>
+                          </View>
+                        </View>
+                        {!!product.description && (
+                          <Text style={styles.profileProductDescription} numberOfLines={3}>
+                            {product.description}
+                          </Text>
+                        )}
+                        <View style={styles.profileProductActions}>
+                          <Pressable
+                            style={styles.profileProductViewBtn}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              navigateWithHomeBase({
+                                pathname: "/dashboard",
+                                params: { productId: product.id },
+                              } as any);
+                            }}
+                            accessibilityRole="button"
+                          >
+                            <Feather name="eye" size={14} color={C.primary} />
+                            <Text style={styles.profileProductViewText}>عرض المنتج</Text>
+                          </Pressable>
+                          <Pressable
+                            style={styles.profileProductDeleteBtn}
+                            onPress={() => handleDeleteProduct(product)}
+                            disabled={deletingProductId === product.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`حذف المنتج ${product.title}`}
+                          >
+                            {deletingProductId === product.id ? (
+                              <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                              <>
+                                <Feather name="trash-2" size={14} color="#FFF" />
+                                <Text style={styles.profileProductDeleteText}>حذف المنتج</Text>
+                              </>
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+                    </View>
                   ))}
                 </View>
               )}
@@ -926,6 +966,7 @@ export default function ProfileScreen() {
           <Text style={styles.versionNote}>
             فورس - ForUs • خدمات المنزل والسيارة
           </Text>
+      </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1856,32 +1897,17 @@ const styles = StyleSheet.create({
   productsEmptyTitle: { fontSize: 14, fontFamily: undefined, color: C.textSecondary },
   productsEmptyHint: { fontSize: 12, fontFamily: undefined, color: C.textMuted, textAlign: "center" },
   productsList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
+    gap: 14,
   },
   profileProductCard: {
-    width: "32%",
-    aspectRatio: 1,
-    borderRadius: 9,
+    width: "100%",
+    borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: C.inputBg,
+    backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
-    position: "relative",
   },
-  profileProductDeleteOverlay: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(239,68,68,0.9)",
-    zIndex: 10,
-  },
+  profileProductMedia: { width: "100%", backgroundColor: C.inputBg },
   profileProductInfo: { padding: 12, gap: 9 },
   profileProductTitleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
   profileProductTitle: { flex: 1, fontSize: 16, lineHeight: 24, fontFamily: undefined, color: C.text, textAlign: "right" },

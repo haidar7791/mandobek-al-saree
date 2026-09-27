@@ -4,16 +4,20 @@ import {
   Image,
   Modal,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { router } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { ResizeMode, Video } from "expo-av";
 import type { ProfilePost } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import ProfileAvatar from "./ProfileAvatar";
+import ReportButton from "./ReportButton";
 
 const C = Colors.light;
 
@@ -28,10 +32,13 @@ type Props = {
   actionLabel?: string;
   onAction?: () => void;
   actionDisabled?: boolean;
+  profileName?: string;
+  profilePhotoUri?: string | null;
   /** Called by a double-tap on a post. Return true when the like was recorded. */
   onDoubleTapLike?: (post: ProfilePost) => Promise<boolean> | boolean;
   /** Called by the persistent heart button. */
   onLike?: (post: ProfilePost) => Promise<boolean> | boolean;
+  onComment?: (post: ProfilePost) => void;
   isLiked?: (postId: string) => boolean;
 };
 
@@ -46,8 +53,11 @@ export default function ProfilePostFeed({
   actionLabel,
   onAction,
   actionDisabled = false,
+  profileName = "مستخدم",
+  profilePhotoUri,
   onDoubleTapLike,
   onLike,
+  onComment,
   isLiked,
 }: Props) {
   const [fullscreenPost, setFullscreenPost] = useState<ProfilePost | null>(null);
@@ -100,6 +110,16 @@ export default function ProfilePostFeed({
     setFailedIds((current) => new Set(current).add(postId));
   };
 
+  const sharePost = async (post: ProfilePost) => {
+    try {
+      await Share.share({
+        message: `📱 منشور عبر تطبيق FORUS\n\n👤 ${profileName}${post.description ? `\n\n${post.description}` : ""}`,
+      });
+    } catch {
+      // Native share cancellation should not affect the feed.
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -149,6 +169,25 @@ export default function ProfilePostFeed({
           const failed = failedIds.has(post.id);
           return (
             <View key={post.id} style={styles.card}>
+              <View style={styles.postHeader}>
+                <ProfileAvatar
+                  photoUri={profilePhotoUri}
+                  name={profileName}
+                  size={42}
+                  disableNavigation
+                />
+                <View style={styles.postHeaderInfo}>
+                  <Text style={styles.postName} numberOfLines={1}>{profileName}</Text>
+                  <Text style={styles.postTime}>
+                    {post.createdAt ? new Date(post.createdAt).toLocaleDateString("ar-IQ-u-nu-latn") : "منذ لحظات"}
+                  </Text>
+                </View>
+              </View>
+
+              {!!post.description && (
+                <Text style={styles.description}>{post.description}</Text>
+              )}
+
               <Pressable
                 style={styles.mediaPressable}
                 onPress={() => !failed && handleMediaTap(post)}
@@ -194,32 +233,71 @@ export default function ProfilePostFeed({
                 )}
               </Pressable>
 
-              <Pressable
-                style={styles.likesRow}
-                onPress={() => { void Promise.resolve(onLike?.(post)).catch(() => undefined); }}
-                disabled={!onLike}
-                accessibilityRole="button"
-                accessibilityLabel={isLiked?.(post.id) ? "إلغاء إعجاب المنشور" : "الإعجاب بالمنشور"}
-              >
-                <Ionicons name={isLiked?.(post.id) ? "heart" : "heart-outline"} size={15} color={isLiked?.(post.id) ? "#EF4444" : "#FFF"} />
-                <Text style={styles.likesText}>{post.likesCount ?? 0}</Text>
-              </Pressable>
-
-              {canDelete && onDelete && (
+              <View style={styles.actions}>
                 <Pressable
-                  style={styles.deleteButton}
-                  onPress={() => onDelete(post)}
-                  disabled={deletingPostId === post.id}
+                  style={styles.action}
+                  onPress={() => { void Promise.resolve(onLike?.(post)).catch(() => undefined); }}
+                  disabled={!onLike}
                   accessibilityRole="button"
-                  accessibilityLabel="حذف المنشور"
+                  accessibilityLabel={isLiked?.(post.id) ? "إلغاء إعجاب المنشور" : "الإعجاب بالمنشور"}
                 >
-                  {deletingPostId === post.id ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Feather name="trash-2" size={10} color="#FFF" />
-                  )}
+                  <Ionicons name={isLiked?.(post.id) ? "heart" : "heart-outline"} size={21} color={isLiked?.(post.id) ? "#EF4444" : C.textSecondary} />
+                  <Text style={[styles.actionText, isLiked?.(post.id) && styles.likedText]}>{post.likesCount ?? 0}</Text>
                 </Pressable>
-              )}
+
+                <Pressable
+                  style={styles.action}
+                  onPress={() => {
+                    if (onComment) {
+                      onComment(post);
+                    } else {
+                      router.push({
+                        pathname: "/dashboard",
+                        params: { postId: post.id, openComments: "1" },
+                      } as any);
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="التعليقات"
+                >
+                  <Ionicons name="chatbubble-outline" size={20} color={C.textSecondary} />
+                  <Text style={styles.actionText}>{post.commentsCount ?? 0}</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.action}
+                  onPress={() => { void sharePost(post); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="مشاركة المنشور"
+                >
+                  <Feather name="share-2" size={19} color={C.textSecondary} />
+                </Pressable>
+
+                {!canDelete && (
+                  <ReportButton
+                    targetType="post"
+                    targetId={post.id}
+                    targetName={profileName}
+                    style={styles.reportButton}
+                  />
+                )}
+
+                {canDelete && onDelete && (
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => onDelete(post)}
+                    disabled={deletingPostId === post.id}
+                    accessibilityRole="button"
+                    accessibilityLabel="حذف المنشور"
+                  >
+                    {deletingPostId === post.id ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Feather name="trash-2" size={10} color="#FFF" />
+                    )}
+                  </Pressable>
+                )}
+              </View>
             </View>
           );
         })}
@@ -276,19 +354,36 @@ const styles = StyleSheet.create({
   actionButtonDisabled: { opacity: 0.55 },
   actionButtonText: { fontSize: 12, fontFamily: undefined, color: C.accent },
   list: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
+    gap: 14,
   },
   card: {
-    width: "32%",
-    aspectRatio: 1,
-    borderRadius: 8,
+    width: "100%",
+    borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: "#111",
-    position: "relative",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  mediaPressable: { flex: 1, position: "relative" },
+  postHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 9,
+  },
+  postHeaderInfo: { flex: 1, alignItems: "flex-end", gap: 2 },
+  postName: { color: C.text, fontSize: 14, fontWeight: "800", textAlign: "right" },
+  postTime: { color: C.textMuted, fontSize: 10, textAlign: "right" },
+  description: {
+    color: C.text,
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: "right",
+    paddingHorizontal: 13,
+    paddingBottom: 10,
+  },
+  mediaPressable: { width: "100%", aspectRatio: 1, position: "relative", backgroundColor: "#111" },
   heartOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -311,33 +406,33 @@ const styles = StyleSheet.create({
     paddingLeft: 3,
     backgroundColor: "rgba(0,0,0,0.58)",
   },
-  deleteButton: {
-    position: "absolute",
-    top: 3,
-    left: 3,
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.68)",
-  },
-  likesRow: {
-    position: "absolute",
-    right: 6,
-    bottom: 6,
+  actions: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    gap: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
-  likesText: {
-    color: "#FFF",
-    fontSize: 10,
-    fontFamily: undefined,
+  action: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 28,
+  },
+  actionDisabled: { opacity: 0.55 },
+  actionText: { color: C.textSecondary, fontSize: 12 },
+  likedText: { color: "#EF4444" },
+  reportButton: { paddingHorizontal: 0, paddingVertical: 0, marginLeft: "auto" },
+  deleteButton: {
+    width: 34,
+    height: 30,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EF4444",
+    marginLeft: "auto",
   },
   failed: {
     flex: 1,

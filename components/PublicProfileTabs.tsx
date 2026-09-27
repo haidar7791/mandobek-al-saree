@@ -24,10 +24,18 @@ const C = Colors.light;
 type Props = {
   userId: string;
   posts: ProfilePost[];
+  profileName?: string;
+  profilePhotoUri?: string | null;
   onContentLiked?: () => void;
 };
 
-export default function PublicProfileTabs({ userId, posts, onContentLiked }: Props) {
+export default function PublicProfileTabs({
+  userId,
+  posts,
+  profileName = "مستخدم",
+  profilePhotoUri,
+  onContentLiked,
+}: Props) {
   const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -175,6 +183,8 @@ export default function PublicProfileTabs({ userId, posts, onContentLiked }: Pro
             posts={posts.map((post) => ({ ...post, likesCount: postLikes[post.id] ?? post.likesCount ?? 0 }))}
             showEmptyState
             title=""
+            profileName={profileName}
+            profilePhotoUri={profilePhotoUri}
             onDoubleTapLike={handleLikePost}
             onLike={handleLikePost}
             isLiked={(postId) => !!postLikedIds[postId]}
