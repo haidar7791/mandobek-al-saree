@@ -297,6 +297,15 @@ function ArtisanCard({
               >
                 {artisan.restaurantCategory || "مطعم"}
               </Text>
+
+              {!!artisan.restaurantAddress?.trim() && (
+                <Text
+                  style={styles.restaurantAddress}
+                  numberOfLines={1}
+                >
+                  {artisan.restaurantAddress.trim()}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -4534,6 +4543,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     marginTop: 5,
+    textAlign: "right",
+  },
+
+  restaurantAddress: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 3,
     textAlign: "right",
   },
 

@@ -263,6 +263,7 @@ function userDocToArtisanProfile(userId: string, data: UserProfile): ArtisanProf
     coverUri: data.coverUri ?? null,
     restaurantLogoUri: data.restaurantLogoUri ?? null,
     restaurantCategory: data.restaurantCategory ?? "",
+    restaurantAddress: data.restaurantAddress ?? "",
     estimatedDelivery: data.estimatedDelivery ?? "",
     featuredUntil: data.featuredUntil ?? null,
     createdAt:
