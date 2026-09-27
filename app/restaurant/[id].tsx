@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -28,6 +29,21 @@ import { auth } from "../../lib/firebase";
 import { getCart, getCartTotal } from "../../lib/food_cart";
 
 const C = Colors.light;
+
+const openRestaurantLocation = async (location?: UserProfile["location"]) => {
+  if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
+    Alert.alert("موقع المطعم غير محدد", "لم يقم صاحب المطعم بتثبيت موقعه على الخريطة بعد.");
+    return;
+  }
+
+  const url = `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+
+  try {
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert("تعذر فتح الخريطة", "تأكد من توفر خرائط Google على جهازك.");
+  }
+};
 
 type Category =
   | "main"
@@ -441,6 +457,29 @@ export default function RestaurantScreen() {
 
                 <Text style={S.infoLabel}>الحالة</Text>
               </View>
+
+              <View style={S.infoDivider} />
+
+              <Pressable
+                style={S.infoItem}
+                onPress={() => void openRestaurantLocation(profile.location)}
+                accessibilityRole="button"
+                accessibilityLabel="موقع المطعم"
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={23}
+                  color={C.accent}
+                />
+
+                <Text style={[S.infoValue, { color: C.accent }]}>
+                  الموقع
+                </Text>
+
+                <Text style={S.infoLabel}>
+                  الخريطة
+                </Text>
+              </Pressable>
             </View>
 
             <View style={S.menuHeader}>

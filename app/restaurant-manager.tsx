@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  Linking,
   ScrollView,
   StyleSheet,
   Switch,
@@ -32,6 +33,7 @@ import {
   type UserProfile,
 } from "@/lib/db_logic";
 import { goBack } from "@/lib/navigation";
+import { getOptionalCurrentLocation } from "@/lib/location";
 import RestaurantDishEditorModal, {
   type RestaurantDishCategory,
   type RestaurantDishDraft,
@@ -39,12 +41,7 @@ import RestaurantDishEditorModal, {
 
 const C = Colors.light;
 
-const restaurantTypes = [
-  "مأكولات عراقية وعالمية",
-  "مشويات",
-  "وجبات سريعة",
-  "حلويات",
-];
+
 
 const menuTabs: { key: RestaurantDishCategory; label: string; emoji: string }[] = [
   { key: "main", label: "الأطباق الرئيسية", emoji: "🍢" },
@@ -65,7 +62,9 @@ export default function RestaurantManagerScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [name, setName] = useState("");
-  const [restaurantType, setRestaurantType] = useState(restaurantTypes[0]);
+  const [restaurantType, setRestaurantType] = useState("");
+  const [restaurantAddress, setRestaurantAddress] = useState("");
+  const [restaurantLocation, setRestaurantLocation] = useState<UserProfile["location"]>(null);
   const [isAvailable, setIsAvailable] = useState(true);
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [logoUri, setLogoUri] = useState<string | null>(null);
@@ -102,8 +101,10 @@ export default function RestaurantManagerScreen() {
       }
       setUserId(user.uid);
       setName(profile.name || "");
+      setRestaurantType(profile.restaurantCategory || "");
       initialNameRef.current = profile.name || "";
-      setRestaurantType(profile.restaurantCategory || restaurantTypes[0]);
+      setRestaurantAddress((profile as any).restaurantAddress || "");
+      setRestaurantLocation(profile.location || null);
 
       setIsAvailable(profile.isAvailable ?? true);
       setCoverUri(profile.coverUri || null);
@@ -127,6 +128,33 @@ export default function RestaurantManagerScreen() {
     return foods.filter((food) => (food.category || "main") === activeMenuTab);
   }, [activeMenuTab, foods]);
 
+  const pickRestaurantLocation = async () => {
+    try {
+      const location = await getOptionalCurrentLocation();
+
+      if (!location) {
+        Alert.alert(
+          "تعذر تحديد الموقع",
+          "تأكد من السماح للتطبيق باستخدام موقع الجهاز ثم حاول مرة أخرى.",
+        );
+        return;
+      }
+
+      setRestaurantLocation(location);
+
+      try {
+        await Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`,
+        );
+      } catch {
+        // حفظ الموقع داخل التطبيق يكفي حتى لو تعذر فتح الخرائط.
+      }
+    } catch (error) {
+      console.error("pick restaurant location failed:", error);
+      Alert.alert("تعذر تحديد الموقع", "حاول مرة أخرى.");
+    }
+  };
+
   const saveRestaurantInfo = async () => {
     const cleanName = name.trim();
     if (!userId) return;
@@ -139,7 +167,9 @@ export default function RestaurantManagerScreen() {
       const changes: Partial<UserProfile> = {
         specialty: "restaurant",
         role: "artisan",
-        restaurantCategory: restaurantType,
+        restaurantAddress: restaurantAddress.trim(),
+        restaurantCategory: restaurantType.trim(),
+        location: restaurantLocation,
       };
       if (cleanName !== initialNameRef.current) changes.name = cleanName;
       await setUserProfile(userId, changes);
@@ -445,22 +475,45 @@ export default function RestaurantManagerScreen() {
           />
 
           <Text style={styles.fieldLabel}>نوع المأكولات</Text>
-          <View style={styles.typeChips}>
-            {restaurantTypes.map((type) => {
-              const selected = restaurantType === type;
-              return (
-                <Pressable
-                  key={type}
-                  onPress={() => setRestaurantType(type)}
-                  style={[styles.typeChip, selected && styles.typeChipSelected]}
-                >
-                  <Text style={[styles.typeChipText, selected && styles.typeChipTextSelected]}>
-                    {type}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <TextInput
+            value={restaurantType}
+            onChangeText={setRestaurantType}
+            placeholder="مثال: مشويات، مأكولات عراقية وعالمية، وجبات سريعة"
+            placeholderTextColor={C.textMuted}
+            style={styles.input}
+            textAlign="right"
+            maxLength={150}
+          />
+
+          <Text style={styles.fieldLabel}>عنوان المطعم</Text>
+          <TextInput
+            value={restaurantAddress}
+            onChangeText={setRestaurantAddress}
+            placeholder="مثال: بغداد، شارع فلسطين، قرب ..."
+            placeholderTextColor={C.textMuted}
+            style={styles.input}
+            textAlign="right"
+            maxLength={150}
+          />
+
+          <Pressable
+            onPress={() => void pickRestaurantLocation()}
+            style={styles.locationButton}
+          >
+            <Feather name="map-pin" size={18} color={C.primary} />
+            <Text style={styles.locationButtonText}>
+              {restaurantLocation
+                ? "تحديث موقع المطعم على الخريطة"
+                : "تحديد موقع المطعم"}
+            </Text>
+          </Pressable>
+
+          {restaurantLocation && (
+            <Text style={styles.locationHint}>
+              تم تحديد موقع المطعم: {restaurantLocation.lat.toFixed(6)},{" "}
+              {restaurantLocation.lng.toFixed(6)}
+            </Text>
+          )}
 <Pressable
             onPress={() => void saveRestaurantInfo()}
             disabled={savingProfile}
@@ -645,6 +698,31 @@ const styles = StyleSheet.create({
   typeChipSelected: { backgroundColor: "rgba(201,168,76,0.16)", borderColor: C.accent },
   typeChipText: { color: C.textSecondary, fontSize: 11, fontWeight: "700" },
   typeChipTextSelected: { color: C.text, fontWeight: "900" },
+  locationButton: {
+    marginTop: 12,
+    minHeight: 50,
+    borderRadius: 14,
+    backgroundColor: C.accent,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    paddingHorizontal: 16,
+  },
+  locationButtonText: {
+    color: C.primary,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  locationHint: {
+    marginTop: 8,
+    color: C.textSecondary,
+    fontSize: 12,
+    textAlign: "right",
+    lineHeight: 18,
+  },
+
   saveProfileButton: { minHeight: 48, backgroundColor: C.primary, borderRadius: 14, marginTop: 18, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8 },
   saveProfileText: { color: "#FFF", fontSize: 13, fontWeight: "900" },
   menuSection: { marginHorizontal: 16, padding: 16, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },

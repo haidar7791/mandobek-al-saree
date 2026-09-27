@@ -119,6 +119,7 @@ export interface ArtisanProfile {
   coverUri?: string | null;
   restaurantLogoUri?: string | null;
   restaurantCategory?: string;
+  restaurantAddress?: string;
   estimatedDelivery?: string;
   featuredUntil?: string | null;
   isPromoted?: boolean;
@@ -2307,6 +2308,7 @@ export interface UserProfile {
   coverUri?: string | null;
   restaurantLogoUri?: string | null;
   restaurantCategory?: string;
+  restaurantAddress?: string;
   estimatedDelivery?: string;
   balance?: number;
   followCount?: number;
