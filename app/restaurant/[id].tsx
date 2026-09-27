@@ -395,6 +395,15 @@ export default function RestaurantScreen() {
                   <Text style={S.cuisine}>
                     {profile.restaurantCategory || "مطعم"}
                   </Text>
+
+                  {!!profile.restaurantAddress?.trim() && (
+                    <Text
+                      style={S.address}
+                      numberOfLines={1}
+                    >
+                      {profile.restaurantAddress.trim()}
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>
@@ -828,6 +837,14 @@ const S = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     marginTop: 5,
+    textAlign: "right",
+  },
+
+  address: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 3,
     textAlign: "right",
   },
 
