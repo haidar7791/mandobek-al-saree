@@ -39,7 +39,7 @@ export async function getOptionalCurrentLocation(): Promise<GeoLocation | null> 
     }
 
     const position = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
     });
 
     return {

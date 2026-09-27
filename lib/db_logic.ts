@@ -1653,6 +1653,7 @@ export interface OrderSharePayload {
   buyerId: string;
   buyerName: string;
   buyerPhone: string;
+  buyerAddress?: string;
   buyerLocation?: GeoLocation | null;
   sellerId: string;
   sellerName: string;
@@ -3762,6 +3763,7 @@ export interface ProductOrder {
   buyerId: string;
   buyerName: string;
   buyerPhone: string;
+  buyerAddress?: string;
   buyerLocation?: GeoLocation | null;
   status: "pending" | "accepted" | "rejected";
   createdAt: string;

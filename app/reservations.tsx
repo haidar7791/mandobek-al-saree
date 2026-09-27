@@ -149,6 +149,7 @@ function ProductOrderShareButton({
         buyerId: String(raw.buyerId || ""),
         buyerName: String(raw.buyerName || "غير محدد"),
         buyerPhone: String(raw.buyerPhone || ""),
+        buyerAddress: String(raw.buyerAddress || "") || undefined,
 
         buyerLocation: raw.buyerLocation || null,
 
@@ -1598,6 +1599,12 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                             || (phoneMap[order.buyerId] === undefined ? "..." : phoneMap[order.buyerId] || "لا يوجد")}
                         </Text>
                       </Text>
+                      {!!order.buyerAddress && (
+                        <Text style={styles.poInfoLine} numberOfLines={2}>
+                          <Text style={styles.poFieldLabel}>{"العنوان: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.buyerAddress}</Text>
+                        </Text>
+                      )}
                     </View>
                     <ProductOrderThumbnail
                       imageUrl={order.productImageUrl}

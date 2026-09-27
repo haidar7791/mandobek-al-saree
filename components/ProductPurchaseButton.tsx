@@ -3,11 +3,14 @@ import { getOptionalCurrentLocation } from "../lib/location";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -56,6 +59,10 @@ export default function ProductPurchaseButton({
   const [visible, setVisible] = useState(false);
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
+  const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerAddress, setBuyerAddress] = useState("");
+  const [buyerLocation, setBuyerLocation] = useState<GeoLocation | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const colors = (product.colors ?? []).filter((value) => value.trim());
   const sizes = (product.sizes ?? []).filter((value) => value.trim());
 
@@ -69,15 +76,12 @@ export default function ProductPurchaseButton({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedColor("");
     setSelectedSize("");
-
-    // إذا لم يحدد البائع لونًا أو قياسًا، يتم إرسال الطلب مباشرة
-    // بدون فتح نافذة تفاصيل الشراء.
-    if (colors.length === 0 && sizes.length === 0) {
-      submit();
-      return;
-    }
-
+    setBuyerAddress("");
+    setBuyerLocation(null);
     setVisible(true);
+    void getUserProfile(auth.currentUser.uid)
+      .then((profile) => setBuyerPhone(profile?.phone?.trim() || ""))
+      .catch(() => setBuyerPhone(""));
   };
 
   const cancel = () => {
@@ -113,15 +117,19 @@ export default function ProductPurchaseButton({
       Alert.alert("اختيار مطلوب", "يجب اختيار القياس قبل إتمام الشراء.");
       return;
     }
+    if (!buyerPhone.trim()) {
+      Alert.alert("بيانات مطلوبة", "يرجى إدخال رقم الهاتف للتواصل والتنسيق عند التوصيل.");
+      return;
+    }
+    if (!buyerAddress.trim()) {
+      Alert.alert("بيانات مطلوبة", "يرجى إدخال العنوان التفصيلي لمكان التوصيل.");
+      return;
+    }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onLoadingChange?.(product.id);
     try {
       const profile = await getUserProfile(viewer.uid);
-
-      // GPS is requested only for the actual purchase submission.
-      // Refusing permission must never prevent the order from being created.
-      const actualBuyerLocation = await getOptionalCurrentLocation();
 
       const imageUrl =
         product.media?.find((item) => item.type === "image")?.url ||
@@ -139,8 +147,9 @@ export default function ProductPurchaseButton({
         sellerName: product.sellerName,
         buyerId: viewer.uid,
         buyerName: profile?.name || userName,
-        buyerPhone: profile?.phone || "",
-        buyerLocation: actualBuyerLocation,
+        buyerPhone: buyerPhone.trim(),
+        buyerAddress: buyerAddress.trim(),
+        buyerLocation,
         selectedColor,
         selectedSize,
       });
@@ -150,6 +159,26 @@ export default function ProductPurchaseButton({
       Alert.alert("خطأ", "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً.");
     } finally {
       onLoadingChange?.(null);
+    }
+  };
+
+  const chooseLocation = async () => {
+    if (locationLoading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLocationLoading(true);
+    try {
+      const location = await getOptionalCurrentLocation();
+      if (!location) {
+        Alert.alert(
+          "تعذّر تحديد الموقع",
+          "يرجى السماح باستخدام موقعك من إعدادات الجهاز ثم المحاولة مجدداً.",
+        );
+        return;
+      }
+      setBuyerLocation(location);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setLocationLoading(false);
     }
   };
 
@@ -213,58 +242,142 @@ export default function ProductPurchaseButton({
         onRequestClose={() => setVisible(false)}
       >
         <Pressable style={styles.overlay} onPress={() => setVisible(false)}>
-          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.handle} />
-            <Text style={styles.title}>تفاصيل الشراء</Text>
-            <Text style={styles.productName} numberOfLines={2}>{product.title}</Text>
-            <Text style={styles.price}>
-              {product.price.toLocaleString("ar-IQ-u-nu-latn")} <Text style={styles.currency}>د.ع</Text>
-            </Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.keyboardSheet}
+          >
+            <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.handle} />
+              <Text style={styles.title}>إتمام طلب الشراء</Text>
+              <Text style={styles.productName} numberOfLines={2}>{product.title}</Text>
+              <Text style={styles.price}>
+                {product.price.toLocaleString("ar-IQ-u-nu-latn")} <Text style={styles.currency}>د.ع</Text>
+              </Text>
 
-            {colors.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.label}>اختر اللون <Text style={styles.required}>*</Text></Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-                  {colors.map((color) => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[styles.chip, selectedColor === color && styles.chipActive]}
-                      onPress={() => setSelectedColor(color)}
-                    >
-                      <Text style={[styles.chipText, selectedColor === color && styles.chipTextActive]}>{color}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+              <ScrollView
+                style={styles.formScroll}
+                contentContainerStyle={styles.formContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {colors.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.label}>اختر اللون <Text style={styles.required}>*</Text></Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                      {colors.map((color) => (
+                        <TouchableOpacity
+                          key={color}
+                          style={[styles.chip, selectedColor === color && styles.chipActive]}
+                          onPress={() => setSelectedColor(color)}
+                        >
+                          <Text style={[styles.chipText, selectedColor === color && styles.chipTextActive]}>{color}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
 
-            {sizes.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.label}>اختر القياس <Text style={styles.required}>*</Text></Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-                  {sizes.map((size) => (
-                    <TouchableOpacity
-                      key={size}
-                      style={[styles.chip, selectedSize === size && styles.chipActive]}
-                      onPress={() => setSelectedSize(size)}
-                    >
-                      <Text style={[styles.chipText, selectedSize === size && styles.chipTextActive]}>{size}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+                {sizes.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.label}>اختر القياس <Text style={styles.required}>*</Text></Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                      {sizes.map((size) => (
+                        <TouchableOpacity
+                          key={size}
+                          style={[styles.chip, selectedSize === size && styles.chipActive]}
+                          onPress={() => setSelectedSize(size)}
+                        >
+                          <Text style={[styles.chipText, selectedSize === size && styles.chipTextActive]}>{size}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
 
-            <TouchableOpacity style={styles.confirm} onPress={submit} activeOpacity={0.85}>
-              <LinearGradient colors={[C.accent, C.accentLight]} style={styles.gradient}>
-                <Ionicons name="cart-outline" size={16} color={C.primary} />
-                <Text style={styles.buttonText}>شراء</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.close} onPress={() => setVisible(false)}>
-              <Text style={styles.closeText}>إلغاء</Text>
-            </TouchableOpacity>
-          </Pressable>
+                <View style={styles.section}>
+                  <Text style={styles.label}>رقم الهاتف <Text style={styles.required}>*</Text></Text>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="call-outline" size={18} color={C.textSecondary} />
+                    <TextInput
+                      value={buyerPhone}
+                      onChangeText={setBuyerPhone}
+                      placeholder="أدخل رقم الهاتف"
+                      placeholderTextColor={C.textMuted}
+                      keyboardType="phone-pad"
+                      textAlign="right"
+                      style={styles.input}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.label}>العنوان التفصيلي <Text style={styles.required}>*</Text></Text>
+                  <View style={[styles.inputRow, styles.addressRow]}>
+                    <Ionicons name="location-outline" size={18} color={C.textSecondary} />
+                    <TextInput
+                      value={buyerAddress}
+                      onChangeText={setBuyerAddress}
+                      placeholder="المنطقة، الشارع، رقم المنزل أو الدار"
+                      placeholderTextColor={C.textMuted}
+                      multiline
+                      textAlign="right"
+                      textAlignVertical="top"
+                      style={[styles.input, styles.addressInput]}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.locationSection}>
+                  <Text style={styles.label}>موقع التوصيل على الخريطة</Text>
+                  <TouchableOpacity
+                    style={[styles.locationButton, buyerLocation && styles.locationButtonSelected]}
+                    onPress={chooseLocation}
+                    disabled={locationLoading}
+                    activeOpacity={0.82}
+                  >
+                    {locationLoading ? (
+                      <ActivityIndicator size="small" color={C.primary} />
+                    ) : (
+                      <Ionicons
+                        name={buyerLocation ? "checkmark-circle" : "navigate-outline"}
+                        size={20}
+                        color={buyerLocation ? "#15803D" : C.primary}
+                      />
+                    )}
+                    <Text style={[styles.locationButtonText, buyerLocation && styles.locationButtonTextSelected]}>
+                      {locationLoading
+                        ? "جارٍ تحديد موقعك..."
+                        : buyerLocation
+                          ? "تم تحديد موقعي المباشر"
+                          : "تحديد الموقع على الخريطة"}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.locationHint}>
+                    يساعد الموقع المباشر البائع أو مندوب التوصيل على الوصول بدقة.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.confirm, isLoading && styles.disabled]}
+                  onPress={submit}
+                  activeOpacity={0.85}
+                  disabled={isLoading}
+                >
+                  <LinearGradient colors={[C.accent, C.accentLight]} style={styles.gradient}>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color={C.primary} />
+                    ) : (
+                      <Ionicons name="cart-outline" size={16} color={C.primary} />
+                    )}
+                    <Text style={styles.buttonText}>تأكيد وإرسال الطلب</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.close} onPress={() => setVisible(false)}>
+                  <Text style={styles.closeText}>إلغاء</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </>
@@ -281,12 +394,15 @@ const styles = StyleSheet.create({
   cancelButton: { backgroundColor: "#DC2626", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13 },
   cancelText: { fontSize: 14, fontFamily: undefined, color: "#FFF" },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 14 },
+  keyboardSheet: { width: "100%", maxHeight: "92%" },
+  sheet: { maxHeight: "100%", backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 14 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center" },
   title: { fontSize: 19, fontFamily: undefined, color: C.text, textAlign: "right" },
   productName: { fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "right" },
   price: { fontSize: 17, fontFamily: undefined, color: C.accent, textAlign: "right" },
   currency: { fontSize: 13 },
+  formScroll: { flexGrow: 0, flexShrink: 1 },
+  formContent: { gap: 14, paddingBottom: 2 },
   section: { gap: 8 },
   label: { fontSize: 13, fontFamily: undefined, color: C.text, textAlign: "right" },
   required: { color: "#DC2626" },
@@ -295,6 +411,37 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: C.accent, backgroundColor: "rgba(201,168,76,0.12)" },
   chipText: { fontSize: 13, fontFamily: undefined, color: C.textSecondary },
   chipTextActive: { color: C.accent, fontFamily: undefined },
+  inputRow: {
+    minHeight: 48,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 13,
+    borderRadius: 13,
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  addressRow: { alignItems: "flex-start", paddingVertical: 10 },
+  input: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 10 },
+  addressInput: { minHeight: 62, paddingTop: 2 },
+  locationSection: { gap: 7 },
+  locationButton: {
+    minHeight: 50,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    borderRadius: 13,
+    backgroundColor: C.primary,
+    borderWidth: 1,
+    borderColor: C.accent,
+  },
+  locationButtonSelected: { backgroundColor: "#ECFDF3", borderColor: "#86EFAC" },
+  locationButtonText: { color: C.accent, fontSize: 14, fontWeight: "800" },
+  locationButtonTextSelected: { color: "#15803D" },
+  locationHint: { color: C.textMuted, fontSize: 11, textAlign: "right", lineHeight: 17 },
   confirm: { borderRadius: 12, overflow: "hidden", marginTop: 4 },
   close: { borderWidth: 1, borderColor: C.border, borderRadius: 12, alignItems: "center", paddingVertical: 12 },
   closeText: { fontSize: 14, fontFamily: undefined, color: C.textSecondary },

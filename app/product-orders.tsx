@@ -274,9 +274,15 @@ function SaleCard({ order, onAccept, onReject }: {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>رقم الهاتف:</Text>
               <Text style={styles.detailValue}>
-                {buyerPhone === null ? "..." : buyerPhone || "لا يوجد"}
+                {order.buyerPhone?.trim() || (buyerPhone === null ? "..." : buyerPhone || "لا يوجد")}
               </Text>
             </View>
+            {!!order.buyerAddress && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>العنوان:</Text>
+                <Text style={styles.detailValue} numberOfLines={2}>{order.buyerAddress}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.thumbCol}>
             <ProductOrderThumbnail
@@ -539,6 +545,7 @@ export default function ProductOrdersScreen() {
         buyerId: o.buyerId,
         buyerName: o.buyerName,
         buyerPhone: o.buyerPhone,
+        buyerAddress: o.buyerAddress,
         buyerLocation: o.buyerLocation || null,
         sellerId: o.sellerId,
         sellerName: o.sellerName || seller?.name || "البائع",
