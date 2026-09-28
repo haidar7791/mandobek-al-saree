@@ -56,7 +56,7 @@ export interface StoryGroup {
   userId: string;
   userName: string;
   userPhotoUri: string | null;
-  /** The cover image shown inside the circle: thumbnailUrl (video) or mediaUrl (image) of the latest story. */
+  /** The user's profile photo shown inside the story circle, if available. */
   coverImageUri: string | null;
   stories: Story[];
   /** True when the viewing user hasn't watched all stories in the group */
@@ -303,15 +303,9 @@ export function subscribeToActiveStories(
         group.stories.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       }
 
-      for (const group of map.values()) {
-        const latest = group.stories[group.stories.length - 1];
-        if (latest) {
-          group.coverImageUri =
-            latest.mediaType === "video"
-              ? (latest.thumbnailUrl ?? latest.mediaUrl ?? latest.userPhotoUri)
-              : latest.mediaUrl;
+        for (const group of map.values()) {
+          group.coverImageUri = group.userPhotoUri || null;
         }
-      }
 
       const groups = Array.from(map.values());
       groups.sort((a, b) => {

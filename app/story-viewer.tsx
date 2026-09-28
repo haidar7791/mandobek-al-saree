@@ -14,7 +14,7 @@
  *   • 🗑 delete (owner only)
  *   • Text & music-name overlay from creator
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -25,12 +25,13 @@ import {
   Image,
   ActivityIndicator,
   Animated,
+  PanResponder,
   Platform,
   TouchableOpacity,
   KeyboardAvoidingView,
   useWindowDimensions,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -149,7 +150,11 @@ export default function StoryViewerScreen() {
       }
       storiesRef.current = data;
       activeGroupUserIdRef.current = uid;
+      const firstUnwatchedIndex = data.findIndex(
+        (item) => !item.views.includes(currentUserId),
+      );
       setStories(data);
+      setIndex(firstUnwatchedIndex >= 0 ? firstUnwatchedIndex : 0);
       setLoading(false);
     } catch (err) {
       console.error("[story-viewer] loadStories failed:", err);
@@ -157,7 +162,7 @@ export default function StoryViewerScreen() {
       setLoading(false);
       setFetchError(true);
     }
-  }, [userId]);
+  }, [currentUserId, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,6 +203,19 @@ export default function StoryViewerScreen() {
       markStoryViewed(story.id, currentUserId).catch((err) => {
         console.warn("[story-viewer] markStoryViewed failed:", err);
       });
+      const addViewer = (items: Story[]) =>
+        items.map((item) =>
+          item.id === story.id && !item.views.includes(currentUserId)
+            ? { ...item, views: [...item.views, currentUserId] }
+            : item,
+        );
+      storiesRef.current = addViewer(storiesRef.current);
+      myStoriesRef.current = addViewer(myStoriesRef.current);
+      storyGroupsRef.current = storyGroupsRef.current.map((group) => ({
+        ...group,
+        stories: addViewer(group.stories),
+      }));
+      setStories((current) => addViewer(current));
     }
     setLiked(story.likes.includes(currentUserId));
     progressAnim.setValue(0);
@@ -211,9 +229,9 @@ export default function StoryViewerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, story?.id, loading]);
 
-  // Pause everything immediately before opening a user profile from the viewers list.
-  // This stops both the image timer and the currently playing video before navigation.
-  const pauseStoryForProfile = useCallback(() => {
+  // Pause both the image timer and the currently playing video. The same
+  // helper is used by the viewers list and by the viewers modal itself.
+  const pauseStory = useCallback(() => {
     animationRef.current?.stop();
     progressAnim.stopAnimation((val) => {
       pausedProgressRef.current = val;
@@ -237,11 +255,19 @@ export default function StoryViewerScreen() {
   }, [paused]);
 
   // ── Navigation ──────────────────────────────────────────────────────────
+  const isUnwatched = useCallback(
+    (item: Story) => !item.views.includes(currentUserId),
+    [currentUserId],
+  );
+
   const goNext = useCallback(() => {
     const currentStories = storiesRef.current;
     const currentIndex = index;
-    if (currentIndex < currentStories.length - 1) {
-      setIndex((i) => i + 1);
+    const nextIndex = currentStories.findIndex(
+      (item, itemIndex) => itemIndex > currentIndex && isUnwatched(item),
+    );
+    if (nextIndex >= 0) {
+      setIndex(nextIndex);
       return;
     }
 
@@ -250,31 +276,74 @@ export default function StoryViewerScreen() {
           userId: currentUserId,
           userName: myStoriesRef.current[0]?.userName || "مستخدم",
           userPhotoUri: myStoriesRef.current[0]?.userPhotoUri || null,
-          coverImageUri: myStoriesRef.current[myStoriesRef.current.length - 1]?.mediaUrl || null,
+          coverImageUri: myStoriesRef.current[0]?.userPhotoUri || null,
           stories: myStoriesRef.current,
           hasUnseen: false,
         }
       : null;
     const groups = ownGroup ? [ownGroup, ...storyGroupsRef.current] : storyGroupsRef.current;
     const currentGroupIndex = groups.findIndex((group) => group.userId === activeGroupUserIdRef.current);
-    const nextGroup = currentGroupIndex >= 0 ? groups[currentGroupIndex + 1] : groups[0];
+    const nextGroup = groups
+      .slice(currentGroupIndex >= 0 ? currentGroupIndex + 1 : 0)
+      .find((group) => group.stories.some(isUnwatched));
 
     if (nextGroup?.stories?.length) {
       const nextStories = nextGroup.stories;
       activeGroupUserIdRef.current = nextGroup.userId;
       storiesRef.current = nextStories;
       setStories(nextStories);
-      setIndex(0);
+      const firstUnwatchedIndex = nextStories.findIndex(isUnwatched);
+      setIndex(firstUnwatchedIndex >= 0 ? firstUnwatchedIndex : 0);
       setPaused(false);
       return;
     }
 
     goHome();
-  }, [currentUserId, index]);
+  }, [currentUserId, index, isUnwatched]);
 
   const goPrev = useCallback(() => {
-    setIndex((i) => Math.max(0, i - 1));
-  }, []);
+    if (index > 0) {
+      setIndex((current) => current - 1);
+      return;
+    }
+
+    const groups = myStoriesRef.current.length > 0
+      ? [
+          {
+            userId: currentUserId,
+            userName: myStoriesRef.current[0]?.userName || "مستخدم",
+            userPhotoUri: myStoriesRef.current[0]?.userPhotoUri || null,
+            coverImageUri: myStoriesRef.current[0]?.userPhotoUri || null,
+            stories: myStoriesRef.current,
+            hasUnseen: false,
+          },
+          ...storyGroupsRef.current,
+        ]
+      : storyGroupsRef.current;
+    const currentGroupIndex = groups.findIndex(
+      (group) => group.userId === activeGroupUserIdRef.current,
+    );
+    if (currentGroupIndex <= 0) return;
+    const previousGroup = groups[currentGroupIndex - 1];
+    if (!previousGroup?.stories.length) return;
+    activeGroupUserIdRef.current = previousGroup.userId;
+    storiesRef.current = previousGroup.stories;
+    setStories(previousGroup.stories);
+    setIndex(previousGroup.stories.length - 1);
+  }, [currentUserId, index]);
+
+  const storyPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderRelease: (_, gesture) => {
+        if (Math.abs(gesture.dx) < 40) return;
+        if (gesture.dx < 0) goNext();
+        else goPrev();
+      },
+    }),
+    [goNext, goPrev],
+  );
 
   // ── Reply → send as DM with story thumbnail ─────────────────────────────
   const handleReply = async () => {
@@ -392,6 +461,7 @@ export default function StoryViewerScreen() {
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      {...storyPanResponder.panHandlers}
     >
       {/* ── Media background ── */}
       {story.mediaType === "image" ? (
@@ -510,7 +580,10 @@ export default function StoryViewerScreen() {
       {/* ── View count / viewers ── */}
       <Pressable
         style={[styles.viewCountBar, { bottom: insets.bottom + 96 }]}
-        onPress={() => setViewersVisible(true)}
+        onPress={() => {
+          pauseStory();
+          setViewersVisible(true);
+        }}
         accessibilityRole="button"
         accessibilityLabel="عرض مشاهدي الاستوري"
       >
@@ -548,11 +621,14 @@ export default function StoryViewerScreen() {
 
       <StoryViewersModal
         visible={viewersVisible}
-        onClose={() => setViewersVisible(false)}
+        onClose={() => {
+          setViewersVisible(false);
+          setPaused(false);
+        }}
         viewerIds={story.views}
         storyOwnerName={story.userName}
         onOpenProfile={(viewer) => {
-          pauseStoryForProfile();
+          pauseStory();
           setViewersVisible(false);
           navigateWithHomeBase({ pathname: "/user-profile", params: { userId: viewer.id, userName: viewer.name } } as any);
         }}

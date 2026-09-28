@@ -2150,13 +2150,12 @@ const isFocused = useIsFocused();
     return () => { unsub1(); unsub2(); };
   }, [userId]);
 
-  /** Cover image shown inside my story circle — latest story's thumbnail (or mediaUrl for images) */
-  const myCoverImageUri = useMemo(() => {
-    if (myStories.length === 0) return null;
-    const latest = myStories[myStories.length - 1];
-    return latest.thumbnailUrl ?? (latest.mediaType === "image" ? latest.mediaUrl : null);
-  }, [myStories]);
   const { profile: liveProfile } = useProfileCheck(userId);
+
+  /** Story circles always use the user's profile photo, never story media. */
+  const myCoverImageUri = useMemo(() => {
+    return liveProfile?.photoUri || myStories[0]?.userPhotoUri || null;
+  }, [liveProfile?.photoUri, myStories]);
 
   const unreadMsgCount = useMemo(() => {
     if (!userId) return 0;
@@ -2686,7 +2685,7 @@ const isFocused = useIsFocused();
                 myStories.length > 0 ? styles.storyRingMine : styles.storyRingEmpty,
               ]}>
 <View style={styles.storyInner}>
-                  {/* Show latest story thumbnail if available, otherwise profile photo */}
+                  {/* Story cover is always the profile photo; no media fallback. */}
                   {myCoverImageUri ? (
                     <Image
                       source={{ uri: myCoverImageUri }}
@@ -2694,7 +2693,7 @@ const isFocused = useIsFocused();
                       resizeMode="cover"
                     />
                   ) : (
-                    <ProfileAvatar photoUri={liveProfile?.photoUri} name={userName} size={50} disableNavigation />
+                    <View style={styles.storyNoCover} />
                   )}
                 </View>
 
@@ -2751,7 +2750,7 @@ const isFocused = useIsFocused();
                 group.hasUnseen ? styles.storyRingUnseen : styles.storyRingSeen,
               ]}>
                 <View style={styles.storyInner}>
-                  {/* Show latest story thumbnail if available, otherwise profile photo */}
+                  {/* Story cover is always the profile photo; no media fallback. */}
                   {group.coverImageUri ? (
                     <Image
                       source={{ uri: group.coverImageUri }}
@@ -2759,7 +2758,7 @@ const isFocused = useIsFocused();
                       resizeMode="cover"
                     />
                   ) : (
-                    <ProfileAvatar photoUri={group.userPhotoUri} name={group.userName} size={50} disableNavigation />
+                    <View style={styles.storyNoCover} />
                   )}
                 </View>
               </View>
@@ -4042,6 +4041,10 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  storyNoCover: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
   /** + badge on the user's own circle */
   storyAddBadge: {
