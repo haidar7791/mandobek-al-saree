@@ -12,6 +12,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { navigateWithHomeBase } from "@/lib/navigation";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getStoryViewerProfiles,
   type StoryViewerProfile,
@@ -45,6 +46,7 @@ export default function StoryViewersModal({
   storyOwnerName,
   onOpenProfile,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [viewers, setViewers] = useState<StoryViewerProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -77,7 +79,7 @@ export default function StoryViewersModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(16, insets.bottom + 14) }]}>
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={styles.headerCopy}>
@@ -154,14 +156,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(3, 8, 24, 0.62)",
   },
   sheet: {
-    maxHeight: "78%",
+    maxHeight: "84%",
     minHeight: 280,
     backgroundColor: "transparent",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 10,
-    paddingBottom: 22,
+    paddingBottom: 16,
     borderWidth: 1,
     borderColor: C.border,
   },

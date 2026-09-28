@@ -25,10 +25,10 @@ import {
   Image,
   ActivityIndicator,
   Animated,
-  Dimensions,
   Platform,
   TouchableOpacity,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { goBack, goHome, navigateWithHomeBase } from "@/lib/navigation";
@@ -57,7 +57,6 @@ import {
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
-const { width: W } = Dimensions.get("window");
 const IMAGE_DURATION = 5000;  // ms
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,6 +73,7 @@ function timeAgo(iso: string): string {
 
 export default function StoryViewerScreen() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { userId: rawUserId } = useLocalSearchParams<{ userId: string | string[] }>();
   // Expo Router can return string | string[] — always normalise to a plain string
   const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
@@ -92,6 +92,12 @@ export default function StoryViewerScreen() {
   const [reply, setReply] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
   const [viewersVisible, setViewersVisible] = useState(false);
+  const progressWidth = Math.max(1, windowWidth - 20);
+  const progressSegmentWidth = Math.max(
+    1,
+    (progressWidth - Math.max(0, stories.length - 1) * 4) /
+      Math.max(1, stories.length),
+  );
 
   // Video-specific state
   const [videoError, setVideoError] = useState(false);
@@ -166,10 +172,10 @@ export default function StoryViewerScreen() {
   const startProgress = useCallback(
     (fromValue = 0, dur = IMAGE_DURATION) => {
       progressAnim.setValue(fromValue);
-      const remaining = dur * (1 - fromValue / W);
+      const remaining = dur * (1 - fromValue / progressSegmentWidth);
       animationRef.current?.stop();
       const anim = Animated.timing(progressAnim, {
-        toValue: W,
+        toValue: progressSegmentWidth,
         duration: remaining,
         useNativeDriver: false,
       });
@@ -179,7 +185,7 @@ export default function StoryViewerScreen() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [index]
+    [index, progressSegmentWidth]
   );
 
   useEffect(() => {
@@ -337,10 +343,15 @@ export default function StoryViewerScreen() {
       }
       const durMs = status.durationMillis ?? 0;
       if (durMs > 0) {
-        progressAnim.setValue(Math.min(W, (status.positionMillis / durMs) * W));
+        progressAnim.setValue(
+          Math.min(
+            progressSegmentWidth,
+            (status.positionMillis / durMs) * progressSegmentWidth,
+          ),
+        );
       }
     },
-    [goNext, progressAnim]
+    [goNext, progressAnim, progressSegmentWidth]
   );
 
   const onVideoError = useCallback((error: string) => {

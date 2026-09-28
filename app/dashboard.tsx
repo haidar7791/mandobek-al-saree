@@ -17,7 +17,7 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
@@ -145,7 +145,7 @@ const STORY_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:storyPublishProgr
 const HOME_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:homePublishProgress:${userId}`;
 const PRODUCT_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:productPublishProgress:${userId}`;
 const PROGRESS_CIRCUMFERENCE = 2 * Math.PI * 29;
-const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 70 });
+const REEL_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 95 });
 const HOME_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 65 });
 const PRODUCT_VIEWABILITY_CONFIG = Object.freeze({ itemVisiblePercentThreshold: 60 });
 
@@ -902,7 +902,10 @@ function HomeVideoViewer({
   loadingMore?: boolean;
 }) {
   const videos = posts.filter((p) => p.mediaType === "video");
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [activeIndex, setActiveIndex] = useState(index);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [muted, setMuted] = useState(false);
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const pendingFollowStateRef = useRef(new Map<string, boolean>());
@@ -911,6 +914,9 @@ function HomeVideoViewer({
   const hasMoreRef = useRef(!!hasMore);
   const loadingMoreRef = useRef(!!loadingMore);
   const onLoadMoreRef = useRef(onLoadMore);
+  const reelsListRef = useRef<FlatList<HomeFeedPost>>(null);
+  const pageWidth = viewport.width || windowWidth;
+  const pageHeight = viewport.height || windowHeight;
   useEffect(() => {
     hasMoreRef.current = !!hasMore;
     loadingMoreRef.current = !!loadingMore;
@@ -958,11 +964,21 @@ function HomeVideoViewer({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.reelsRoot}>
+      <View
+        style={styles.reelsRoot}
+        onLayout={({ nativeEvent }) => {
+          const { width, height } = nativeEvent.layout;
+          if (width > 0 && height > 0 && (width !== viewport.width || height !== viewport.height)) {
+            setViewport({ width, height });
+          }
+        }}
+      >
         <FlatList
+          ref={reelsListRef}
           data={videos}
           initialScrollIndex={Math.min(Math.max(0, index), Math.max(0, videos.length - 1))}
           keyExtractor={(item) => item.id}
+          style={styles.reelsList}
           pagingEnabled
           showsVerticalScrollIndicator={false}
           initialNumToRender={1}
@@ -975,12 +991,20 @@ function HomeVideoViewer({
             if (hasMoreRef.current && !loadingMoreRef.current) void onLoadMoreRef.current?.();
           }}
           onEndReachedThreshold={0.7}
-          getItemLayout={(_, i) => ({ length: Dimensions.get("window").height, offset: Dimensions.get("window").height * i, index: i })}
+          getItemLayout={(_, i) => ({ length: pageHeight, offset: pageHeight * i, index: i })}
+          onScrollToIndexFailed={({ index: failedIndex }) => {
+            requestAnimationFrame(() => {
+              reelsListRef.current?.scrollToOffset({
+                offset: pageHeight * failedIndex,
+                animated: false,
+              });
+            });
+          }}
           renderItem={({ item, index: itemIndex }) => {
             const itemLiked = isLiked(item.id);
             const isFollowing = followedUserIds.has(item.userId);
             return (
-              <View style={styles.reelPage}>
+              <View style={[styles.reelPage, { width: pageWidth, height: pageHeight }]}>
                 <Video
                   source={{ uri: item.url }}
                   style={StyleSheet.absoluteFill}
@@ -1004,7 +1028,12 @@ function HomeVideoViewer({
                   accessibilityRole="button"
                   accessibilityLabel="الضغط مرتين للإعجاب"
                 />
-                <View style={styles.reelOverlay}>
+                <View
+                  style={[
+                    styles.reelOverlay,
+                    { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 },
+                  ]}
+                >
                   <View style={styles.reelTopRow}>
                     <Pressable onPress={onClose} style={styles.reelClose}><Feather name="x" size={25} color="#FFF" /></Pressable>
                     <View style={styles.reelTopActions}>
@@ -1029,8 +1058,8 @@ function HomeVideoViewer({
                     </View>
                   </View>
 
-                  <View style={styles.reelBottomArea}>
-                    <View style={styles.reelActions}>
+                  <View style={[styles.reelBottomArea, { paddingBottom: insets.bottom + 4 }]}>
+                    <View style={[styles.reelActions, { bottom: 78 + insets.bottom }]}>
                       <View style={styles.reelProfileColumn}>
                         <View style={styles.reelAvatarWrap}>
                           <TouchableOpacity activeOpacity={0.8} onPress={() => onOpenProfile(item)}>
@@ -1089,7 +1118,12 @@ function HomeVideoViewer({
                     </View>
 
                     {!!item.description && (
-                      <Text style={styles.reelDescriptionBottom} numberOfLines={4}>{item.description}</Text>
+                      <Text
+                        style={[styles.reelDescriptionBottom, { marginBottom: 78 + insets.bottom }]}
+                        numberOfLines={4}
+                      >
+                        {item.description}
+                      </Text>
                     )}
                   </View>
                 </View>
@@ -3944,7 +3978,13 @@ const isFocused = useIsFocused();
                 resizeMode="contain"
               />
             ) : null}
-            <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenMedia(null)}>
+            <TouchableOpacity
+              style={[
+                styles.fullscreenClose,
+                { top: insets.top + 12, right: Math.max(16, insets.right + 12) },
+              ]}
+              onPress={() => setFullscreenMedia(null)}
+            >
             <Feather name="x" size={22} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -4117,8 +4157,9 @@ const styles = StyleSheet.create({
   homeActionText: { fontSize: 12, fontFamily: undefined, color: C.textSecondary },
   likedCountText: { color: "#EF4444" },
   reelsRoot: { flex: 1, backgroundColor: "#000" },
-  reelPage: { width: Dimensions.get("window").width, height: Dimensions.get("window").height, backgroundColor: "#000" },
-  reelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", padding: 18, paddingTop: 52 },
+  reelsList: { flex: 1, backgroundColor: "#000" },
+  reelPage: { backgroundColor: "#000" },
+  reelOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", paddingHorizontal: 18 },
   reelTopRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", width: "100%" },
   reelTopActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   reelClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(0,0,0,.35)", alignItems: "center", justifyContent: "center" },
@@ -5037,7 +5078,7 @@ availOnline: { backgroundColor: "#22C55E" },
     flex: 1, backgroundColor: "rgba(0,0,0,0.92)",
     alignItems: "center", justifyContent: "center",
   },
-  fullscreenImage: { width: "100%", height: "80%" },
+  fullscreenImage: { width: "100%", height: "100%" },
   fullscreenClose: {
     position: "absolute", top: 52, right: 20,
     width: 40, height: 40, borderRadius: 20,

@@ -18,6 +18,7 @@ import { setupPresence } from "@/lib/presence";
 import { useArtisanLocationTracking } from "@/hooks/useArtisanLocationTracking";
 import { isAuthRoutingSuspended } from "@/lib/auth_flow";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Application from "expo-application";
 import { compareVersions, getMinimumRequiredVersion } from "@/lib/remote_config";
 import { goBack, navigateWithHomeBase } from "@/lib/navigation";
@@ -74,6 +75,7 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
 }
 
 export default function RootLayout() {
+  const insets = useSafeAreaInsets();
   const [fontsReady, setFontsReady] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [accountStatusChecked, setAccountStatusChecked] = useState(false);
@@ -345,7 +347,10 @@ export default function RootLayout() {
                         maxWidth: 420,
                         backgroundColor: "#FFF",
                         borderRadius: 20,
-                        padding: 24,
+                         paddingTop: 24,
+                         paddingHorizontal: 24,
+                         paddingBottom: Math.max(24, insets.bottom + 24),
+                         maxHeight: "90%",
                         alignItems: "center",
                       }}
                     >

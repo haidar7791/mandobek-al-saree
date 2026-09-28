@@ -11,9 +11,11 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
   
 
 import {
@@ -66,6 +68,9 @@ const CATEGORY_ICONS: Record<Category, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function RestaurantScreen() {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const heroHeight = Math.min(310, Math.max(230, windowWidth * 0.72));
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [selectedRating, setSelectedRating] = useState(0);
   const [ratingSaving, setRatingSaving] = useState(false);
@@ -335,7 +340,7 @@ export default function RestaurantScreen() {
         )}
         ListHeaderComponent={
           <>
-            <View style={S.hero}>
+            <View style={[S.hero, { height: heroHeight }]}>
               {cover ? (
                 <Image
                   source={{ uri: cover }}
@@ -355,7 +360,7 @@ export default function RestaurantScreen() {
               <View style={S.heroOverlay} />
 
               <Pressable
-                style={S.back}
+                style={[S.back, { top: insets.top + 12 }]}
                 onPress={() => router.back()}
               >
                 <Ionicons
@@ -600,7 +605,7 @@ export default function RestaurantScreen() {
     
       {restaurantCartCount > 0 && (
         <Pressable
-          style={S.restaurantCartBar}
+          style={[S.restaurantCartBar, { bottom: insets.bottom + 12 }]}
           onPress={() => router.push("/restaurant/cart" as any)}
         >
           <View style={S.restaurantCartIcon}>
@@ -826,6 +831,7 @@ const S = StyleSheet.create({
   },
 
   name: {
+    flexShrink: 1,
     color: "#fff",
     fontSize: 26,
     fontWeight: "900",
@@ -833,6 +839,7 @@ const S = StyleSheet.create({
   },
 
   cuisine: {
+    flexShrink: 1,
     color: "rgba(255,255,255,0.82)",
     fontSize: 12,
     fontWeight: "800",
@@ -841,6 +848,7 @@ const S = StyleSheet.create({
   },
 
   address: {
+    flexShrink: 1,
     color: "rgba(255,255,255,0.72)",
     fontSize: 11,
     fontWeight: "600",

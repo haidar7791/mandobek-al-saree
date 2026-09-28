@@ -26,6 +26,7 @@ import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ProductMedia } from "@/lib/db_logic";
 import { useVideoAudio } from "@/lib/video-audio-context";
 import Colors from "@/constants/colors";
@@ -68,6 +69,7 @@ export default function ProductMediaCarousel({
   isFullscreenOpen = false,
 }: ProductMediaCarouselProps) {
   const { isAudioMuted, toggleMute } = useVideoAudio();
+  const insets = useSafeAreaInsets();
 
   const videoRefs = useRef<Record<number, Video | null>>({});
   const playbackPositionsRef = useRef<Record<number, number>>({});
@@ -303,7 +305,10 @@ export default function ProductMediaCarousel({
             />
           ) : null}
           <TouchableOpacity
-            style={styles.fullscreenClose}
+            style={[
+              styles.fullscreenClose,
+              { top: insets.top + 12, right: Math.max(12, insets.right + 12) },
+            ]}
             onPress={() => setFullscreenMedia(null)}
             accessibilityRole="button"
             accessibilityLabel="Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„Ø¹Ø±Ø¶ Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø©"

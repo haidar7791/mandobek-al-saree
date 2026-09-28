@@ -10,6 +10,7 @@ import {
   ActivityIndicator, Alert, Image, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { navigateWithHomeBase } from "@/lib/navigation";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -53,6 +54,7 @@ export function ShareModal({
   visible, onClose, shareText, shareMessage, title, cardImage, cardTitle, cardRoute,
   deepLinkPath, cardDetails, orderCards, onShared,
 }: ShareModalProps) {
+  const insets = useSafeAreaInsets();
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [searchResults, setSearchResults] = useState<ShareUserResult[]>([]);
   const [searchText, setSearchText] = useState("");
@@ -274,9 +276,13 @@ export function ShareModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={styles.modalRoot}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={insets.top}
+      >
         <Pressable style={styles.overlay} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(20, insets.bottom + 16) }]}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>{"مشاركة"}</Text>
 
@@ -337,7 +343,7 @@ const styles = StyleSheet.create({
 
   modalRoot: { flex: 1, justifyContent: "flex-end" },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-  sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 14, maxHeight: "88%" },
+  sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingBottom: 20, paddingTop: 14, maxHeight: "92%" },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#E2E8F0", alignSelf: "center", marginBottom: 14 },
   sheetTitle: { fontSize: 17, fontFamily: undefined, color: C.text, textAlign: "center", marginBottom: 16 },
   cardPreview: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.inputBg, borderRadius: 12, padding: 10, marginBottom: 14 },
@@ -346,13 +352,13 @@ const styles = StyleSheet.create({
   cardPreviewTitle: { fontSize: 14, fontFamily: undefined, color: C.text, textAlign: "right" },
   cardPreviewDetail: { fontSize: 11, fontFamily: undefined, color: C.textMuted, textAlign: "right", marginTop: 2 },
   externalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 13, marginBottom: 16 },
-  externalBtnText: { fontSize: 14, fontFamily: undefined, color: "#FFF" },
+  externalBtnText: { flexShrink: 1, fontSize: 14, fontFamily: undefined, color: "#FFF", textAlign: "center" },
   divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 12 },
   sectionLabel: { fontSize: 13, fontFamily: undefined, color: C.textSecondary, textAlign: "right", marginBottom: 8 },
   searchBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.inputBg, borderRadius: 13, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, marginBottom: 8 },
   searchInput: { flex: 1, minHeight: 44, fontSize: 13, fontFamily: undefined, color: C.text },
   emptyText: { fontSize: 13, fontFamily: undefined, color: C.textMuted, textAlign: "center", marginVertical: 20 },
-  chatList: { maxHeight: 300 },
+  chatList: { flexGrow: 0, maxHeight: 300 },
   chatRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F8FAFC" },
   chatAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(201,168,76,0.15)", alignItems: "center", justifyContent: "center" },
   chatAvatarImg: { width: 38, height: 38, borderRadius: 19 },

@@ -6,8 +6,10 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { auth } from "@/lib/firebase";
 import {
@@ -26,6 +28,8 @@ import { goBack, navigateWithHomeBase } from "@/lib/navigation";
 const C = Colors.light;
 
 export default function ProductScreen() {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { id, product: productParam } = useLocalSearchParams<{ id: string; product?: string }>();
   const initialProduct = useMemo(() => {
     if (!productParam) return null;
@@ -94,7 +98,7 @@ export default function ProductScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Pressable onPress={goBack} style={styles.backButton} accessibilityLabel="رجوع">
           <Feather name="arrow-right" size={22} color={C.text} />
         </Pressable>
@@ -123,10 +127,13 @@ export default function ProductScreen() {
           <Text style={styles.emptyText}>ربما تم بيع المنتج أو حذفه.</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+          showsVerticalScrollIndicator={false}
+        >
            <ProductMediaCarousel
              media={normalizeProductMedia(product.media, product.imageUrl)}
-             height={320}
+             height={Math.min(360, Math.max(240, windowWidth * 0.82))}
              onDoubleTapLike={async () => {
                 const viewer = auth.currentUser;
                 if (!viewer || viewer.uid === product.sellerId || likePending) return false;
@@ -165,7 +172,7 @@ export default function ProductScreen() {
               </View>
               <View style={styles.sellerText}>
                 <Text style={styles.sellerLabel}>البائع</Text>
-                <Text style={styles.sellerName}>{product.sellerName}</Text>
+               <Text style={styles.sellerName} numberOfLines={2}>{product.sellerName}</Text>
               </View>
               <Feather name="chevron-left" size={18} color={C.textMuted} />
             </Pressable>
@@ -189,7 +196,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 52,
+    paddingTop: 10,
     paddingHorizontal: 16,
     paddingBottom: 14,
     backgroundColor: "#FFF",
@@ -203,7 +210,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 32 },
   details: { padding: 18 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  title: { flex: 1, fontSize: 22, lineHeight: 32, fontFamily: undefined, color: C.text, textAlign: "right" },
+  title: { flex: 1, minWidth: 0, fontSize: 22, lineHeight: 32, fontFamily: undefined, color: C.text, textAlign: "right" },
   priceBadge: { backgroundColor: "#FFF8EC", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   price: { fontSize: 14, fontFamily: undefined, color: C.accent },
   description: { marginTop: 18, fontSize: 15, lineHeight: 27, fontFamily: undefined, color: C.textSecondary, textAlign: "right" },
@@ -214,7 +221,7 @@ const styles = StyleSheet.create({
   sellerIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#FFF8EC", alignItems: "center", justifyContent: "center" },
   sellerText: { flex: 1, alignItems: "flex-end" },
   sellerLabel: { fontSize: 12, fontFamily: undefined, color: C.textMuted },
-  sellerName: { fontSize: 15, fontFamily: undefined, color: C.text },
+  sellerName: { flexShrink: 1, fontSize: 15, fontFamily: undefined, color: C.text, textAlign: "right" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 24 },
   emptyTitle: { fontSize: 18, fontFamily: undefined, color: C.text },
   emptyText: { fontSize: 14, fontFamily: undefined, color: C.textMuted },

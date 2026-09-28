@@ -13,6 +13,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { ResizeMode, Video } from "expo-av";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -41,12 +42,13 @@ export default function ProfilePostComposerModal({
   onClose,
   onPublish,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const close = () => {
     if (!posting) onClose();
   };
 
   const sheet = (
-    <View style={styles.sheet}>
+    <View style={[styles.sheet, { paddingBottom: Math.max(20, insets.bottom + 16) }]}>
       <View style={styles.handle} />
       <View style={styles.header}>
         <Text style={styles.title}>وصف المنشور</Text>
@@ -124,7 +126,7 @@ export default function ProfilePostComposerModal({
         {Platform.OS === "ios" ? (
           <KeyboardAvoidingView
             behavior="padding"
-            keyboardVerticalOffset={0}
+            keyboardVerticalOffset={insets.top}
             style={styles.keyboard}
           >
             {sheet}
@@ -132,7 +134,7 @@ export default function ProfilePostComposerModal({
         ) : (
           <KeyboardAvoidingView
             behavior="position"
-            keyboardVerticalOffset={0}
+            keyboardVerticalOffset={insets.top}
             style={styles.keyboard}
             contentContainerStyle={styles.keyboardContent}
           >
@@ -167,7 +169,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingHorizontal: 14,
     paddingBottom: 20,
-    maxHeight: "88%",
+    maxHeight: "92%",
   },
   handle: {
     width: 42,
@@ -235,7 +237,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    transform: [{ translateY: -20 }],
+    marginTop: 0,
   },
   publishText: {
     color: "#FFF",

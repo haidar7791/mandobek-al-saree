@@ -12,6 +12,7 @@ import{
 }from"react-native";
 import{Ionicons,Feather}from"@expo/vector-icons";
 import{router,useFocusEffect}from"expo-router";
+import{useSafeAreaInsets}from"react-native-safe-area-context";
 import{getCart,getCartTotal,CartItem,clearCart}from"../../lib/food_cart";
 import{
   createFoodOrder,
@@ -24,6 +25,7 @@ import*as Location from"expo-location";
 const C=Colors.light;
 
 export default function Checkout(){
+ const insets=useSafeAreaInsets();
  const[cart,setCart]=useState<CartItem[]>([]);
  const[payment,setPayment]=useState<"cash"|"wallet">("cash");
  const[phone,setPhone]=useState("");
@@ -180,7 +182,7 @@ export default function Checkout(){
  return(
   <View style={S.root}>
 
-   <View style={S.header}>
+    <View style={[S.header,{height:62+insets.top,paddingTop:insets.top}]}>
     <Pressable onPress={()=>router.back()}>
      <Feather
       name="arrow-right"
@@ -202,7 +204,7 @@ export default function Checkout(){
 
    <ScrollView
     showsVerticalScrollIndicator={false}
-    contentContainerStyle={S.content}
+     contentContainerStyle={[S.content,{paddingBottom:insets.bottom+132}]}
    >
 
     <Text style={S.sectionTitle}>
@@ -378,11 +380,10 @@ export default function Checkout(){
 
    </ScrollView>
 
-   <View style={S.bottom}>
+    <View style={[S.bottom,{paddingBottom:Math.max(14,insets.bottom+14)}]}>
     <Pressable
      style={[
       S.confirm,
-      {transform:[{translateY:-20}]},
       (cart.length===0||submitting)&&
        S.disabled
      ]}

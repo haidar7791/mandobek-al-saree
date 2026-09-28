@@ -20,6 +20,7 @@ import {
   type ProfilePost,
 } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const C = Colors.light;
 
@@ -38,6 +39,7 @@ export default function ProfileCommentsModal({
   onClose,
   onCommentCountChange,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<HomeFeedComment[]>([]);
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -122,7 +124,7 @@ export default function ProfileCommentsModal({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(8, insets.bottom + 8) }]}>
           <View style={styles.header}>
             <Text style={styles.title}>التعليقات</Text>
             <Pressable onPress={onClose} style={styles.closeButton} accessibilityRole="button">
@@ -170,7 +172,7 @@ export default function ProfileCommentsModal({
             />
           )}
 
-          <View style={styles.composer}>
+          <View style={[styles.composer, { paddingBottom: Math.max(10, insets.bottom + 10) }]}>
             <TextInput
               value={text}
               onChangeText={setText}
@@ -205,7 +207,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   sheet: {
-    maxHeight: "78%",
+    maxHeight: "84%",
     minHeight: 280,
     backgroundColor: C.card,
     borderTopLeftRadius: 24,
@@ -238,7 +240,7 @@ const styles = StyleSheet.create({
   },
   commentBody: { flex: 1, gap: 3, alignItems: "flex-end" },
   commentName: { color: C.text, fontSize: 12, fontWeight: "800" },
-  commentText: { color: C.textSecondary, fontSize: 13, textAlign: "right" },
+  commentText: { color: C.textSecondary, fontSize: 13, textAlign: "right", flexShrink: 1 },
   commentLike: { alignItems: "center", gap: 2, minWidth: 28 },
   commentLikes: { color: C.textMuted, fontSize: 10 },
   composer: {

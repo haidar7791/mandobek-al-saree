@@ -1,7 +1,8 @@
 import React,{useCallback,useMemo,useState}from"react";
-import{ActivityIndicator,FlatList,Image,Pressable,RefreshControl,StyleSheet,Text,TextInput,View}from"react-native";
+import{ActivityIndicator,FlatList,Image,Pressable,RefreshControl,StyleSheet,Text,TextInput,View,useWindowDimensions}from"react-native";
 import{Ionicons,Feather}from"@expo/vector-icons";
 import{router,useFocusEffect}from"expo-router";
+import{useSafeAreaInsets}from"react-native-safe-area-context";
 import{fetchFoodItems,FoodItem}from"../lib/db_logic";
 import Colors from"@/constants/colors";
 
@@ -25,6 +26,8 @@ function typeOf(x:FoodItem){
 }
 
 export default function FoodScreen(){
+  const insets=useSafeAreaInsets();
+  const {width:windowWidth}=useWindowDimensions();
  const[items,setItems]=useState<FoodItem[]>([]);
  const[q,setQ]=useState("");
  const[cat,setCat]=useState("all");
@@ -60,8 +63,8 @@ export default function FoodScreen(){
 
  if(loading)return<View style={S.center}><ActivityIndicator size="large" color={C.accent}/><Text style={S.muted}>جاري تحميل المطاعم...</Text></View>;
 
- return<View style={S.root}>
-  <View style={S.header}>
+  return<View style={S.root}>
+   <View style={[S.header,{paddingTop:insets.top+8,height:70+insets.top}]}>
    <Pressable onPress={()=>router.back()}><Feather name="arrow-right" size={24} color="#fff"/></Pressable>
    <Text style={S.headerText}>المطاعم</Text>
    <Ionicons name="restaurant-outline" size={24} color={C.accent}/>
@@ -70,7 +73,7 @@ export default function FoodScreen(){
   <FlatList
    data={restaurants}
    keyExtractor={x=>x.id}
-   contentContainerStyle={S.list}
+    contentContainerStyle={[S.list,{paddingBottom:insets.bottom+24}]}
    refreshControl={<RefreshControl refreshing={refresh} onRefresh={()=>{setRefresh(true);load()}}/>}
    ListHeaderComponent={<>
     <View style={S.search}>
@@ -106,10 +109,10 @@ export default function FoodScreen(){
      style={S.card}
      onPress={()=>router.push(("/restaurant/" + r.id) as any)}
     >
-     {r.image?<Image source={{uri:r.image}} style={S.image}/>:<View style={S.placeholder}><Ionicons name="restaurant-outline" size={55} color={C.accent}/></View>}
+      {r.image?<Image source={{uri:r.image}} style={[S.image,{height:Math.min(220,Math.max(150,windowWidth*0.48))}]}/>:<View style={[S.placeholder,{height:Math.min(220,Math.max(150,windowWidth*0.48))}]}><Ionicons name="restaurant-outline" size={55} color={C.accent}/></View>}
 
      <View style={S.info}>
-      <Text style={S.name}>{r.name}</Text>
+       <Text style={S.name} numberOfLines={2}>{r.name}</Text>
       <View style={S.row}>
        <Text style={S.meta}>⭐ 4.8</Text>
        <Text style={S.meta}>⏱ 25-35 دقيقة</Text>
@@ -141,7 +144,7 @@ const S=StyleSheet.create({
  placeholder:{height:190,alignItems:"center",justifyContent:"center",backgroundColor:C.background},
  info:{padding:14,alignItems:"flex-end"},
  name:{fontSize:19,fontWeight:"900",color:C.text},
- row:{flexDirection:"row-reverse",gap:12,marginTop:9},
+  row:{flexDirection:"row-reverse",flexWrap:"wrap",justifyContent:"flex-end",gap:8,marginTop:9},
  meta:{fontSize:11,color:C.textMuted},
  open:{fontSize:11,color:"#22C55E",fontWeight:"800"},
  center:{flex:1,alignItems:"center",justifyContent:"center",gap:10},
