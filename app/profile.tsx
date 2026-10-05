@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getOptionalCurrentLocation } from "../lib/location";
 import {
   View,
@@ -33,29 +32,16 @@ import {
   getUserProfile,
   getProfileEngagementCounts,
   setUserProfile,
-  addProfilePost,
-  removeProfilePost,
-  normalizeProfilePosts,
-  uploadProfilePostMedia,
   uploadProfilePhoto,
   updateArtisanPhotoIfExists,
   getCategoryForSpecialty,
   ALL_SPECIALTIES,
   fetchSellerProductsPage,
-  getProfilePostEngagement,
   deleteProduct,
-  type ProfilePost,
   type Product,
-  getFollowingProfiles,
 } from "@/lib/db_logic";
 import ProductMediaCarousel, { normalizeProductMedia } from "@/components/ProductMediaCarousel";
-import ProfilePostFeed from "@/components/ProfilePostFeed";
-import ProfileCommentsModal from "@/components/ProfileCommentsModal";
-import ProfilePostComposerModal, {
-  type ProfilePostDraftMedia,
-} from "@/components/ProfilePostComposerModal";
 import FollowersModal from "@/components/FollowersModal";
-import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { navigateWithHomeBase } from "@/lib/navigation";
 import {
@@ -74,7 +60,6 @@ import RestaurantDishEditorModal, {
 const C = Colors.light;
 
 const IRAQI_PHONE_REGEX = /^07\d{9}$/;
-const PROFILE_POST_PUBLISH_PROGRESS_KEY = (userId: string) => `@forus:profilePostPublishProgress:${userId}`;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -188,18 +173,7 @@ export default function ProfileScreen() {
   const [specialty, setSpecialty] = useState("");
   const [bio, setBio] = useState("");
   const [followCount, setFollowCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
-  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
-  const [postsLoading, setPostsLoading] = useState(true);
-  const [visiblePostCount, setVisiblePostCount] = useState(3);
-  const [postsLoadingMore, setPostsLoadingMore] = useState(false);
-  const [uploadingPost, setUploadingPost] = useState(false);
-  const [profilePostPublishing, setProfilePostPublishing] = useState(false);
-  const [profilePostPublishProgress, setProfilePostPublishProgress] = useState(0);
-  const [pendingPostMedia, setPendingPostMedia] = useState<ProfilePostDraftMedia | null>(null);
-  const [postCaption, setPostCaption] = useState("");
-  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsLoadingMore, setProductsLoadingMore] = useState(false);
@@ -207,10 +181,7 @@ export default function ProfileScreen() {
   const [productsCursor, setProductsCursor] = useState<any | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
   const [followersVisible, setFollowersVisible] = useState(false);
-  const [followingVisible, setFollowingVisible] = useState(false);
-  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
 
   // ── Edit modal state ───────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -226,34 +197,6 @@ export default function ProfileScreen() {
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad =
     Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
-
-  // Persisted background-publish status keeps the profile button informative
-  // even when the upload continues after the composer is closed or the screen
-  // is mounted again.
-  useEffect(() => {
-    if (!uid) return;
-    let cancelled = false;
-    const refreshPublishStatus = async () => {
-      try {
-        const raw = await AsyncStorage.getItem(PROFILE_POST_PUBLISH_PROGRESS_KEY(uid));
-        if (cancelled) return;
-        if (!raw) {
-          setProfilePostPublishing(false);
-          setProfilePostPublishProgress(0);
-          return;
-        }
-        const startedAt = Number(JSON.parse(raw)?.startedAt || Date.now());
-        const elapsed = Math.max(0, Date.now() - startedAt);
-        setProfilePostPublishing(true);
-        setProfilePostPublishProgress(Math.min(0.92, (elapsed / 90000) * 0.92));
-      } catch (err) {
-        console.error("profile post publish progress refresh failed:", err);
-      }
-    };
-    refreshPublishStatus();
-    const timer = setInterval(refreshPublishStatus, 500);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [uid]);
 
   const specialtyLabel =
     specialty === "client"
@@ -276,9 +219,7 @@ export default function ProfileScreen() {
       }
 
       profileLoadedRef.current = true;
-      setPostsLoading(true);
       setProductsLoading(true);
-      setVisiblePostCount(3);
       setProducts([]);
       setProductsCursor(null);
       setProductsHasMore(false);
@@ -299,10 +240,9 @@ export default function ProfileScreen() {
       void loadFirstProducts();
 
       const load = async () => {
-        const [profile, engagement, postEngagement] = await Promise.all([
+        const [profile, engagement] = await Promise.all([
           getUserProfile(user.uid),
           getProfileEngagementCounts(user.uid),
-          getProfilePostEngagement(user.uid),
         ]);
 
         if (profile) {
@@ -317,34 +257,14 @@ export default function ProfileScreen() {
           );
           setBio(profile.bio || "");
           setFollowCount(engagement.followCount);
-           setFollowingCount(engagement.followingCount);
           setLikesCount(engagement.likesCount);
-           setProfilePosts(
-             normalizeProfilePosts(profile).map((post) => ({
-               ...post,
-               ...(postEngagement[post.id] || postEngagement[post.url] || {}),
-             })),
-           );
-
-           // Older profiles do not have the denormalized counter yet. Resolve
-           // that legacy value in the background without blocking first paint.
-           if (!Object.prototype.hasOwnProperty.call(profile, "followingCount")) {
-             void getFollowingProfiles(user.uid)
-               .then((followingProfiles) => setFollowingCount(followingProfiles.length))
-               .catch((followingError) => {
-                 console.error("load current profile following count failed:", followingError);
-               });
-           }
         }
-
-        setPostsLoading(false);
 
         const bal = await getBalance(user.uid);
         setBalance(bal);
       };
 
       load().catch(() => {
-        setPostsLoading(false);
       });
       return undefined;
     }, [])
@@ -413,121 +333,9 @@ export default function ProfileScreen() {
     ]);
   };
 
-  // ── Persistent profile posts ───────────────────────────────────────────────
-  const handleAddProfilePost = async () => {
-    if (Platform.OS === "ios") {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("إذن مرفوض", "يرجى السماح بالوصول إلى مكتبة الصور");
-        return;
-      }
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: false,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
-    if (result.canceled || !result.assets[0]) return;
-
-    const asset = result.assets[0];
-    const mediaType: "image" | "video" =
-      asset.type === "video" ? "video" : "image";
-    if (asset.fileSize && asset.fileSize >= 50 * 1024 * 1024) {
-      Alert.alert("الملف كبير", "يرجى اختيار صورة أو فيديو بحجم أقل من 50 ميغابايت");
-      return;
-    }
-
-    setPostCaption("");
-    setPendingPostMedia({
-      uri: asset.uri,
-      mediaType,
-      mimeType: asset.mimeType,
-      fileName: asset.fileName,
-    });
-  };
-
-  const publishPendingProfilePost = async () => {
-    const userId = auth.currentUser?.uid || uid;
-    if (!userId || !pendingPostMedia) return;
-
-    const caption = postCaption.trim();
-    setUploadingPost(true);
-    setProfilePostPublishing(true);
-    setProfilePostPublishProgress(0.03);
-    await AsyncStorage.setItem(
-      PROFILE_POST_PUBLISH_PROGRESS_KEY(userId),
-      JSON.stringify({ startedAt: Date.now() }),
-    );
-    // Close the composer immediately; the upload continues without blocking
-    // the profile UI, while the action button shows the publishing indicator.
-    setPendingPostMedia(null);
-    setPostCaption("");
-    try {
-      const uploaded = await uploadProfilePostMedia(userId, pendingPostMedia.uri, pendingPostMedia.mediaType, {
-        mimeType: pendingPostMedia.mimeType,
-        fileName: pendingPostMedia.fileName,
-      });
-      const post: ProfilePost = {
-        id: `${Date.now()}-${userId}`,
-        url: uploaded.url,
-        mediaType: pendingPostMedia.mediaType,
-        createdAt: new Date().toISOString(),
-        description: caption,
-        likesCount: 0,
-        commentsCount: 0,
-        storagePath: uploaded.storagePath,
-        mimeType: uploaded.mimeType,
-      };
-      await addProfilePost(userId, post);
-      setProfilePosts((prev) => [post, ...prev]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      const code = err?.code || "";
-      const msg = err?.message || "";
-      let userMsg = "تعذّر رفع المنشور، حاول مرة أخرى";
-      if (
-        code.includes("unauthorized") ||
-        msg.includes("unauthorized") ||
-        msg.includes("permission")
-      )
-        userMsg = "صلاحيات الرفع مرفوضة من Firebase Storage.";
-      else if (msg.includes("network") || code.includes("network"))
-        userMsg = "تعذّر الاتصال بالخادم، تحقق من الإنترنت";
-      Alert.alert("خطأ في رفع المنشور", `${userMsg}\n\n[${code || "unknown"}]`);
-    } finally {
-      await AsyncStorage.removeItem(PROFILE_POST_PUBLISH_PROGRESS_KEY(userId));
-      setUploadingPost(false);
-      setProfilePostPublishing(false);
-      setProfilePostPublishProgress(0);
-    }
-  };
-
-  const handleDeleteProfilePost = (post: ProfilePost) => {
-    Alert.alert("حذف المنشور", "هل تريد حذف هذا المنشور من ملفك؟", [
-      { text: "إلغاء", style: "cancel" },
-      {
-        text: "حذف",
-        style: "destructive",
-        onPress: async () => {
-          setDeletingPostId(post.id);
-          try {
-            await removeProfilePost(uid, post);
-            setProfilePosts((prev) => prev.filter((item) => item.id !== post.id));
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          } catch {
-            Alert.alert("خطأ", "تعذّر حذف المنشور");
-          } finally {
-            setDeletingPostId(null);
-          }
-        },
-      },
-    ]);
-  };
-
   // ── My marketplace products ────────────────────────────────────────────────
   const handleDeleteProduct = (product: Product) => {
-    Alert.alert("حذف المنتج", `هل تريد حذف "${product.title}" من السوق؟`, [
+    Alert.alert("حذف المنتج", `هل تريد حذف "${product.title}" من منتجاتك؟`, [
       { text: "إلغاء", style: "cancel" },
       {
         text: "حذف",
@@ -546,13 +354,6 @@ export default function ProfileScreen() {
         },
       },
     ]);
-  };
-
-  const loadMoreProfilePosts = () => {
-    if (postsLoadingMore || visiblePostCount >= profilePosts.length) return;
-    setPostsLoadingMore(true);
-    setVisiblePostCount((count) => Math.min(profilePosts.length, count + 3));
-    setPostsLoadingMore(false);
   };
 
   const loadMoreProfileProducts = async () => {
@@ -576,11 +377,7 @@ export default function ProfileScreen() {
   const handleProfileScroll = (event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     if (contentOffset.y + layoutMeasurement.height < contentSize.height - 420) return;
-    if (activeTab === "posts") {
-      loadMoreProfilePosts();
-    } else {
-      void loadMoreProfileProducts();
-    }
+    void loadMoreProfileProducts();
   };
 
   // ── Edit Modal logic ───────────────────────────────────────────────────────
@@ -761,7 +558,7 @@ export default function ProfileScreen() {
           {/* Bio — plain text, without a heading */}
           {bio ? <Text style={styles.heroBio}>{bio}</Text> : null}
 
-          {/* Stats — followers, likes and following */}
+          {/* Stats — followers and profile likes */}
           <View style={styles.statsRow}>
             <Pressable
               style={styles.statItem}
@@ -784,14 +581,6 @@ export default function ProfileScreen() {
 
             <View style={styles.statDivider} />
 
-            <Pressable
-              style={styles.statItem}
-              onPress={() => setFollowingVisible(true)}
-              disabled={!uid}
-            >
-              <Text style={styles.statValue}>{followingCount}</Text>
-              <Text style={styles.statLabel}>أتابعه</Text>
-            </Pressable>
           </View>
         </View>
       </LinearGradient>
@@ -834,73 +623,28 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       )}
+      {specialty === "store" && (
+        <View style={styles.restaurantOwnerCard}>
+          <Pressable
+            style={styles.restaurantOwnerButton}
+            onPress={() => router.push("/store-manager" as any)}
+            accessibilityRole="button"
+            accessibilityLabel="إدارة المتجر"
+          >
+            <Feather name="settings" size={21} color={C.primary} />
+            <Text style={styles.restaurantOwnerButtonText}>إدارة المتجر</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* ══════════════════════════════════════════
           HORIZONTAL PROFILE TABS
       ══════════════════════════════════════════ */}
-      <View style={styles.tabsBar} accessibilityRole="tablist">
-        <Pressable
-          style={styles.tabItem}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setActiveTab("posts");
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === "posts" }}
-        >
-          <Feather
-            name="image"
-            size={17}
-            color={activeTab === "posts" ? C.accent : C.textMuted}
-          />
-          <View style={[styles.tabIndicator, activeTab === "posts" && styles.tabIndicatorActive]} />
-        </Pressable>
-
-        <Pressable
-          style={styles.tabItem}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setActiveTab("products");
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === "products" }}
-        >
-          <Feather
-            name="shopping-bag"
-            size={17}
-            color={activeTab === "products" ? C.accent : C.textMuted}
-          />
-          <View style={[styles.tabIndicator, activeTab === "products" && styles.tabIndicatorActive]} />
-        </Pressable>
-      </View>
-
       {/* ══════════════════════════════════════════
           SCROLLABLE BODY
       ══════════════════════════════════════════ */}
       <View style={styles.body}>
 
-          {activeTab === "posts" ? (
-            <View style={styles.card}>
-              <ProfilePostFeed
-                posts={profilePosts.slice(0, visiblePostCount)}
-                loading={postsLoading}
-                canDelete
-                profileName={name || "مستخدم"}
-                profilePhotoUri={photoUri}
-                deletingPostId={deletingPostId}
-                onDelete={handleDeleteProfilePost}
-                showEmptyState
-                actionLabel={profilePostPublishing ? `جارٍ النشر ${Math.round(profilePostPublishProgress * 100)}%` : "إضافة منشور"}
-                onAction={handleAddProfilePost}
-                actionDisabled={uploadingPost || profilePostPublishing}
-                onDoubleTapLike={async () => false}
-                onComment={setCommentPost}
-                onLoadMore={loadMoreProfilePosts}
-                loadingMore={postsLoadingMore}
-                hasMore={visiblePostCount < profilePosts.length}
-              />
-            </View>
-          ) : (
             <View style={styles.card}>
               <View style={styles.sectionHeader}>
                 <View />
@@ -922,7 +666,7 @@ export default function ProfileScreen() {
                 <View style={styles.productsEmpty}>
                   <Feather name="shopping-bag" size={34} color={C.textMuted} />
                   <Text style={styles.productsEmptyTitle}>لا توجد منتجات منشورة</Text>
-                  <Text style={styles.productsEmptyHint}>أضف منتجاً ليظهر في الرئيسية وفي ملفك الشخصي.</Text>
+                  <Text style={styles.productsEmptyHint}>أضف منتجاً ليظهر في متجرك.</Text>
                 </View>
               ) : (
                 <View style={styles.productsList}>
@@ -1022,7 +766,6 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-          )}
 
           {/* Admin button */}
           {uid === ADMIN_UID && (
@@ -1049,43 +792,9 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <ProfilePostComposerModal
-        media={pendingPostMedia}
-        caption={postCaption}
-        posting={uploadingPost}
-        onCaptionChange={setPostCaption}
-        onClose={() => {
-          setPendingPostMedia(null);
-          setPostCaption("");
-        }}
-        onPublish={publishPendingProfilePost}
-      />
-
-      <ProfileCommentsModal
-        visible={!!commentPost}
-        post={commentPost}
-        postDocumentId={commentPost ? `${uid}_${commentPost.id}` : null}
-        onClose={() => setCommentPost(null)}
-        onCommentCountChange={(count) => {
-          if (!commentPost) return;
-          setProfilePosts((current) =>
-            current.map((item) =>
-              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
-            ),
-          );
-        }}
-      />
-
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}
-        profileId={uid}
-        profileName={name}
-      />
-
-      <FollowingModal
-        visible={followingVisible}
-        onClose={() => setFollowingVisible(false)}
         profileId={uid}
         profileName={name}
       />
@@ -1285,10 +994,11 @@ export default function ProfileScreen() {
                 </Pressable>
               ))}
 
-              {/* ── Restaurant ── */}
-              <Text style={styles.spCategoryHeader}>المطاعم</Text>
+              {/* ── Restaurant and stores ── */}
+              <Text style={styles.spCategoryHeader}>المطاعم والمتاجر</Text>
               {[
                 { key: "restaurant", label: "مطعم" },
+                { key: "store", label: "متجر" },
               ].map((item) => (
                 <Pressable
                   key={item.key}

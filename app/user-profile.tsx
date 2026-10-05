@@ -19,25 +19,17 @@ import { auth } from "../lib/firebase";
 import {
   getUserProfile,
   getProfileEngagementCounts,
-  getFollowingProfiles,
-  getProfilePostEngagement,
   getArtisanByUserId,
   buildChatId,
-  normalizeProfilePosts,
   getIsFollowing,
   followArtisan,
   unfollowArtisan,
   getIsLiked,
   likeArtisan,
   unlikeArtisan,
-  type ProfilePost,
 } from "../lib/db_logic";
-import PublicProfileTabs from "@/components/PublicProfileTabs";
-import type { PublicProfileTabsRef } from "@/components/PublicProfileTabs";
-import ProfileCommentsModal from "@/components/ProfileCommentsModal";
 import { ShareModal } from "@/components/ShareModal";
 import FollowersModal from "@/components/FollowersModal";
-import FollowingModal from "@/components/FollowingModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "@/lib/notifications";
 import { goBack, navigateWithHomeBase } from "@/lib/navigation";
@@ -56,11 +48,9 @@ export default function UserProfileScreen() {
     name: string; bio?: string; photoUri?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowingViewer, setIsFollowingViewer] = useState(false);
   const [followCount, setFollowCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
@@ -70,9 +60,6 @@ export default function UserProfileScreen() {
 
   const [shareVisible, setShareVisible] = useState(false);
   const [followersVisible, setFollowersVisible] = useState(false);
-  const [followingVisible, setFollowingVisible] = useState(false);
-  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
-  const tabsRef = useRef<PublicProfileTabsRef>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 34) : insets.bottom;
@@ -86,6 +73,10 @@ export default function UserProfileScreen() {
         if (cancelled) return;
 
         if (p?.role === "artisan" && p?.specialty !== "client") {
+          if (p.specialty === "store") {
+            router.replace({ pathname: "/shop/[id]", params: { id: userId } } as any);
+            return;
+          }
           // Hand off only real specialty owners to the richer artisan view.
           // Client accounts may have legacy role=artisan data, but must use
           // the same public client profile everywhere.
@@ -106,35 +97,10 @@ export default function UserProfileScreen() {
             bio: p.bio ?? undefined,
             photoUri: p.photoUri ?? undefined,
           });
-          const normalizedPosts = normalizeProfilePosts(p);
-
-          try {
-            const postEngagement = await getProfilePostEngagement(userId);
-            setProfilePosts(
-              normalizedPosts.map((post) => ({
-                ...post,
-                ...(postEngagement[post.id] || postEngagement[post.url] || {}),
-              }))
-            );
-          } catch (error) {
-            console.warn("Profile post likes sync failed:", error);
-            setProfilePosts(normalizedPosts);
-          }
           const engagement = await getProfileEngagementCounts(userId);
           if (cancelled) return;
           setFollowCount(engagement.followCount);
-          setFollowingCount(engagement.followingCount);
           setLikesCount(engagement.likesCount);
-
-          if (!Object.prototype.hasOwnProperty.call(p, "followingCount")) {
-            void getFollowingProfiles(userId)
-              .then((followingProfiles) => {
-                if (!cancelled) setFollowingCount(followingProfiles.length);
-              })
-              .catch((followingError) => {
-                console.error("load following count failed:", followingError);
-              });
-          }
 
           const viewer = auth.currentUser;
           if (viewer && viewer.uid !== userId) {
@@ -226,13 +192,6 @@ export default function UserProfileScreen() {
     }
   };
 
-  const handlePublicProfileScroll = (event: any) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 420) {
-      tabsRef.current?.loadMore();
-    }
-  };
-
   // While resolving an artisan redirect, show nothing to avoid flash
   if (loading && resolvedRole === null && !profile) {
     return (
@@ -306,16 +265,6 @@ export default function UserProfileScreen() {
                 <Text style={styles.statLabel}>إعجاب</Text>
               </Pressable>
 
-              <View style={styles.statDiv} />
-
-              <Pressable
-                style={styles.statItem}
-                onPress={() => setFollowingVisible(true)}
-                disabled={!userId}
-              >
-                <Text style={styles.statVal}>{followingCount}</Text>
-                <Text style={styles.statLabel}>أتابعه</Text>
-              </Pressable>
             </View>
           )}
         </View>
@@ -326,8 +275,6 @@ export default function UserProfileScreen() {
           style={styles.bodyScroll}
           contentContainerStyle={{ paddingBottom: bottomPad + 24 }}
           showsVerticalScrollIndicator={false}
-          onScroll={handlePublicProfileScroll}
-          scrollEventThrottle={100}
         >
           {/* ── Action buttons ── */}
           {!isOwnProfile && (
@@ -361,43 +308,11 @@ export default function UserProfileScreen() {
             </View>
           )}
 
-          <PublicProfileTabs
-            ref={tabsRef}
-            userId={userId}
-            posts={profilePosts}
-            profileName={displayName}
-            profilePhotoUri={photoUri}
-            onComment={setCommentPost}
-            onContentLiked={async () => {
-              const engagement = await getProfileEngagementCounts(userId);
-              setLikesCount(engagement.likesCount);
-            }}
-          />
         </ScrollView>
       )}
-      <ProfileCommentsModal
-        visible={!!commentPost}
-        post={commentPost}
-        postDocumentId={commentPost ? `${userId}_${commentPost.id}` : null}
-        onClose={() => setCommentPost(null)}
-        onCommentCountChange={(count) => {
-          if (!commentPost) return;
-          setProfilePosts((current) =>
-            current.map((item) =>
-              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
-            ),
-          );
-        }}
-      />
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}
-        profileId={userId}
-        profileName={displayName}
-      />
-      <FollowingModal
-        visible={followingVisible}
-        onClose={() => setFollowingVisible(false)}
         profileId={userId}
         profileName={displayName}
       />

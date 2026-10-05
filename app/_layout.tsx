@@ -49,10 +49,14 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="admin-dashboard" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="restaurant-manager" />
+        <Stack.Screen name="store-manager" />
         <Stack.Screen name="wallet" />
         <Stack.Screen name="artisan-profile" />
         <Stack.Screen name="user-profile" />
         <Stack.Screen name="product/[id]" />
+        <Stack.Screen name="shop/[id]" />
+        <Stack.Screen name="shop/cart" />
+        <Stack.Screen name="shop/checkout" />
         <Stack.Screen name="chat" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="notifications" />

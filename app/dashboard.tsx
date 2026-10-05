@@ -1405,17 +1405,13 @@ function FoodDashboardCard({ item }: { item: FoodItem }) {
 }
 
 export default function DashboardScreen() {
-  const {
-    productId: sharedProductId,
-    postId: requestedPostId,
-    openComments,
-  } = useLocalSearchParams<{ productId?: string; postId?: string; openComments?: string }>();
+  const { productId: sharedProductId } = useLocalSearchParams<{ productId?: string }>();
   // Screen-level focus — drives video start/stop & viewability guard
 const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [artisans, setArtisans] = useState<ArtisanProfile[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CategoryTab>("home");
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>("products");
     const [showNewMenu, setShowNewMenu] = useState(false);
   const [activeServiceCategory, setActiveServiceCategory] =
     useState<ServiceCategory>("home");
@@ -1729,22 +1725,6 @@ const isFocused = useIsFocused();
     ]);
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    if (homeFeed.length === 0 && !homeLoadingMore && !homeRefreshing) {
-      loadHomeFeed();
-    }
-    if (reopenReelsOnFocusRef.current) {
-      const timer = setTimeout(() => {
-        if (!isFocusedRef.current) return;
-        reopenReelsOnFocusRef.current = false;
-        isReelsOpenRef.current = true;
-        setShowReels(true);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [loadHomeFeed, homeFeed.length, homeLoadingMore, homeRefreshing]));
-
   useEffect(() => {
     isFocusedRef.current = isFocused;
     if (!isFocused) setFocusedProductId(null); // switched to another app screen
@@ -1778,35 +1758,6 @@ const isFocused = useIsFocused();
     }
     setActiveHomePostId((current) => current && homeFeed.some((post) => post.id === current) ? current : homeFeed[0].id);
   }, [homeFeed]);
-
-  // Notifications can deep-link to a post that is not the first item in the
-  // feed. The feed is loaded from the full /posts collection, so once it is
-  // available we can scroll to the exact card and open its comments.
-  useEffect(() => {
-    if (!requestedPostId || !homeFeed.length) return;
-    if (handledPostIntentRef.current === requestedPostId) return;
-
-    const post = homeFeed.find((item) => item.id === requestedPostId);
-    if (!post) return;
-
-    handledPostIntentRef.current = requestedPostId;
-    setActiveCategory("home");
-    setActiveHomePostId(post.id);
-
-    const postIndex = homeFeed.findIndex((item) => item.id === post.id);
-    requestAnimationFrame(() => {
-      homeFeedListRef.current?.scrollToIndex({
-        index: postIndex,
-        viewPosition: 0.08,
-        animated: true,
-      });
-      if (openComments === "1" || openComments === "true") {
-        setCommentPost(post);
-        setComments([]);
-        setCommentText("");
-      }
-    });
-  }, [homeFeed, openComments, requestedPostId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2444,6 +2395,27 @@ const isFocused = useIsFocused();
     return result;
   }, [artisans, userLocation, searchQuery]);
 
+  const filteredStores = React.useMemo(() => {
+    let result = artisans.filter((artisan) => artisan.specialty === "store");
+    const query = searchQuery.toLowerCase().trim();
+    if (query) {
+      result = result.filter((store) =>
+        store.name?.toLowerCase().includes(query) ||
+        store.bio?.toLowerCase().includes(query) ||
+        store.phone?.includes(query)
+      );
+    }
+    result.sort((a, b) => {
+      const featuredDifference = Number(isFeaturedActive(b)) - Number(isFeaturedActive(a));
+      if (featuredDifference) return featuredDifference;
+      if (!userLocation) return 0;
+      const aDistance = a.location ? calcDistanceKm(userLocation, a.location) : Infinity;
+      const bDistance = b.location ? calcDistanceKm(userLocation, b.location) : Infinity;
+      return aDistance - bDistance;
+    });
+    return result;
+  }, [artisans, searchQuery, userLocation]);
+
   // Smart feed: one sponsored slot first, then a rotating mix of engagement,
   // recency, interest, and affinity. The seed changes only on pull-to-refresh.
   const sortedProducts = React.useMemo(
@@ -2607,32 +2579,17 @@ const isFocused = useIsFocused();
                   style={styles.newMenuItem}
                   onPress={() => {
                     setShowNewMenu(false);
-                    void handleAddPost();
-                  }}
-                >
-                  <Feather name="play-circle" size={20} color="#111" />
-                  <Text style={styles.newMenuText}>إضافة ريلز</Text>
-                </Pressable>
-
-                <View style={styles.newMenuDivider} />
-
-                <Pressable
-                  style={styles.newMenuItem}
-                  onPress={() => {
-                    setShowNewMenu(false);
                     Haptics.impactAsync(
                       Haptics.ImpactFeedbackStyle.Medium
                     );
-                    navigateWithHomeBase("/add-product" as any);
+                    navigateWithHomeBase(
+                      liveProfile?.specialty === "store" ? "/store-manager" as any : "/add-product" as any
+                    );
                   }}
                 >
-                  <Feather name="shopping-bag" size={20} color="#111" />
-                  <Text style={styles.newMenuText}>إضافة منتج</Text>
+                  <Feather name={liveProfile?.specialty === "store" ? "settings" : "shopping-bag"} size={20} color="#111" />
+                  <Text style={styles.newMenuText}>{liveProfile?.specialty === "store" ? "إدارة المتجر" : "إضافة منتج"}</Text>
                 </Pressable>
-
-                <View style={styles.newMenuDivider} />
-
-                
               </View>
             )}
           </View>
@@ -2782,8 +2739,7 @@ const isFocused = useIsFocused();
           }}
         >
           {[
-            { key: "home" as CategoryTab, icon: "home-outline" as const },
-            { key: "products" as CategoryTab, icon: "bag-handle-outline" as const },
+            { key: "products" as CategoryTab, icon: "storefront-outline" as const },
             { key: "restaurants" as const, icon: "restaurant-outline" as const },
             { key: "services" as CategoryTab, icon: "construct-outline" as const },
           ].map((item) => (
@@ -2824,10 +2780,8 @@ const isFocused = useIsFocused();
                 setActiveCategory(item.key);
               }}
                accessibilityLabel={
-                item.key === "home"
-                  ? "المنزل"
-                  : item.key === "products"
-                    ? "المنتجات"
+                item.key === "products"
+                  ? "المتاجر"
                     : item.key === "food"
                       ? "المأكولات"
                       : item.key === "restaurants"
@@ -2883,53 +2837,6 @@ const isFocused = useIsFocused();
       </LinearGradient>
 
       <View style={styles.stickyBar}>
-            {activeCategory === "products" && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.productCategoryTabs}
-                style={styles.productCategoryTabsWrapper}
-              >
-                {PRODUCT_CATEGORY_OPTIONS.map((tab) => {
-                  const selected = activeProductCategory === tab.key;
-                  return (
-                    <Pressable
-                      key={tab.key}
-                      style={[
-                        styles.productCategoryTab,
-                        selected && styles.productCategoryTabActive,
-                      ]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setActiveProductCategory(tab.key);
-                        productsListRef.current?.scrollToOffset({
-                          offset: 0,
-                          animated: true,
-                        });
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Feather
-                        name={tab.icon as keyof typeof Feather.glyphMap}
-                        size={13}
-                        color={selected ? C.primary : C.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.productCategoryTabText,
-                          selected && styles.productCategoryTabTextActive,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {tab.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            )}
-
             {activeCategory === "services" && (
               <ScrollView
                 horizontal
@@ -2979,135 +2886,71 @@ const isFocused = useIsFocused();
 
           {/* ── Conditional content: products, services, or inline incoming orders ── */}
           <View style={styles.listWrapper}>
-            {activeCategory === "home" ? (
-              /* ══ HOME SOCIAL FEED — posts/media only ══ */
+            {activeCategory === "products" ? (
+              /* ══ STORE DIRECTORY ══ */
               <FlatList
-                ref={homeFeedListRef}
-                key="feed-list-home"
-                data={homeFeed}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={[styles.listContent, styles.homeFeedContent, { paddingBottom: bottomPad + 20 }]}
-                refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={() => loadHomeFeed(true)} tintColor={C.accent} />}
+                key="store-directory"
+                data={filteredStores}
+                keyExtractor={(store) => store.id}
+                contentContainerStyle={[styles.listContent, { paddingBottom: bottomPad + 20 }]}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
-                initialNumToRender={3}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                removeClippedSubviews={Platform.OS !== "web"}
-                onEndReached={loadMoreHomeFeed}
-                onEndReachedThreshold={0.6}
-                ListFooterComponent={homeLoadingMore ? <ActivityIndicator size="small" color={C.accent} style={{ paddingVertical: 16 }} /> : null}
-                viewabilityConfig={homeViewabilityConfig}
-                onViewableItemsChanged={homeViewabilityHandler}
-                renderItem={({ item }) => (
-                  <HomeFeedCard
-                    post={item}
-                    isActive={activeHomePostId === item.id}
-                    isScreenFocused={isFocused && activeCategory === "home"}
-                    isReelsOpen={showReels}
-                    isInlineVideoPlaying={isInlineVideoPlaying}
-                    isMuted={homeVideoMuted}
-                    onToggleMute={() => setHomeVideoMuted((value) => !value)}
-                    onOpenVideo={() => {
-                      isReelsOpenRef.current = true;
-                      isInlineVideoPlayingRef.current = false;
-                      homeResumeBlockedRef.current = true;
-                      setIsInlineVideoPlaying(false);
-                      setActiveHomePostId(null);
-                      const videoIndex = homeFeed.filter((p) => p.mediaType === "video").findIndex((p) => p.id === item.id);
-                      setReelIndex(Math.max(0, videoIndex));
-                      setShowReels(true);
-                    }}
-                    onDoubleTapLike={() => { void handleHomePostLike(item.id); }}
-                    onResumeVideo={() => {
-                      if (showReels || isReelsOpenRef.current) return;
-                      homeResumeBlockedRef.current = false;
-                      isInlineVideoPlayingRef.current = true;
-                      setIsInlineVideoPlaying(true);
-                      setActiveHomePostId(item.id);
-                    }}
-                    isLiked={likedPostIds.has(item.id)}
-                    onLike={() => { void handleHomePostLike(item.id); }}
-                    onComment={() => {
-                      setCommentPost(item);
-                      setComments([]);
-                      setCommentText("");
-                      setCommentEditingId(null);
-                      setCommentReplyingTo(null);
-                    }}
-                    onShare={() => {
-                      Haptics.selectionAsync();
-                      setSharePost(item);
-                    }}
-                    onOpenProfile={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      navigateWithHomeBase({ pathname: "/user-profile", params: { userId: item.userId, userName: item.userName } } as any);
-                    }}
-                    isOwner={auth.currentUser?.uid === item.userId}
-                    onDelete={() => handleDeleteHomePost(item)}
-                    deleteLoading={deletingHomePostId === item.id}
-                  />
+                renderItem={({ item: store, index }) => (
+                  <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
+                    <Pressable
+                      style={({ pressed }) => [styles.restaurantCard, pressed && { opacity: 0.93 }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigateWithHomeBase({ pathname: "/shop/[id]", params: { id: store.id } } as any);
+                      }}
+                    >
+                      <View style={[styles.restaurantHero, { height: 150 }]}>
+                        {store.coverUri || store.photoUri ? (
+                          <Image source={{ uri: store.coverUri || store.photoUri || undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                        ) : (
+                          <LinearGradient colors={["#24345D", "#0D1834"]} style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
+                            <Feather name="shopping-bag" size={42} color="rgba(255,255,255,.72)" />
+                          </LinearGradient>
+                        )}
+                        <LinearGradient colors={["transparent", "rgba(7,12,25,.88)"]} style={StyleSheet.absoluteFill} />
+                        <View style={[styles.restaurantLogoWrap, { bottom: 14 }]}>
+                          {store.photoUri ? (
+                            <Image source={{ uri: store.photoUri }} style={styles.restaurantLogo} resizeMode="cover" />
+                          ) : (
+                            <View style={[styles.restaurantLogo, { backgroundColor: C.primary, alignItems: "center", justifyContent: "center" }]}>
+                              <Feather name="shopping-bag" size={22} color={C.accent} />
+                            </View>
+                          )}
+                        </View>
+                        <View style={[styles.restaurantHeroText, { left: 88, right: 14, bottom: 17 }]}>
+                          <Text style={styles.restaurantName} numberOfLines={1}>{store.name}</Text>
+                          <Text style={styles.restaurantCuisine} numberOfLines={1}>{store.bio || "تصفح منتجات المتجر"}</Text>
+                        </View>
+                      </View>
+                      <View style={[styles.restaurantInfoBar, { justifyContent: "space-between" }]}>
+                        <View style={styles.restaurantInfoItem}>
+                          <Feather name="chevron-left" size={16} color={C.accent} />
+                          <Text style={styles.restaurantInfoValue}>عرض المتجر</Text>
+                        </View>
+                        <View style={styles.restaurantInfoItem}>
+                          <Ionicons name="star" size={16} color="#F6C945" />
+                          <Text style={styles.restaurantInfoValue}>{store.rating && store.rating > 0 ? store.rating.toFixed(1) : "جديد"}</Text>
+                          <Text style={styles.restaurantReviewCount}>({store.reviewCount || 0} تقييم)</Text>
+                        </View>
+                      </View>
+                    </Pressable>
+                  </Animated.View>
                 )}
                 ListEmptyComponent={
-                  homeLoading ? (
-                    <View style={styles.emptyState}>
-                      <ActivityIndicator size="large" color={C.accent} />
-                      <Text style={styles.emptySubtitle}>جارٍ تحميل المنشورات...</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <Feather name="image" size={48} color={C.textMuted} />
-                      <Text style={styles.emptyTitle}>لا توجد منشورات حالياً</Text>
-                      <Text style={styles.emptySubtitle}>أضف أول صورة أو مقطع فيديو إلى معرض الأعمال.</Text>
-                    </View>
-                  )
-                }
-              />
-            ) : activeCategory === "products" ? (
-              /* ══ PRODUCTS-ONLY VIEW ══ */
-              <FlatList
-                ref={productsListRef}
-                key={`feed-list-${activeCategory}`}
-                data={filteredProducts}
-                keyExtractor={(p) => p.id}
-                contentContainerStyle={[styles.listContent, styles.productListContent, { paddingBottom: bottomPad + 20 }]}
-                refreshControl={<RefreshControl refreshing={productsRefreshing} onRefresh={onProductsRefresh} tintColor={C.accent} />}
-                showsVerticalScrollIndicator={false}
-                // Instagram-style: only the centred card is "active" → its video plays
-                viewabilityConfig={viewabilityConfig}
-                onViewableItemsChanged={onViewableItemsChanged}
-                onScrollToIndexFailed={({ index }) => {
-                  setTimeout(() => {
-                    productsListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.08 });
-                  }, 300);
-                }}
-                renderItem={({ item: product }) => (
-                  <ProductCard
-                    product={product}
-                    userId={userId}
-                    userName={userName}
-                    userLocation={userLocation}
-                    pendingOrderId={myPendingOrders.get(product.id)}
-                    isLoading={buyingProductId === product.id}
-                    isActive={product.id === focusedProductId}
-                    onShare={() => { Haptics.selectionAsync(); setShareProduct(product); }}
-                    isFullscreenOpen={!!fullscreenMedia}
-                    onMediaPress={(item, positionMillis = 0) => {
-                      setFullscreenMediaPosition(positionMillis);
-                      setFullscreenMedia(item);
-                    }}
-                    onLoadingChange={setBuyingProductId}
-                  />
-                )}
-                ListEmptyComponent={
-                  productsLoading ? (
+                  loading ? (
                     <View style={styles.emptyState}>
                       <ActivityIndicator size="large" color={C.accent} />
                     </View>
                   ) : (
                     <View style={styles.emptyState}>
-                      <Ionicons name="pricetag-outline" size={52} color={C.textMuted} />
-                      <Text style={styles.emptyTitle}>لا توجد منتجات حالياً</Text>
-                      <Text style={styles.emptySubtitle}>كن أول من ينشر منتجاً في السوق!</Text>
+                      <Ionicons name="storefront-outline" size={52} color={C.textMuted} />
+                      <Text style={styles.emptyTitle}>لا توجد متاجر حالياً</Text>
+                      <Text style={styles.emptySubtitle}>ستظهر هنا الحسابات التي اختارت تخصص متجر.</Text>
                     </View>
                   )
                 }

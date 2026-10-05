@@ -23,6 +23,7 @@ import { auth } from "@/lib/firebase";
 import {
   ALL_SPECIALTIES,
   RESTAURANT_SPECIALTY,
+  STORE_SPECIALTY,
   CAR_SERVICES,
   DELIVERY_SERVICES,
   GENERAL_SERVICES,
@@ -42,7 +43,7 @@ const PRIVACY_POLICY_URL =
   "https://www.termsfeed.com/live/84beb1e7-05c9-4efc-983e-252e64c5765b";
 
 const SPECIALTY_GROUPS = [
-  { title: "المطاعم", items: [RESTAURANT_SPECIALTY] },
+  { title: "المطاعم والمتاجر", items: [RESTAURANT_SPECIALTY, STORE_SPECIALTY] },
   { title: "خدمات المنزل", items: HOME_SERVICES },
   { title: "خدمات السيارات", items: CAR_SERVICES },
   { title: "خدمات طبية", items: GENERAL_SERVICES },

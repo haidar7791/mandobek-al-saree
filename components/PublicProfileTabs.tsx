@@ -42,7 +42,7 @@ const PublicProfileTabs = forwardRef<PublicProfileTabsRef, Props>(function Publi
   onContentLiked,
   onComment,
 }, ref) {
-  const [activeTab, setActiveTab] = useState<"posts" | "products">("posts");
+  const [activeTab, setActiveTab] = useState<"posts" | "products">("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsLoadingMore, setProductsLoadingMore] = useState(false);
@@ -202,29 +202,6 @@ const PublicProfileTabs = forwardRef<PublicProfileTabsRef, Props>(function Publi
 
   return (
     <View style={styles.root}>
-      <View style={styles.tabsBar} accessibilityRole="tablist">
-        <Pressable
-          style={styles.tabItem}
-          onPress={() => { Haptics.selectionAsync(); setActiveTab("posts"); }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === "posts" }}
-        >
-          <Feather name="image" size={17} color={activeTab === "posts" ? C.accent : C.textMuted} />
-          
-          <View style={[styles.indicator, activeTab === "posts" && styles.indicatorActive]} />
-        </Pressable>
-        <Pressable
-          style={styles.tabItem}
-          onPress={() => { Haptics.selectionAsync(); setActiveTab("products"); }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === "products" }}
-        >
-          <Feather name="shopping-bag" size={17} color={activeTab === "products" ? C.accent : C.textMuted} />
-          
-          <View style={[styles.indicator, activeTab === "products" && styles.indicatorActive]} />
-        </Pressable>
-      </View>
-
       {activeTab === "posts" ? (
          <View style={styles.card}>
           <ProfilePostFeed

@@ -72,19 +72,28 @@ export const RESTAURANT_SPECIALTY = {
   icon: "coffee",
 };
 
-export type ServiceCategory = "home" | "car" | "general" | "delivery" | "restaurant";
+export const STORE_SPECIALTY = {
+  key: "store",
+  label: "متجر",
+  icon: "shopping-bag",
+};
+
+export type ServiceCategory = "home" | "car" | "general" | "delivery" | "restaurant" | "store";
 
 export const ALL_SPECIALTIES = [
   ...HOME_SERVICES,
   ...CAR_SERVICES,
   ...GENERAL_SERVICES,
   ...DELIVERY_SERVICES,
+  RESTAURANT_SPECIALTY,
+  STORE_SPECIALTY,
 ];
 
 const REMOVED_SPECIALTY_KEYS = new Set(["shovel", "roller", "backhoe"]);
 
 export function getCategoryForSpecialty(key: string): ServiceCategory {
   if (key === RESTAURANT_SPECIALTY.key) return "restaurant";
+  if (key === STORE_SPECIALTY.key) return "store";
   if (HOME_SERVICES.find((s) => s.key === key)) return "home";
   if (CAR_SERVICES.find((s) => s.key === key)) return "car";
   if (DELIVERY_SERVICES.find((s) => s.key === key)) return "delivery";
@@ -3830,6 +3839,8 @@ export interface ProductOrder {
   createdAt: string;
   selectedColor?: string;
   selectedSize?: string;
+  quantity?: number;
+  checkoutGroupId?: string;
   /** UIDs of sellers who hid this order from their view (soft delete) */
   hiddenForSeller?: string[];
   /** UIDs of buyers who hid this order from their view (soft delete) */
@@ -4225,6 +4236,70 @@ export const createProductOrder = async (
     action: "new",
   });
   return docRef.id;
+};
+
+export const createProductOrdersBatch = async (
+  orders: Omit<ProductOrder, "id" | "createdAt" | "status">[],
+): Promise<string[]> => {
+  if (!orders.length) throw new Error("السلة فارغة");
+  const sellerId = orders[0].sellerId;
+  const buyerId = orders[0].buyerId;
+  if (orders.some((order) => order.sellerId !== sellerId || order.buyerId !== buyerId)) {
+    throw new Error("يجب أن تكون الطلبات من متجر واحد ولحساب مشترٍ واحد");
+  }
+
+  const groupId = doc(collection(db, "productOrderGroups")).id;
+  const orderRefs = orders.map(() => doc(collection(db, "productOrders")));
+  const createdAt = new Date().toISOString();
+
+  await runTransaction(db, async (transaction) => {
+    const productSnapshots = await Promise.all(
+      orders.map((order) => transaction.get(doc(db, "products", order.productId))),
+    );
+    productSnapshots.forEach((snapshot, index) => {
+      if (!snapshot.exists()) throw new Error(`المنتج غير متاح: ${orders[index].productTitle}`);
+      const product = snapshot.data() as Partial<Product>;
+      if (product.status !== "available" || product.sellerId !== sellerId) {
+        throw new Error(`المنتج لم يعد متاحاً: ${orders[index].productTitle}`);
+      }
+    });
+    orders.forEach((order, index) => {
+      transaction.set(orderRefs[index], {
+        ...order,
+        status: "pending",
+        createdAt,
+        checkoutGroupId: groupId,
+        quantity: Math.max(1, Math.floor(Number(order.quantity) || 1)),
+      });
+    });
+  });
+
+  try {
+    const sellerProfile = await getUserProfile(sellerId);
+    const firstOrder = orders[0];
+    if (sellerProfile?.pushToken) {
+      await sendExpoPush(
+        sellerProfile.pushToken,
+        "طلب متجر جديد",
+        `${firstOrder.buyerName} أرسل طلباً يتضمن ${orders.length} منتج.`,
+        { type: "productOrder", orderId: orderRefs[0].id, groupId },
+      );
+    }
+  } catch (error) {
+    console.error("notify seller on grouped product order failed:", error);
+  }
+
+  void createActivityNotification({
+    recipientId: sellerId,
+    actorId: buyerId,
+    type: "purchase",
+    title: "طلب متجر جديد",
+    body: `أرسل طلباً يتضمن ${orders.length} منتج.`,
+    entityId: orderRefs[0].id,
+    entityType: "order",
+    action: "new",
+  });
+  return orderRefs.map((ref) => ref.id);
 };
 
 export const respondToProductOrder = async (

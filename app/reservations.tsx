@@ -1575,11 +1575,22 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                         <Text style={styles.poFieldValue}>{order.productTitle}</Text>
                       </Text>
                       <Text style={styles.poInfoLine}>
-                        <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
+                        <Text style={styles.poFieldLabel}>{"سعر الوحدة: "}</Text>
                         <Text style={styles.poPriceValue}>
                           {price != null ? price.toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
+                      {(order.quantity ?? 1) > 1 && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"الكمية: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.quantity}</Text>
+                          {price != null ? (
+                            <Text style={styles.poPriceValue}>
+                              {" · الإجمالي: "}{(price * (order.quantity ?? 1)).toLocaleString("ar-IQ-u-nu-latn")} د.ع
+                            </Text>
+                          ) : null}
+                        </Text>
+                      )}
                       {!!order.selectedColor && (
                         <Text style={styles.poInfoLine}>
                           <Text style={styles.poFieldLabel}>{"اللون: "}</Text>
@@ -1791,11 +1802,22 @@ export default function ReservationsScreen({ inline = false }: { inline?: boolea
                         <Text style={styles.poFieldValue}>{order.productTitle}</Text>
                       </Text>
                       <Text style={styles.poInfoLine}>
-                        <Text style={styles.poFieldLabel}>{"سعر المنتج: "}</Text>
+                        <Text style={styles.poFieldLabel}>{"سعر الوحدة: "}</Text>
                         <Text style={styles.poPriceValue}>
                           {price != null ? price.toLocaleString("ar-IQ-u-nu-latn") + " د.ع" : "غير محدد"}
                         </Text>
                       </Text>
+                      {(order.quantity ?? 1) > 1 && (
+                        <Text style={styles.poInfoLine}>
+                          <Text style={styles.poFieldLabel}>{"الكمية: "}</Text>
+                          <Text style={styles.poFieldValue}>{order.quantity}</Text>
+                          {price != null ? (
+                            <Text style={styles.poPriceValue}>
+                              {" · الإجمالي: "}{(price * (order.quantity ?? 1)).toLocaleString("ar-IQ-u-nu-latn")} د.ع
+                            </Text>
+                          ) : null}
+                        </Text>
+                      )}
                       {!!order.selectedColor && (
                         <Text style={styles.poInfoLine}>
                           <Text style={styles.poFieldLabel}>{"اللون: "}</Text>

@@ -34,15 +34,11 @@ import {
   getIsLiked,
   likeArtisan,
   unlikeArtisan,
-  normalizeProfilePosts,
-  getProfilePostEngagement,
   type ArtisanProfile,
   type GeoLocation,
-  type ProfilePost,
 } from "../lib/db_logic";
 import PublicProfileTabs from "@/components/PublicProfileTabs";
 import type { PublicProfileTabsRef } from "@/components/PublicProfileTabs";
-import ProfileCommentsModal from "@/components/ProfileCommentsModal";
 import FollowersModal from "@/components/FollowersModal";
 import Colors from "@/constants/colors";
 import { createActivityNotification } from "../lib/notifications";
@@ -65,7 +61,6 @@ export default function ArtisanProfileScreen() {
   const initialArtisan = useMemo(() => parsePassedArtisan(artisanParam), [artisanParam]);
 
   const [artisan, setArtisan] = useState<ArtisanProfile | null>(initialArtisan);
-  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [userLocation, setUserLocation] = useState<GeoLocation | null>(null);
   const [userName, setUserName] = useState("مستخدم");
   const [loading, setLoading] = useState(!initialArtisan);
@@ -79,7 +74,6 @@ export default function ArtisanProfileScreen() {
   const [bookingModal, setBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [followersVisible, setFollowersVisible] = useState(false);
-  const [commentPost, setCommentPost] = useState<ProfilePost | null>(null);
   const tabsRef = useRef<PublicProfileTabsRef>(null);
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
@@ -107,6 +101,10 @@ export default function ArtisanProfileScreen() {
 
       const artisanData = await getArtisanById(artisanId);
       if (artisanData) {
+        if (artisanData.specialty === "store") {
+          router.replace({ pathname: "/shop/[id]", params: { id: artisanData.userId } } as any);
+          return;
+        }
         // Canonical routing: client accounts always use /user-profile so the
         // public profile looks identical regardless of where it was opened.
         if (artisanData.specialty === "client") {
@@ -121,17 +119,7 @@ export default function ArtisanProfileScreen() {
           return;
         }
         setArtisan(artisanData);
-        const [artisanProfile, engagement, postEngagement] = await Promise.all([
-          getUserProfile(artisanData.userId),
-          getProfileEngagementCounts(artisanData.userId),
-          getProfilePostEngagement(artisanData.userId),
-        ]);
-        setProfilePosts(
-          normalizeProfilePosts(artisanProfile).map((post) => ({
-            ...post,
-            ...(postEngagement[post.id] || postEngagement[post.url] || {}),
-          })),
-        );
+        const engagement = await getProfileEngagementCounts(artisanData.userId);
         setFollowCount(engagement.followCount);
         setLikesCount(engagement.likesCount);
       }
@@ -446,8 +434,7 @@ export default function ArtisanProfileScreen() {
         <PublicProfileTabs
           ref={tabsRef}
           userId={artisan.userId}
-          posts={profilePosts}
-          onComment={setCommentPost}
+          posts={[]}
           onContentLiked={async () => {
             const engagement = await getProfileEngagementCounts(artisan.userId);
             setLikesCount(engagement.likesCount);
@@ -456,20 +443,6 @@ export default function ArtisanProfileScreen() {
       </ScrollView>
 
       {/* ─────────────── BOOKING MODAL ─────────────── */}
-      <ProfileCommentsModal
-        visible={!!commentPost}
-        post={commentPost}
-        postDocumentId={commentPost ? `${artisan.userId}_${commentPost.id}` : null}
-        onClose={() => setCommentPost(null)}
-        onCommentCountChange={(count) => {
-          if (!commentPost) return;
-          setProfilePosts((current) =>
-            current.map((item) =>
-              item.id === commentPost.id ? { ...item, commentsCount: count } : item,
-            ),
-          );
-        }}
-      />
       <FollowersModal
         visible={followersVisible}
         onClose={() => setFollowersVisible(false)}
