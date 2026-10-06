@@ -23,12 +23,15 @@ import {
   ALL_SPECIALTIES,
   addReview,
   fetchSellerProductsPage,
+  followArtisan,
   getCategoryForSpecialty,
+  getIsFollowing,
   getProfileEngagementCounts,
   getUserProfile,
   deleteProduct,
   setUserProfile,
   updateStoreProductDetails,
+  unfollowArtisan,
   type Product,
   type UserProfile,
   uploadProfilePhoto,
@@ -51,6 +54,9 @@ export default function ShopScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowingViewer, setIsFollowingViewer] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<"coverUri" | "photoUri" | null>(null);
@@ -85,6 +91,8 @@ export default function ShopScreen() {
     }
     setLoading(true);
     setFollowersCount(0);
+    setIsFollowing(false);
+    setIsFollowingViewer(false);
     try {
       const nextProfile = await getUserProfile(storeId);
       if (!nextProfile || nextProfile.specialty !== "store") {
@@ -103,8 +111,21 @@ export default function ShopScreen() {
         hasMore = page.hasMore;
       }
       setProducts(allProducts);
-      const engagement = await getProfileEngagementCounts(storeId);
+      const viewer = auth.currentUser;
+      const followStatePromise: Promise<[boolean, boolean]> =
+        viewer && viewer.uid !== storeId
+          ? Promise.all([
+              getIsFollowing(viewer.uid, storeId),
+              getIsFollowing(storeId, viewer.uid),
+            ])
+          : Promise.resolve([false, false]);
+      const [engagement, [viewerFollowsStore, storeFollowsViewer]] = await Promise.all([
+        getProfileEngagementCounts(storeId),
+        followStatePromise,
+      ]);
       setFollowersCount(engagement.followCount);
+      setIsFollowing(viewerFollowsStore);
+      setIsFollowingViewer(storeFollowsViewer);
     } catch (error) {
       console.error("load shop failed:", error);
       Alert.alert("تعذر تحميل المتجر", "تحقق من اتصالك ثم أعد المحاولة.");
@@ -407,6 +428,35 @@ export default function ShopScreen() {
     }
   };
 
+  const toggleStoreFollow = async () => {
+    const viewer = auth.currentUser;
+    if (!viewer) {
+      router.push("/" as any);
+      return;
+    }
+    if (!storeId || viewer.uid === storeId || followLoading) return;
+
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unfollowArtisan(viewer.uid, storeId);
+      } else {
+        await followArtisan(viewer.uid, storeId);
+      }
+      const [following, engagement] = await Promise.all([
+        getIsFollowing(viewer.uid, storeId),
+        getProfileEngagementCounts(storeId),
+      ]);
+      setIsFollowing(following);
+      setFollowersCount(engagement.followCount);
+    } catch (error) {
+      console.error("toggle store follow failed:", error);
+      Alert.alert("تعذر تحديث المتابعة", "تحقق من الاتصال ثم حاول مرة أخرى.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   if (loading) {
     return <View style={S.center}><ActivityIndicator size="large" color={C.accent} /></View>;
   }
@@ -591,23 +641,55 @@ export default function ShopScreen() {
             ) : null}
 
             <View style={S.ratingCard}>
-              <View style={S.ratingMetrics}>
+              <View style={S.engagementColumn}>
                 <View style={S.ratingSummary}>
-                  <Ionicons name="star" size={21} color="#F5C842" />
+                  <Ionicons name="star" size={19} color="#F5C842" />
                   <Text style={S.ratingValue}>{profile.rating && profile.rating > 0 ? profile.rating.toFixed(1) : "جديد"}</Text>
                   <Text style={S.reviewCount}>({profile.reviewCount || 0} تقييم)</Text>
                 </View>
+                {!isOwner ? (
+                  <Pressable
+                    style={S.rateButton}
+                    onPress={() => { setRating(0); setRatingVisible(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="تقييم المتجر"
+                  >
+                    <Text style={S.rateButtonText}>تقييم</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <View style={S.engagementDivider} />
+              <View style={S.engagementColumn}>
                 <View style={S.followersSummary}>
                   <Feather name="users" size={15} color={C.accent} />
                   <Text style={S.followersValue}>{followersCount.toLocaleString("ar-IQ-u-nu-latn")}</Text>
                   <Text style={S.reviewCount}>متابع</Text>
                 </View>
+                {!isOwner ? (
+                  <Pressable
+                    style={[S.followButton, isFollowing && S.followingButton]}
+                    onPress={() => void toggleStoreFollow()}
+                    disabled={followLoading}
+                    accessibilityRole="button"
+                    accessibilityLabel={isFollowing ? "إلغاء المتابعة" : isFollowingViewer ? "رد المتابعة" : "متابعة"}
+                  >
+                    {followLoading ? (
+                      <ActivityIndicator size="small" color={isFollowing ? C.accent : "#FFF"} />
+                    ) : (
+                      <>
+                        <Feather
+                          name={isFollowing ? "user-check" : "user-plus"}
+                          size={14}
+                          color={isFollowing ? C.accent : "#FFF"}
+                        />
+                        <Text style={[S.followButtonText, isFollowing && S.followingButtonText]}>
+                          {isFollowing ? "إلغاء المتابعة" : isFollowingViewer ? "رد المتابعة" : "متابعة"}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
-              {!isOwner ? (
-                <Pressable style={S.rateButton} onPress={() => { setRating(0); setRatingVisible(true); }}>
-                  <Text style={S.rateButtonText}>قيّم المتجر</Text>
-                </Pressable>
-              ) : null}
             </View>
 
             <View style={S.productsHeader}>
@@ -954,15 +1036,20 @@ const S = StyleSheet.create({
   ownerPromoteAction: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
   ownerPromoteText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
   headerLogoutButton: { backgroundColor: "rgba(220,38,38,.78)" },
-  ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  ratingMetrics: { flex: 1, gap: 7 },
-  ratingSummary: { flexDirection: "row", alignItems: "center", gap: 7 },
-  followersSummary: { flexDirection: "row", alignItems: "center", gap: 6 },
+  ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "stretch", gap: 10 },
+  engagementColumn: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "space-between", gap: 10 },
+  engagementDivider: { width: 1, alignSelf: "stretch", backgroundColor: C.border },
+  ratingSummary: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap" },
+  followersSummary: { minHeight: 30, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" },
   followersValue: { fontSize: 13, color: C.text, fontWeight: "700" },
   ratingValue: { fontSize: 18, color: C.text, fontWeight: "700" },
   reviewCount: { color: C.textSecondary, fontSize: 12 },
-  rateButton: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: C.accent },
+  rateButton: { width: "100%", minHeight: 36, paddingHorizontal: 8, borderRadius: 10, borderWidth: 1, borderColor: C.accent, alignItems: "center", justifyContent: "center" },
   rateButtonText: { color: C.accent, fontWeight: "700", fontSize: 12 },
+  followButton: { width: "100%", minHeight: 36, paddingHorizontal: 6, borderRadius: 10, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  followingButton: { backgroundColor: C.card, borderWidth: 1, borderColor: C.accent },
+  followButtonText: { color: "#FFF", fontWeight: "700", fontSize: 10 },
+  followingButtonText: { color: C.accent },
   sectionTitle: { color: C.text, fontSize: 16, fontWeight: "700", textAlign: "right" },
   productsHeader: { marginHorizontal: 16, marginTop: 20, marginBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   productsCount: { color: C.textSecondary, fontSize: 11, textAlign: "right", marginTop: 4 },
