@@ -437,11 +437,20 @@ export default function ShopScreen() {
                 <Image source={{ uri: profile.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
               ) : <View style={S.coverFallback}><Feather name="shopping-bag" size={48} color="rgba(255,255,255,.65)" /></View>}
               <View style={S.coverShade} />
-              {!isOwner ? (
+              {isOwner ? (
+                <Pressable
+                  onPress={() => router.push("/support" as any)}
+                  style={[S.headerButton, { top: insets.top + 10, right: 14 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="مراسلة الدعم"
+                >
+                  <Feather name="headphones" size={19} color={C.accent} />
+                </Pressable>
+              ) : (
                 <Pressable onPress={() => router.back()} style={[S.headerButton, { top: insets.top + 10, right: 14 }]}>
                   <Feather name="arrow-right" size={20} color="#FFF" />
                 </Pressable>
-              ) : null}
+              )}
               {isOwner ? (
                 <Pressable
                   onPress={confirmOwnerSignOut}
@@ -502,7 +511,7 @@ export default function ShopScreen() {
                 </View>
                 <View style={[S.storeIdentityText, isOwner && S.storeIdentityTextOwner]}>
                   <View style={S.storeNameRow}>
-                    <Text style={[S.storeName, isOwner && S.storeNameOwner]} numberOfLines={1}>{profile.name || "المتجر"}</Text>
+                    <Text style={S.storeName} numberOfLines={1}>{profile.name || "المتجر"}</Text>
                     {isOwner ? (
                       <Pressable
                         onPress={openNameEditor}
@@ -514,7 +523,25 @@ export default function ShopScreen() {
                       </Pressable>
                     ) : null}
                   </View>
-                  <Text style={[S.storeSubtitle, isOwner && S.storeSubtitleOwner]}>متجر فورس</Text>
+                  <View style={S.storeMetaRow}>
+                    <View style={S.specialtyPill}>
+                      <Feather name="shopping-bag" size={11} color="#FFF" />
+                      <Text style={S.specialtyPillText}>
+                        {ALL_SPECIALTIES.find((specialty) => specialty.key === profile.specialty)?.label || "متجر"}
+                      </Text>
+                    </View>
+                    {isOwner ? (
+                      <Pressable
+                        onPress={openSpecialtyEditor}
+                        style={S.changeSpecialtyButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="تغيير التخصص"
+                      >
+                        <Feather name="edit-2" size={11} color="#FFF" />
+                        <Text style={S.changeSpecialtyText}>تغيير التخصص</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
               </View>
             </View>
@@ -543,13 +570,13 @@ export default function ShopScreen() {
             {isOwner ? (
               <View style={S.ownerAccountActions}>
                 <Pressable
-                  style={S.ownerAccountAction}
-                  onPress={openSpecialtyEditor}
+                  style={[S.ownerAccountAction, S.ownerPromoteAction]}
+                  onPress={() => router.push("/promote" as any)}
                   accessibilityRole="button"
-                  accessibilityLabel="تغيير التخصص"
+                  accessibilityLabel="ترويج وإعلان"
                 >
-                  <Feather name="briefcase" size={16} color={C.accent} />
-                  <Text style={S.ownerAccountActionText}>تغيير التخصص</Text>
+                  <Ionicons name="rocket-outline" size={16} color="#FFF" />
+                  <Text style={S.ownerPromoteText}>ترويج وإعلان</Text>
                 </Pressable>
                 <Pressable
                   style={S.ownerAccountAction}
@@ -907,13 +934,15 @@ const S = StyleSheet.create({
   logoFallback: { alignItems: "center", justifyContent: "center" },
   logoEditButton: { position: "absolute", left: -5, bottom: -4, width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#0D1B3E", alignItems: "center", justifyContent: "center" },
   storeIdentityText: { flex: 1 },
-  storeIdentityTextOwner: { flex: 0, flexShrink: 1, maxWidth: "78%" },
-  storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-start", alignSelf: "flex-start", gap: 2 },
-  storeName: { flex: 1, color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
-  storeNameOwner: { flex: 0, flexShrink: 1 },
+  storeIdentityTextOwner: { flex: 0, flexShrink: 1, maxWidth: "100%" },
+  storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-start", alignSelf: "flex-start", gap: 2, maxWidth: "100%" },
+  storeName: { flexShrink: 1, color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
   nameEditButton: { width: 29, height: 29, borderRadius: 10, backgroundColor: "rgba(8,15,33,.72)", alignItems: "center", justifyContent: "center" },
-  storeSubtitle: { color: "rgba(255,255,255,.78)", fontSize: 12, marginTop: 4, textAlign: "right" },
-  storeSubtitleOwner: { textAlign: "right" },
+  storeMetaRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, marginTop: 4, flexWrap: "wrap", maxWidth: "100%" },
+  specialtyPill: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 8, borderRadius: 8, backgroundColor: "rgba(255,255,255,.16)", borderWidth: 1, borderColor: "rgba(255,255,255,.28)" },
+  specialtyPillText: { color: "#FFF", fontSize: 10, fontWeight: "700" },
+  changeSpecialtyButton: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 7, borderRadius: 8, backgroundColor: "rgba(8,15,33,.72)", borderWidth: 1, borderColor: "rgba(255,255,255,.22)" },
+  changeSpecialtyText: { color: "#FFF", fontSize: 10, fontWeight: "600" },
   ownerActions: { marginHorizontal: 14, marginTop: 12, flexDirection: "row", gap: 9 },
   ownerPrimaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   ownerPrimaryText: { color: C.primary, fontSize: 12, fontWeight: "700" },
@@ -922,6 +951,8 @@ const S = StyleSheet.create({
   ownerAccountActions: { marginHorizontal: 14, marginTop: 9, flexDirection: "row", gap: 9 },
   ownerAccountAction: { flex: 1, minHeight: 43, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
   ownerAccountActionText: { color: C.text, fontSize: 12, fontWeight: "600" },
+  ownerPromoteAction: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
+  ownerPromoteText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
   headerLogoutButton: { backgroundColor: "rgba(220,38,38,.78)" },
   ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   ratingMetrics: { flex: 1, gap: 7 },
