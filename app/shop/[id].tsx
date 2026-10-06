@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,14 +15,18 @@ import {
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { auth } from "@/lib/firebase";
 import {
   addReview,
   fetchSellerProductsPage,
+  getProfileEngagementCounts,
   getReviews,
   getUserProfile,
+  setUserProfile,
   type Product,
   type UserProfile,
+  uploadProfilePhoto,
 } from "@/lib/db_logic";
 import { PRODUCT_CATEGORY_OPTIONS, normalizeProductCategory, type ProductCategoryFilter } from "@/lib/product_categories";
 import { addStoreCartItem, getStoreCartCount } from "@/lib/store_cart";
@@ -38,8 +43,10 @@ export default function ShopScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [followersCount, setFollowersCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState<"coverUri" | "photoUri" | null>(null);
   const [activeCategory, setActiveCategory] = useState<ProductCategoryFilter>("all");
   const [cartCount, setCartCount] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -48,12 +55,15 @@ export default function ShopScreen() {
   const [ratingVisible, setRatingVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [savingRating, setSavingRating] = useState(false);
+  const isOwner = Boolean(storeId && auth.currentUser?.uid === storeId);
 
   const load = useCallback(async () => {
     if (!storeId) {
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setFollowersCount(0);
     try {
       const nextProfile = await getUserProfile(storeId);
       if (!nextProfile || nextProfile.specialty !== "store") {
@@ -72,7 +82,12 @@ export default function ShopScreen() {
         hasMore = page.hasMore;
       }
       setProducts(allProducts);
-      setReviews((await getReviews(storeId)).slice(0, 4) as ReviewItem[]);
+      const [nextReviews, engagement] = await Promise.all([
+        getReviews(storeId),
+        getProfileEngagementCounts(storeId),
+      ]);
+      setReviews(nextReviews.slice(0, 4) as ReviewItem[]);
+      setFollowersCount(engagement.followCount);
     } catch (error) {
       console.error("load shop failed:", error);
       Alert.alert("تعذر تحميل المتجر", "تحقق من اتصالك ثم أعد المحاولة.");
@@ -120,6 +135,51 @@ export default function ShopScreen() {
       return;
     }
     setCartCount(getStoreCartCount());
+  };
+
+  const changeStoreImage = async (field: "coverUri" | "photoUri") => {
+    if (!isOwner || !storeId || uploadingImage) return;
+
+    if (Platform.OS !== "web") {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("إذن الصور مطلوب", "اسمح بالوصول إلى الصور لاختيار صورة المتجر.");
+        return;
+      }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: field === "coverUri" ? [16, 8] : [1, 1],
+      quality: 0.82,
+    });
+    if (result.canceled || !result.assets[0] || !profile) return;
+
+    const previousProfile = profile;
+    const localUri = result.assets[0].uri;
+    setProfile((current) => current ? { ...current, [field]: localUri } : current);
+    setUploadingImage(field);
+    try {
+      const url = await uploadProfilePhoto(storeId, localUri);
+      if (field === "coverUri") {
+        await setUserProfile(storeId, { coverUri: url });
+      } else {
+        await setUserProfile(storeId, { photoUri: url });
+      }
+      setProfile((current) => current ? { ...current, [field]: url } : current);
+    } catch (error) {
+      console.error(`save store ${field} failed:`, error);
+      setProfile(previousProfile);
+      Alert.alert(
+        "تعذر حفظ الصورة",
+        field === "coverUri"
+          ? "لم يتم حفظ غلاف المتجر. تحقق من الاتصال ثم حاول مجدداً."
+          : "لم يتم حفظ شعار المتجر. تحقق من الاتصال ثم حاول مجدداً.",
+      );
+    } finally {
+      setUploadingImage(null);
+    }
   };
 
   const submitRating = async () => {
@@ -195,30 +255,95 @@ export default function ShopScreen() {
                 <Ionicons name="cart-outline" size={20} color="#FFF" />
                 {cartCount > 0 ? <View style={S.cartBadge}><Text style={S.cartBadgeText}>{cartCount}</Text></View> : null}
               </Pressable>
+              {isOwner ? (
+                <Pressable
+                  onPress={() => void changeStoreImage("coverUri")}
+                  disabled={uploadingImage !== null}
+                  style={[S.coverEditButton, { top: insets.top + 60, left: 14 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="تغيير غلاف المتجر"
+                >
+                  {uploadingImage === "coverUri" ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Feather name="camera" size={14} color="#FFF" />
+                  )}
+                  <Text style={S.coverEditText}>
+                    {uploadingImage === "coverUri" ? "جارٍ الحفظ" : "تغيير الغلاف"}
+                  </Text>
+                </Pressable>
+              ) : null}
               <View style={S.storeIdentity}>
-                {profile.photoUri ? <Image source={{ uri: profile.photoUri }} style={S.storeLogo} /> : <View style={[S.storeLogo, S.logoFallback]}><Feather name="shopping-bag" size={25} color={C.accent} /></View>}
+                <View style={S.logoWrap}>
+                  {profile.photoUri ? (
+                    <Image source={{ uri: profile.photoUri }} style={S.storeLogo} />
+                  ) : (
+                    <View style={[S.storeLogo, S.logoFallback]}>
+                      <Feather name="shopping-bag" size={25} color={C.accent} />
+                    </View>
+                  )}
+                  {isOwner ? (
+                    <Pressable
+                      onPress={() => void changeStoreImage("photoUri")}
+                      disabled={uploadingImage !== null}
+                      style={S.logoEditButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="تغيير شعار المتجر"
+                    >
+                      {uploadingImage === "photoUri" ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <Feather name="camera" size={12} color="#FFF" />
+                      )}
+                    </Pressable>
+                  ) : null}
+                </View>
                 <View style={S.storeIdentityText}>
                   <Text style={S.storeName} numberOfLines={1}>{profile.name || "المتجر"}</Text>
                   <Text style={S.storeSubtitle}>متجر فورس</Text>
                 </View>
-                {auth.currentUser?.uid === storeId ? (
-                  <Pressable onPress={() => router.push("/store-manager" as any)} style={S.manageButton}>
-                    <Feather name="settings" size={15} color={C.primary} />
-                    <Text style={S.manageText}>إدارة</Text>
-                  </Pressable>
-                ) : null}
               </View>
             </View>
 
-            <View style={S.ratingCard}>
-              <View style={S.ratingSummary}>
-                <Ionicons name="star" size={21} color="#F5C842" />
-                <Text style={S.ratingValue}>{profile.rating && profile.rating > 0 ? profile.rating.toFixed(1) : "جديد"}</Text>
-                <Text style={S.reviewCount}>({profile.reviewCount || 0} تقييم)</Text>
+            {isOwner ? (
+              <View style={S.ownerActions}>
+                <Pressable
+                  style={S.ownerPrimaryAction}
+                  onPress={() => router.push("/add-product" as any)}
+                  accessibilityRole="button"
+                >
+                  <Feather name="plus" size={17} color={C.primary} />
+                  <Text style={S.ownerPrimaryText}>إضافة منتج</Text>
+                </Pressable>
+                <Pressable
+                  style={S.ownerSecondaryAction}
+                  onPress={() => router.push("/product-orders" as any)}
+                  accessibilityRole="button"
+                >
+                  <Feather name="clipboard" size={16} color={C.accent} />
+                  <Text style={S.ownerSecondaryText}>طلبات المتجر</Text>
+                </Pressable>
               </View>
-              <Pressable style={S.rateButton} onPress={() => { setRating(0); setRatingVisible(true); }}>
-                <Text style={S.rateButtonText}>قيّم المتجر</Text>
-              </Pressable>
+            ) : null}
+
+            <View style={S.ratingCard}>
+              <View style={S.ratingMetrics}>
+                <View style={S.ratingSummary}>
+                  <Ionicons name="star" size={21} color="#F5C842" />
+                  <Text style={S.ratingValue}>{profile.rating && profile.rating > 0 ? profile.rating.toFixed(1) : "جديد"}</Text>
+                  <Text style={S.reviewCount}>({profile.reviewCount || 0} تقييم)</Text>
+                </View>
+                <View style={S.followersSummary}>
+                  <Feather name="users" size={15} color={C.accent} />
+                  <Text style={S.followersValue}>{followersCount.toLocaleString("ar-IQ-u-nu-latn")}</Text>
+                  <Text style={S.reviewCount}>متابع</Text>
+                </View>
+              </View>
+              {!isOwner ? (
+                <Pressable style={S.rateButton} onPress={() => { setRating(0); setRatingVisible(true); }}>
+                  <Text style={S.rateButtonText}>قيّم المتجر</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {reviews.length ? (
@@ -339,18 +464,28 @@ const S = StyleSheet.create({
   coverFallback: { flex: 1, alignItems: "center", justifyContent: "center" },
   coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(4,10,25,.32)" },
   headerButton: { position: "absolute", width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(8,15,33,.72)", alignItems: "center", justifyContent: "center", zIndex: 2 },
+  coverEditButton: { position: "absolute", minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 12, borderRadius: 13, backgroundColor: "rgba(8,15,33,.78)", zIndex: 2 },
+  coverEditText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
   cartBadge: { position: "absolute", top: -3, right: -3, backgroundColor: "#EF4444", minWidth: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   cartBadgeText: { color: "#FFF", fontSize: 10, fontWeight: "700" },
   storeIdentity: { margin: 16, flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 },
+  logoWrap: { width: 64, height: 64, position: "relative" },
   storeLogo: { width: 64, height: 64, borderRadius: 20, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#FFF" },
   logoFallback: { alignItems: "center", justifyContent: "center" },
+  logoEditButton: { position: "absolute", left: -5, bottom: -4, width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#0D1B3E", alignItems: "center", justifyContent: "center" },
   storeIdentityText: { flex: 1 },
   storeName: { color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
   storeSubtitle: { color: "rgba(255,255,255,.78)", fontSize: 12, marginTop: 4, textAlign: "right" },
-  manageButton: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9 },
-  manageText: { color: C.primary, fontSize: 12, fontWeight: "700" },
-  ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  ownerActions: { marginHorizontal: 14, marginTop: 12, flexDirection: "row", gap: 9 },
+  ownerPrimaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  ownerPrimaryText: { color: C.primary, fontSize: 12, fontWeight: "700" },
+  ownerSecondaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  ownerSecondaryText: { color: C.text, fontSize: 12, fontWeight: "600" },
+  ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  ratingMetrics: { flex: 1, gap: 7 },
   ratingSummary: { flexDirection: "row", alignItems: "center", gap: 7 },
+  followersSummary: { flexDirection: "row", alignItems: "center", gap: 6 },
+  followersValue: { fontSize: 13, color: C.text, fontWeight: "700" },
   ratingValue: { fontSize: 18, color: C.text, fontWeight: "700" },
   reviewCount: { color: C.textSecondary, fontSize: 12 },
   rateButton: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: C.accent },

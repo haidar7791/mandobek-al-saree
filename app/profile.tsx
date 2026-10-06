@@ -164,6 +164,7 @@ export default function ProfileScreen() {
 
 
   const [role, setRole] = useState<"client" | "artisan" | "admin">("client");
+  const [profileLoading, setProfileLoading] = useState(true);
   const [restaurantFoods, setRestaurantFoods] = useState<FoodItem[]>([]);
   const [restaurantTab, setRestaurantTab] =
     useState<"main" | "appetizer" | "drink" | "dessert">("main");
@@ -224,48 +225,49 @@ export default function ProfileScreen() {
       setProductsCursor(null);
       setProductsHasMore(false);
 
-      const loadFirstProducts = async () => {
+      const load = async () => {
         try {
-          const page = await fetchSellerProductsPage(user.uid, 3);
+          const profile = await getUserProfile(user.uid);
+          if (profile?.specialty === "store") {
+            router.replace({ pathname: "/shop/[id]", params: { id: user.uid } } as any);
+            return;
+          }
+
+          if (profile) {
+            setName(profile.name || "");
+            setPhone(profile.phone || "");
+            setPhotoUri(profile.photoUri || null);
+            setRole(profile.role || "client");
+            setSpecialty(
+              ["shovel", "roller", "backhoe"].includes(profile.specialty || "")
+                ? "client"
+                : (profile.specialty || "")
+            );
+            setBio(profile.bio || "");
+          }
+
+          setProfileLoading(false);
+          const [engagement, page, bal] = await Promise.all([
+            getProfileEngagementCounts(user.uid),
+            fetchSellerProductsPage(user.uid, 3),
+            getBalance(user.uid),
+          ]);
+
+          setFollowCount(engagement.followCount);
+          setLikesCount(engagement.likesCount);
           setProducts(page.products);
           setProductsCursor(page.lastDoc);
           setProductsHasMore(page.hasMore);
-        } catch (productError) {
-          console.error("load current profile products failed:", productError);
-          setProducts([]);
+          setBalance(bal);
+        } catch (error) {
+          console.error("load current profile failed:", error);
+          setProfileLoading(false);
         } finally {
           setProductsLoading(false);
         }
       };
-      void loadFirstProducts();
 
-      const load = async () => {
-        const [profile, engagement] = await Promise.all([
-          getUserProfile(user.uid),
-          getProfileEngagementCounts(user.uid),
-        ]);
-
-        if (profile) {
-          setName(profile.name || "");
-          setPhone(profile.phone || "");
-          setPhotoUri(profile.photoUri || null);
-          setRole(profile.role || "client");
-          setSpecialty(
-            ["shovel", "roller", "backhoe"].includes(profile.specialty || "")
-              ? "client"
-              : (profile.specialty || "")
-          );
-          setBio(profile.bio || "");
-          setFollowCount(engagement.followCount);
-          setLikesCount(engagement.likesCount);
-        }
-
-        const bal = await getBalance(user.uid);
-        setBalance(bal);
-      };
-
-      load().catch(() => {
-      });
+      void load();
       return undefined;
     }, [])
   );
@@ -456,6 +458,10 @@ export default function ProfileScreen() {
       setRole(newRole);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditModalVisible(false);
+      if (safeSpecialty === "store") {
+        router.replace({ pathname: "/shop/[id]", params: { id: currentUserId } } as any);
+        return;
+      }
       Alert.alert("تم الحفظ ✓", "تم تحديث ملفك الشخصي بنجاح");
     } catch {
       Alert.alert("خطأ", "حدث خطأ أثناء حفظ البيانات");
@@ -486,6 +492,14 @@ export default function ProfileScreen() {
   }));
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  if (profileLoading) {
+    return (
+      <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color={C.accent} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <KeyboardAvoidingView
@@ -623,20 +637,6 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       )}
-      {specialty === "store" && (
-        <View style={styles.restaurantOwnerCard}>
-          <Pressable
-            style={styles.restaurantOwnerButton}
-            onPress={() => router.push("/store-manager" as any)}
-            accessibilityRole="button"
-            accessibilityLabel="إدارة المتجر"
-          >
-            <Feather name="settings" size={21} color={C.primary} />
-            <Text style={styles.restaurantOwnerButtonText}>إدارة المتجر</Text>
-          </Pressable>
-        </View>
-      )}
-
       {/* ══════════════════════════════════════════
           HORIZONTAL PROFILE TABS
       ══════════════════════════════════════════ */}

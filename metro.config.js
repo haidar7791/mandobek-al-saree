@@ -10,6 +10,7 @@ config.resolver = {
   blockList: [
     /\.local[\/\\]/,
     /\.config[\/\\]/,
+    /[/\\]\.cache[/\\]yarn[/\\]/,
   ],
 };
 
