@@ -27,7 +27,9 @@ import {
   getProfileEngagementCounts,
   getReviews,
   getUserProfile,
+  deleteProduct,
   setUserProfile,
+  updateStoreProductDetails,
   type Product,
   type UserProfile,
   uploadProfilePhoto,
@@ -40,6 +42,9 @@ import Colors from "@/constants/colors";
 const C = Colors.light;
 
 type ReviewItem = { clientId?: string; clientName?: string; rating?: number; comment?: string };
+type OwnerConfirmation =
+  | { kind: "logout" }
+  | { kind: "deleteProduct"; product: Product };
 
 export default function ShopScreen() {
   const insets = useSafeAreaInsets();
@@ -66,6 +71,14 @@ export default function ShopScreen() {
   const [specialtyEditorVisible, setSpecialtyEditorVisible] = useState(false);
   const [editedSpecialty, setEditedSpecialty] = useState("store");
   const [savingSpecialty, setSavingSpecialty] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editedProductTitle, setEditedProductTitle] = useState("");
+  const [editedProductPrice, setEditedProductPrice] = useState("");
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [ownerConfirmation, setOwnerConfirmation] = useState<OwnerConfirmation | null>(null);
+  const [confirmingOwnerAction, setConfirmingOwnerAction] = useState(false);
+  const [ownerActionError, setOwnerActionError] = useState("");
   const isOwner = Boolean(storeId && auth.currentUser?.uid === storeId);
 
   const load = useCallback(async () => {
@@ -282,22 +295,87 @@ export default function ShopScreen() {
 
   const confirmOwnerSignOut = () => {
     if (!isOwner) return;
-    Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من حسابك؟", [
-      { text: "إلغاء", style: "cancel" },
-      {
-        text: "تسجيل الخروج",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await performSignOut();
-            router.replace("/");
-          } catch (error) {
-            console.error("store owner sign out failed:", error);
-            Alert.alert("تعذر تسجيل الخروج", "حاول مرة أخرى.");
-          }
-        },
-      },
-    ]);
+    setOwnerActionError("");
+    setOwnerConfirmation({ kind: "logout" });
+  };
+
+  const openProductEditor = (product: Product) => {
+    if (!isOwner || !storeId || product.sellerId !== storeId) return;
+    setEditingProduct(product);
+    setEditedProductTitle(product.title);
+    setEditedProductPrice(String(product.price));
+  };
+
+  const saveProductChanges = async () => {
+    if (!isOwner || !storeId || !editingProduct || editingProduct.sellerId !== storeId) return;
+    const title = editedProductTitle.trim();
+    const price = Number(editedProductPrice.trim().replace(/,/g, ""));
+    if (!title) {
+      Alert.alert("اسم المنتج مطلوب", "اكتب اسم المنتج قبل الحفظ.");
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      Alert.alert("السعر غير صالح", "أدخل سعراً أكبر من صفر.");
+      return;
+    }
+
+    setSavingProduct(true);
+    try {
+      await updateStoreProductDetails(editingProduct.id, { title, price });
+      setProducts((current) => current.map((product) =>
+        product.id === editingProduct.id ? { ...product, title, price } : product
+      ));
+      setEditingProduct(null);
+      Alert.alert("تم التعديل", "تم تحديث اسم المنتج وسعره.");
+    } catch (error) {
+      console.error("update store product failed:", error);
+      Alert.alert("تعذر تعديل المنتج", "تحقق من الاتصال ثم حاول مرة أخرى.");
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const confirmDeleteProduct = (product: Product) => {
+    if (!isOwner || !storeId || product.sellerId !== storeId || deletingProductId) return;
+    setOwnerActionError("");
+    setOwnerConfirmation({ kind: "deleteProduct", product });
+  };
+
+  const runOwnerConfirmation = async () => {
+    const confirmation = ownerConfirmation;
+    if (!confirmation || !isOwner || !storeId || confirmingOwnerAction) return;
+
+    setConfirmingOwnerAction(true);
+    setOwnerActionError("");
+    try {
+      if (confirmation.kind === "logout") {
+        await performSignOut();
+        setOwnerConfirmation(null);
+        router.replace("/");
+        return;
+      }
+
+      if (confirmation.product.sellerId !== storeId) {
+        throw new Error("لا تملك صلاحية حذف هذا المنتج");
+      }
+      setDeletingProductId(confirmation.product.id);
+      await deleteProduct(confirmation.product.id);
+      setProducts((current) => current.filter((item) => item.id !== confirmation.product.id));
+      setOwnerConfirmation(null);
+    } catch (error) {
+      console.error(
+        confirmation.kind === "logout" ? "store owner sign out failed:" : "delete store product failed:",
+        error,
+      );
+      setOwnerActionError(
+        confirmation.kind === "logout"
+          ? "تعذر تسجيل الخروج. حاول مرة أخرى."
+          : "تعذر حذف المنتج. تحقق من الاتصال ثم حاول مرة أخرى.",
+      );
+    } finally {
+      setConfirmingOwnerAction(false);
+      setDeletingProductId(null);
+    }
   };
 
   const submitRating = async () => {
@@ -366,13 +444,26 @@ export default function ShopScreen() {
                 <Image source={{ uri: profile.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
               ) : <View style={S.coverFallback}><Feather name="shopping-bag" size={48} color="rgba(255,255,255,.65)" /></View>}
               <View style={S.coverShade} />
-              <Pressable onPress={() => router.back()} style={[S.headerButton, { top: insets.top + 10, right: 14 }]}>
-                <Feather name="arrow-right" size={20} color="#FFF" />
-              </Pressable>
-              <Pressable onPress={() => router.push("/shop/cart" as any)} style={[S.headerButton, { top: insets.top + 10, left: 14 }]}>
-                <Ionicons name="cart-outline" size={20} color="#FFF" />
-                {cartCount > 0 ? <View style={S.cartBadge}><Text style={S.cartBadgeText}>{cartCount}</Text></View> : null}
-              </Pressable>
+              {!isOwner ? (
+                <Pressable onPress={() => router.back()} style={[S.headerButton, { top: insets.top + 10, right: 14 }]}>
+                  <Feather name="arrow-right" size={20} color="#FFF" />
+                </Pressable>
+              ) : null}
+              {isOwner ? (
+                <Pressable
+                  onPress={confirmOwnerSignOut}
+                  style={[S.headerButton, S.headerLogoutButton, { top: insets.top + 10, left: 14 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="تسجيل الخروج"
+                >
+                  <Feather name="log-out" size={19} color="#FFF" />
+                </Pressable>
+              ) : (
+                <Pressable onPress={() => router.push("/shop/cart" as any)} style={[S.headerButton, { top: insets.top + 10, left: 14 }]}>
+                  <Ionicons name="cart-outline" size={20} color="#FFF" />
+                  {cartCount > 0 ? <View style={S.cartBadge}><Text style={S.cartBadgeText}>{cartCount}</Text></View> : null}
+                </Pressable>
+              )}
               {isOwner ? (
                 <Pressable
                   onPress={() => void changeStoreImage("coverUri")}
@@ -416,9 +507,9 @@ export default function ShopScreen() {
                     </Pressable>
                   ) : null}
                 </View>
-                <View style={S.storeIdentityText}>
-                  <View style={S.storeNameRow}>
-                    <Text style={S.storeName} numberOfLines={1}>{profile.name || "المتجر"}</Text>
+                <View style={[S.storeIdentityText, isOwner && S.storeIdentityTextOwner]}>
+                  <View style={[S.storeNameRow, isOwner && S.storeNameRowOwner]}>
+                    <Text style={[S.storeName, isOwner && S.storeNameOwner]} numberOfLines={1}>{profile.name || "المتجر"}</Text>
                     {isOwner ? (
                       <Pressable
                         onPress={openNameEditor}
@@ -430,7 +521,7 @@ export default function ShopScreen() {
                       </Pressable>
                     ) : null}
                   </View>
-                  <Text style={S.storeSubtitle}>متجر فورس</Text>
+                  <Text style={[S.storeSubtitle, isOwner && S.storeSubtitleOwner]}>متجر فورس</Text>
                 </View>
               </View>
             </View>
@@ -468,13 +559,13 @@ export default function ShopScreen() {
                   <Text style={S.ownerAccountActionText}>تغيير التخصص</Text>
                 </Pressable>
                 <Pressable
-                  style={[S.ownerAccountAction, S.ownerLogoutAction]}
-                  onPress={confirmOwnerSignOut}
+                  style={S.ownerAccountAction}
+                  onPress={() => router.push("/wallet" as any)}
                   accessibilityRole="button"
-                  accessibilityLabel="تسجيل الخروج"
+                  accessibilityLabel="المحفظة والرصيد"
                 >
-                  <Feather name="log-out" size={16} color="#DC2626" />
-                  <Text style={[S.ownerAccountActionText, S.ownerLogoutText]}>تسجيل الخروج</Text>
+                  <Feather name="credit-card" size={16} color={C.accent} />
+                  <Text style={S.ownerAccountActionText}>المحفظة والرصيد</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -545,10 +636,37 @@ export default function ShopScreen() {
               <Text style={S.productTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={S.productCategory}>{PRODUCT_CATEGORY_OPTIONS.find((category) => category.key === normalizeProductCategory(item.category))?.label || "أخرى"}</Text>
               <Text style={S.productPrice}>{Number(item.price || 0).toLocaleString("ar-IQ-u-nu-latn")} د.ع</Text>
-              <Pressable style={S.addButton} onPress={() => showProductOptions(item)}>
-                <Ionicons name="cart-outline" size={15} color={C.primary} />
-                <Text style={S.addButtonText}>أضف للسلة</Text>
-              </Pressable>
+              {isOwner ? (
+                <View style={S.ownerProductActions}>
+                  <Pressable
+                    style={S.editProductButton}
+                    onPress={() => openProductEditor(item)}
+                    disabled={deletingProductId === item.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`تعديل ${item.title}`}
+                  >
+                    <Feather name="edit-2" size={13} color={C.primary} />
+                    <Text style={S.productActionText}>تعديل</Text>
+                  </Pressable>
+                  <Pressable
+                    style={S.deleteProductButton}
+                    onPress={() => confirmDeleteProduct(item)}
+                    disabled={deletingProductId !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={`حذف ${item.title}`}
+                  >
+                    {deletingProductId === item.id
+                      ? <ActivityIndicator size="small" color="#B42318" />
+                      : <Feather name="trash-2" size={13} color="#B42318" />}
+                    <Text style={[S.productActionText, S.deleteProductText]}>حذف</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable style={S.addButton} onPress={() => showProductOptions(item)}>
+                  <Ionicons name="cart-outline" size={15} color={C.primary} />
+                  <Text style={S.addButtonText}>أضف للسلة</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         )}
@@ -588,6 +706,108 @@ export default function ShopScreen() {
             </Pressable>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      <Modal visible={!!editingProduct} transparent animationType="slide" onRequestClose={() => !savingProduct && setEditingProduct(null)}>
+        <Pressable style={S.modalOverlay} onPress={() => !savingProduct && setEditingProduct(null)}>
+          <Pressable style={S.accountModalSheet} onPress={(event) => event.stopPropagation()}>
+            <View style={S.modalHandle} />
+            <Text style={S.modalTitle}>تعديل بيانات المنتج</Text>
+            <Text style={S.productEditLabel}>اسم المنتج</Text>
+            <TextInput
+              style={S.accountInput}
+              value={editedProductTitle}
+              onChangeText={setEditedProductTitle}
+              placeholder="اسم المنتج"
+              placeholderTextColor={C.textMuted}
+              textAlign="right"
+              maxLength={100}
+              returnKeyType="next"
+            />
+            <Text style={S.productEditLabel}>السعر بالدينار العراقي</Text>
+            <TextInput
+              style={S.accountInput}
+              value={editedProductPrice}
+              onChangeText={setEditedProductPrice}
+              placeholder="السعر"
+              placeholderTextColor={C.textMuted}
+              textAlign="right"
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={() => void saveProductChanges()}
+            />
+            <View style={S.accountModalActions}>
+              <Pressable
+                style={S.accountCancelButton}
+                onPress={() => setEditingProduct(null)}
+                disabled={savingProduct}
+              >
+                <Text style={S.accountCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[S.accountSaveButton, savingProduct && S.accountButtonDisabled]}
+                onPress={() => void saveProductChanges()}
+                disabled={savingProduct}
+              >
+                {savingProduct ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={S.accountSaveText}>حفظ التعديلات</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!ownerConfirmation}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!confirmingOwnerAction) {
+            setOwnerConfirmation(null);
+            setOwnerActionError("");
+          }
+        }}
+      >
+        <View style={S.confirmOverlay}>
+          <View style={S.confirmSheet}>
+            <View style={S.confirmIcon}>
+              <Feather
+                name={ownerConfirmation?.kind === "logout" ? "log-out" : "trash-2"}
+                size={22}
+                color="#B42318"
+              />
+            </View>
+            <Text style={S.modalTitle}>
+              {ownerConfirmation?.kind === "logout" ? "تسجيل الخروج" : "حذف المنتج"}
+            </Text>
+            <Text style={S.confirmMessage}>
+              {ownerConfirmation?.kind === "logout"
+                ? "هل تريد تسجيل الخروج من حسابك؟"
+                : `هل تريد حذف «${ownerConfirmation?.product.title || ""}» نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`}
+            </Text>
+            {ownerActionError ? <Text style={S.confirmError}>{ownerActionError}</Text> : null}
+            <View style={S.accountModalActions}>
+              <Pressable
+                style={S.accountCancelButton}
+                onPress={() => {
+                  setOwnerConfirmation(null);
+                  setOwnerActionError("");
+                }}
+                disabled={confirmingOwnerAction}
+              >
+                <Text style={S.accountCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[S.confirmDangerButton, confirmingOwnerAction && S.accountButtonDisabled]}
+                onPress={() => void runOwnerConfirmation()}
+                disabled={confirmingOwnerAction}
+              >
+                {confirmingOwnerAction
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={S.confirmDangerText}>{ownerConfirmation?.kind === "logout" ? "تسجيل الخروج" : "حذف المنتج"}</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={ratingVisible} transparent animationType="fade" onRequestClose={() => setRatingVisible(false)}>
@@ -705,16 +925,20 @@ const S = StyleSheet.create({
   coverEditText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
   cartBadge: { position: "absolute", top: -3, right: -3, backgroundColor: "#EF4444", minWidth: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   cartBadgeText: { color: "#FFF", fontSize: 10, fontWeight: "700" },
-  storeIdentity: { margin: 16, flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 },
+  storeIdentity: { margin: 16, flexDirection: "row", alignItems: "center", gap: 4, zIndex: 1 },
   logoWrap: { width: 64, height: 64, position: "relative" },
   storeLogo: { width: 64, height: 64, borderRadius: 20, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#FFF" },
   logoFallback: { alignItems: "center", justifyContent: "center" },
   logoEditButton: { position: "absolute", left: -5, bottom: -4, width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#0D1B3E", alignItems: "center", justifyContent: "center" },
   storeIdentityText: { flex: 1 },
+  storeIdentityTextOwner: { flex: 0, flexShrink: 1, maxWidth: "78%" },
   storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 7 },
+  storeNameRowOwner: { justifyContent: "flex-start", alignSelf: "flex-start", gap: 2 },
   storeName: { flex: 1, color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
+  storeNameOwner: { flex: 0, flexShrink: 1 },
   nameEditButton: { width: 29, height: 29, borderRadius: 10, backgroundColor: "rgba(8,15,33,.72)", alignItems: "center", justifyContent: "center" },
   storeSubtitle: { color: "rgba(255,255,255,.78)", fontSize: 12, marginTop: 4, textAlign: "right" },
+  storeSubtitleOwner: { textAlign: "right" },
   ownerActions: { marginHorizontal: 14, marginTop: 12, flexDirection: "row", gap: 9 },
   ownerPrimaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   ownerPrimaryText: { color: C.primary, fontSize: 12, fontWeight: "700" },
@@ -723,8 +947,7 @@ const S = StyleSheet.create({
   ownerAccountActions: { marginHorizontal: 14, marginTop: 9, flexDirection: "row", gap: 9 },
   ownerAccountAction: { flex: 1, minHeight: 43, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
   ownerAccountActionText: { color: C.text, fontSize: 12, fontWeight: "600" },
-  ownerLogoutAction: { backgroundColor: "rgba(220,38,38,.06)", borderColor: "rgba(220,38,38,.2)" },
-  ownerLogoutText: { color: "#DC2626" },
+  headerLogoutButton: { backgroundColor: "rgba(220,38,38,.78)" },
   ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   ratingMetrics: { flex: 1, gap: 7 },
   ratingSummary: { flexDirection: "row", alignItems: "center", gap: 7 },
@@ -757,6 +980,11 @@ const S = StyleSheet.create({
   productPrice: { color: C.accent, fontWeight: "800", fontSize: 14, textAlign: "right" },
   addButton: { backgroundColor: C.accent, borderRadius: 11, minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 5 },
   addButtonText: { color: C.primary, fontWeight: "700", fontSize: 12 },
+  ownerProductActions: { flexDirection: "row", gap: 5, marginTop: 5 },
+  editProductButton: { flex: 1, minHeight: 38, borderRadius: 10, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  deleteProductButton: { flex: 1, minHeight: 38, borderRadius: 10, backgroundColor: "rgba(220,38,38,.08)", borderWidth: 1, borderColor: "rgba(220,38,38,.2)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  productActionText: { color: C.primary, fontWeight: "700", fontSize: 11 },
+  deleteProductText: { color: "#B42318" },
   emptyProducts: { minHeight: 170, alignItems: "center", justifyContent: "center", gap: 10 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,.52)", justifyContent: "flex-end" },
   modalSheet: { backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 26, gap: 14 },
@@ -773,8 +1001,16 @@ const S = StyleSheet.create({
   ratingModal: { margin: 22, backgroundColor: C.card, borderRadius: 20, padding: 22, gap: 20, alignItems: "center" },
   ratingChoices: { flexDirection: "row", gap: 8 },
   accountModalSheet: { backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 28, gap: 16 },
+  confirmOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,.52)", alignItems: "center", justifyContent: "center", padding: 22 },
+  confirmSheet: { width: "100%", maxWidth: 420, backgroundColor: C.card, borderRadius: 20, padding: 22, gap: 14 },
+  confirmIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: "rgba(220,38,38,.08)", alignItems: "center", justifyContent: "center", alignSelf: "center" },
+  confirmMessage: { color: C.textSecondary, fontSize: 14, lineHeight: 22, textAlign: "center" },
+  confirmError: { color: "#B42318", fontSize: 12, textAlign: "center" },
+  confirmDangerButton: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: "#B42318", alignItems: "center", justifyContent: "center" },
+  confirmDangerText: { color: "#FFF", fontSize: 13, fontWeight: "700" },
   specialtyModalSheet: { maxHeight: "88%", backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 14, gap: 12 },
   accountInput: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, paddingHorizontal: 14, color: C.text, fontSize: 15 },
+  productEditLabel: { color: C.textSecondary, fontSize: 12, fontWeight: "600", textAlign: "right", marginBottom: -10 },
   accountModalActions: { flexDirection: "row", gap: 10, marginTop: 2 },
   accountCancelButton: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: C.border, alignItems: "center", justifyContent: "center" },
   accountCancelText: { color: C.textSecondary, fontSize: 13, fontWeight: "600" },

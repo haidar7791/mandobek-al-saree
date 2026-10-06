@@ -362,7 +362,26 @@ service cloud.firestore {
 
     match /products/{productId} {
 
-      allow read, write: if isSignedIn();
+      function isProductOwner() {
+        return isSignedIn()
+          && resource.data.sellerId == request.auth.uid;
+      }
+
+      function isProductMetricsUpdate() {
+        return isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "likesCount",
+            "sellerFeaturedUntil",
+            "priorityScore",
+            "isPromoted"
+          ]);
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isProductOwner() || isProductMetricsUpdate();
+      allow delete: if isProductOwner();
 
       match /likes/{likerId} {
         allow read: if isSignedIn();

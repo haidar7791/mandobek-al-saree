@@ -4350,8 +4350,40 @@ export const respondToProductOrder = async (
   });
 };
 
+export const updateStoreProductDetails = async (
+  productId: string,
+  updates: { title: string; price: number },
+): Promise<void> => {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) throw new Error("يجب تسجيل الدخول لتعديل المنتج");
+
+  const productRef = doc(db, "products", productId);
+  const productSnapshot = await getDoc(productRef);
+  if (!productSnapshot.exists()) throw new Error("المنتج غير موجود");
+  if (String((productSnapshot.data() as Partial<Product>).sellerId || "") !== currentUserId) {
+    throw new Error("لا تملك صلاحية تعديل هذا المنتج");
+  }
+
+  const title = updates.title.trim();
+  const price = Number(updates.price);
+  if (!title) throw new Error("اسم المنتج مطلوب");
+  if (!Number.isFinite(price) || price <= 0) throw new Error("السعر غير صالح");
+
+  await updateDoc(productRef, { title, price });
+};
+
 export const deleteProduct = async (productId: string): Promise<void> => {
-  await deleteDoc(doc(db, "products", productId));
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) throw new Error("يجب تسجيل الدخول لحذف المنتج");
+
+  const productRef = doc(db, "products", productId);
+  const productSnapshot = await getDoc(productRef);
+  if (!productSnapshot.exists()) return;
+  if (String((productSnapshot.data() as Partial<Product>).sellerId || "") !== currentUserId) {
+    throw new Error("لا تملك صلاحية حذف هذا المنتج");
+  }
+
+  await deleteDoc(productRef);
 };
 
 export const cancelProductOrder = async (orderId: string): Promise<void> => {
