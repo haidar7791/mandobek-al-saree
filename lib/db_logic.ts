@@ -840,6 +840,13 @@ export const getProfileEngagementCounts = async (
   };
 };
 
+export const getProfileFollowerCount = async (userId: string): Promise<number> => {
+  const followers = await getCountFromServer(
+    collection(db, "users", userId, "followers")
+  );
+  return followers.data().count;
+};
+
 export const getIsFollowing = async (followerId: string, artisanId: string): Promise<boolean> => {
   const snap = await getDoc(doc(db, "users", artisanId, "followers", followerId));
   return snap.exists();

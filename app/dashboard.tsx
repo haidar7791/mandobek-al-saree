@@ -84,6 +84,7 @@ import {
   getIsFollowing,
   followArtisan,
   unfollowArtisan,
+  getProfileFollowerCount,
 } from "../lib/db_logic";
 // Note: getPromotedArtisans removed — promoted artisans now bubble to top of main list
 import Colors from "@/constants/colors";
@@ -1401,6 +1402,116 @@ function FoodDashboardCard({ item }: { item: FoodItem }) {
         </View>
       </View>
     </View>
+  );
+}
+
+function StoreDirectoryCard({
+  store,
+  index,
+}: {
+  store: ArtisanProfile;
+  index: number;
+}) {
+  const [followersCount, setFollowersCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    getProfileFollowerCount(store.id)
+      .then((count) => {
+        if (isActive) setFollowersCount(count);
+      })
+      .catch((error) => {
+        console.error("Failed to load store follower count:", error);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [store.id]);
+
+  const reviewCount = typeof store.reviewCount === "number" ? store.reviewCount : 0;
+  const rating =
+    typeof store.rating === "number" && store.rating > 0
+      ? store.rating.toFixed(1)
+      : "جديد";
+
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
+      <Pressable
+        style={({ pressed }) => [styles.restaurantCard, pressed && { opacity: 0.93 }]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          navigateWithHomeBase({ pathname: "/shop/[id]", params: { id: store.id } } as any);
+        }}
+      >
+        <View style={[styles.restaurantHero, { height: 150 }]}>
+          {store.coverUri || store.photoUri ? (
+            <Image
+              source={{ uri: store.coverUri || store.photoUri || undefined }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
+          ) : (
+            <LinearGradient
+              colors={["#24345D", "#0D1834"]}
+              style={[
+                StyleSheet.absoluteFill,
+                { alignItems: "center", justifyContent: "center" },
+              ]}
+            >
+              <Feather name="shopping-bag" size={42} color="rgba(255,255,255,.72)" />
+            </LinearGradient>
+          )}
+          <LinearGradient
+            colors={["transparent", "rgba(7,12,25,.88)"]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.restaurantLogoWrap, { bottom: 14 }]}>
+            {store.photoUri ? (
+              <Image
+                source={{ uri: store.photoUri }}
+                style={styles.restaurantLogo}
+                resizeMode="cover"
+              />
+            ) : (
+              <View
+                style={[
+                  styles.restaurantLogo,
+                  {
+                    backgroundColor: C.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
+                ]}
+              >
+                <Feather name="shopping-bag" size={22} color={C.accent} />
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.storeDirectoryInfoBar}>
+          <Text style={styles.storeDirectoryName} numberOfLines={1}>
+            {store.name || "المتجر"}
+          </Text>
+          <View style={styles.storeDirectoryMetric}>
+            <Feather name="users" size={13} color={C.accent} />
+            <Text style={styles.storeDirectoryMetricValue}>
+              {followersCount === null
+                ? "—"
+                : followersCount.toLocaleString("ar-IQ-u-nu-latn")}
+            </Text>
+            <Text style={styles.storeDirectoryMetricLabel}>متابع</Text>
+          </View>
+          <View style={styles.storeDirectoryMetric}>
+            <Ionicons name="star" size={14} color="#F6C945" />
+            <Text style={styles.storeDirectoryMetricValue}>{rating}</Text>
+            <Text style={styles.storeDirectoryMetricLabel}>
+              ({reviewCount} تقييم)
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -2896,50 +3007,7 @@ const isFocused = useIsFocused();
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item: store, index }) => (
-                  <Animated.View entering={FadeInDown.delay(index * 60).springify()}>
-                    <Pressable
-                      style={({ pressed }) => [styles.restaurantCard, pressed && { opacity: 0.93 }]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        navigateWithHomeBase({ pathname: "/shop/[id]", params: { id: store.id } } as any);
-                      }}
-                    >
-                      <View style={[styles.restaurantHero, { height: 150 }]}>
-                        {store.coverUri || store.photoUri ? (
-                          <Image source={{ uri: store.coverUri || store.photoUri || undefined }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                        ) : (
-                          <LinearGradient colors={["#24345D", "#0D1834"]} style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
-                            <Feather name="shopping-bag" size={42} color="rgba(255,255,255,.72)" />
-                          </LinearGradient>
-                        )}
-                        <LinearGradient colors={["transparent", "rgba(7,12,25,.88)"]} style={StyleSheet.absoluteFill} />
-                        <View style={[styles.restaurantLogoWrap, { bottom: 14 }]}>
-                          {store.photoUri ? (
-                            <Image source={{ uri: store.photoUri }} style={styles.restaurantLogo} resizeMode="cover" />
-                          ) : (
-                            <View style={[styles.restaurantLogo, { backgroundColor: C.primary, alignItems: "center", justifyContent: "center" }]}>
-                              <Feather name="shopping-bag" size={22} color={C.accent} />
-                            </View>
-                          )}
-                        </View>
-                        <View style={[styles.restaurantHeroText, { left: 88, right: 14, bottom: 17 }]}>
-                          <Text style={styles.restaurantName} numberOfLines={1}>{store.name}</Text>
-                          <Text style={styles.restaurantCuisine} numberOfLines={1}>{store.bio || "تصفح منتجات المتجر"}</Text>
-                        </View>
-                      </View>
-                      <View style={[styles.restaurantInfoBar, { justifyContent: "space-between" }]}>
-                        <View style={styles.restaurantInfoItem}>
-                          <Feather name="chevron-left" size={16} color={C.accent} />
-                          <Text style={styles.restaurantInfoValue}>عرض المتجر</Text>
-                        </View>
-                        <View style={styles.restaurantInfoItem}>
-                          <Ionicons name="star" size={16} color="#F6C945" />
-                          <Text style={styles.restaurantInfoValue}>{store.rating && store.rating > 0 ? store.rating.toFixed(1) : "جديد"}</Text>
-                          <Text style={styles.restaurantReviewCount}>({store.reviewCount || 0} تقييم)</Text>
-                        </View>
-                      </View>
-                    </Pressable>
-                  </Animated.View>
+                  <StoreDirectoryCard store={store} index={index} />
                 )}
                 ListEmptyComponent={
                   loading ? (
@@ -4553,6 +4621,46 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: C.card,
+  },
+
+  storeDirectoryInfoBar: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 9,
+    backgroundColor: C.card,
+    direction: "rtl",
+  },
+
+  storeDirectoryName: {
+    flex: 1,
+    minWidth: 0,
+    color: C.text,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  storeDirectoryMetric: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    flexShrink: 0,
+  },
+
+  storeDirectoryMetricValue: {
+    color: C.text,
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  storeDirectoryMetricLabel: {
+    color: C.textMuted,
+    fontSize: 9,
+    fontWeight: "600",
   },
 
   restaurantInfoItem: {
