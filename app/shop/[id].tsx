@@ -25,7 +25,6 @@ import {
   fetchSellerProductsPage,
   getCategoryForSpecialty,
   getProfileEngagementCounts,
-  getReviews,
   getUserProfile,
   deleteProduct,
   setUserProfile,
@@ -41,7 +40,6 @@ import Colors from "@/constants/colors";
 
 const C = Colors.light;
 
-type ReviewItem = { clientId?: string; clientName?: string; rating?: number; comment?: string };
 type OwnerConfirmation =
   | { kind: "logout" }
   | { kind: "deleteProduct"; product: Product };
@@ -52,7 +50,6 @@ export default function ShopScreen() {
   const storeId = Array.isArray(rawId) ? rawId[0] : rawId;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,11 +103,7 @@ export default function ShopScreen() {
         hasMore = page.hasMore;
       }
       setProducts(allProducts);
-      const [nextReviews, engagement] = await Promise.all([
-        getReviews(storeId),
-        getProfileEngagementCounts(storeId),
-      ]);
-      setReviews(nextReviews.slice(0, 4) as ReviewItem[]);
+      const engagement = await getProfileEngagementCounts(storeId);
       setFollowersCount(engagement.followCount);
     } catch (error) {
       console.error("load shop failed:", error);
@@ -508,7 +501,7 @@ export default function ShopScreen() {
                   ) : null}
                 </View>
                 <View style={[S.storeIdentityText, isOwner && S.storeIdentityTextOwner]}>
-                  <View style={[S.storeNameRow, isOwner && S.storeNameRowOwner]}>
+                  <View style={S.storeNameRow}>
                     <Text style={[S.storeName, isOwner && S.storeNameOwner]} numberOfLines={1}>{profile.name || "المتجر"}</Text>
                     {isOwner ? (
                       <Pressable
@@ -589,23 +582,6 @@ export default function ShopScreen() {
                 </Pressable>
               ) : null}
             </View>
-
-            {reviews.length ? (
-              <View style={S.reviewsBox}>
-                <Text style={S.sectionTitle}>آراء الزبائن</Text>
-                {reviews.map((review, index) => (
-                  <View key={`${review.clientId || "review"}-${index}`} style={S.reviewRow}>
-                    <View style={S.reviewStars}>
-                      {Array.from({ length: Math.min(5, Math.max(0, Number(review.rating) || 0)) }, (_, i) => (
-                        <Ionicons key={i} name="star" size={12} color="#F5C842" />
-                      ))}
-                    </View>
-                    <Text style={S.reviewName} numberOfLines={1}>{review.clientName || "زبون"}</Text>
-                    {!!review.comment && <Text style={S.reviewComment}>{review.comment}</Text>}
-                  </View>
-                ))}
-              </View>
-            ) : null}
 
             <View style={S.productsHeader}>
               <View>
@@ -932,8 +908,7 @@ const S = StyleSheet.create({
   logoEditButton: { position: "absolute", left: -5, bottom: -4, width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#0D1B3E", alignItems: "center", justifyContent: "center" },
   storeIdentityText: { flex: 1 },
   storeIdentityTextOwner: { flex: 0, flexShrink: 1, maxWidth: "78%" },
-  storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 7 },
-  storeNameRowOwner: { justifyContent: "flex-start", alignSelf: "flex-start", gap: 2 },
+  storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-start", alignSelf: "flex-start", gap: 2 },
   storeName: { flex: 1, color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
   storeNameOwner: { flex: 0, flexShrink: 1 },
   nameEditButton: { width: 29, height: 29, borderRadius: 10, backgroundColor: "rgba(8,15,33,.72)", alignItems: "center", justifyContent: "center" },
@@ -957,12 +932,7 @@ const S = StyleSheet.create({
   reviewCount: { color: C.textSecondary, fontSize: 12 },
   rateButton: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, borderColor: C.accent },
   rateButtonText: { color: C.accent, fontWeight: "700", fontSize: 12 },
-  reviewsBox: { marginHorizontal: 14, marginTop: 12, padding: 14, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border },
   sectionTitle: { color: C.text, fontSize: 16, fontWeight: "700", textAlign: "right" },
-  reviewRow: { paddingTop: 10, paddingBottom: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.border, alignItems: "flex-end" },
-  reviewStars: { flexDirection: "row", gap: 2 },
-  reviewName: { color: C.text, fontWeight: "600", fontSize: 12, marginTop: 3 },
-  reviewComment: { color: C.textSecondary, fontSize: 12, marginTop: 4 },
   productsHeader: { marginHorizontal: 16, marginTop: 20, marginBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   productsCount: { color: C.textSecondary, fontSize: 11, textAlign: "right", marginTop: 4 },
   categories: { gap: 8, paddingHorizontal: 14, paddingBottom: 14 },
