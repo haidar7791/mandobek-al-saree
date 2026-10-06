@@ -10,16 +10,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import {
+  ALL_SPECIALTIES,
   addReview,
   fetchSellerProductsPage,
+  getCategoryForSpecialty,
   getProfileEngagementCounts,
   getReviews,
   getUserProfile,
@@ -30,6 +34,7 @@ import {
 } from "@/lib/db_logic";
 import { PRODUCT_CATEGORY_OPTIONS, normalizeProductCategory, type ProductCategoryFilter } from "@/lib/product_categories";
 import { addStoreCartItem, getStoreCartCount } from "@/lib/store_cart";
+import { performSignOut } from "@/lib/push_notifications";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -55,6 +60,12 @@ export default function ShopScreen() {
   const [ratingVisible, setRatingVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [savingRating, setSavingRating] = useState(false);
+  const [nameEditorVisible, setNameEditorVisible] = useState(false);
+  const [editedName, setEditedName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [specialtyEditorVisible, setSpecialtyEditorVisible] = useState(false);
+  const [editedSpecialty, setEditedSpecialty] = useState("store");
+  const [savingSpecialty, setSavingSpecialty] = useState(false);
   const isOwner = Boolean(storeId && auth.currentUser?.uid === storeId);
 
   const load = useCallback(async () => {
@@ -182,6 +193,113 @@ export default function ShopScreen() {
     }
   };
 
+  const openNameEditor = () => {
+    if (!isOwner || !profile) return;
+    setEditedName(profile.name || "");
+    setNameEditorVisible(true);
+  };
+
+  const saveStoreName = async () => {
+    const nextName = editedName.trim();
+    if (!storeId || !profile || !isOwner) return;
+    if (!nextName) {
+      Alert.alert("الاسم مطلوب", "اكتب الاسم الذي سيظهر في المتجر.");
+      return;
+    }
+    if (nextName === profile.name?.trim()) {
+      setNameEditorVisible(false);
+      return;
+    }
+
+    setSavingName(true);
+    try {
+      await setUserProfile(storeId, { name: nextName });
+      const currentUser = auth.currentUser;
+      if (currentUser?.uid === storeId) {
+        try {
+          await updateProfile(currentUser, { displayName: nextName });
+        } catch (error) {
+          console.warn("sync store name to Firebase Auth failed:", error);
+        }
+      }
+      setProfile((current) => current ? { ...current, name: nextName } : current);
+      setNameEditorVisible(false);
+      Alert.alert("تم تحديث الاسم", "تم تحديث اسم المتجر وملفك الشخصي.");
+    } catch (error) {
+      console.error("save store name failed:", error);
+      Alert.alert("تعذر حفظ الاسم", "تحقق من الاتصال ثم حاول مرة أخرى.");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const openSpecialtyEditor = () => {
+    if (!isOwner || !profile) return;
+    setEditedSpecialty(profile.specialty || "store");
+    setSpecialtyEditorVisible(true);
+  };
+
+  const saveSpecialty = async () => {
+    if (!storeId || !profile || !isOwner) return;
+    if (
+      editedSpecialty !== "client" &&
+      !ALL_SPECIALTIES.some((item) => item.key === editedSpecialty)
+    ) {
+      Alert.alert("تخصص غير صالح", "اختر تخصصاً من القائمة.");
+      return;
+    }
+    if (editedSpecialty === profile.specialty) {
+      setSpecialtyEditorVisible(false);
+      return;
+    }
+
+    setSavingSpecialty(true);
+    try {
+      if (editedSpecialty === "client") {
+        await setUserProfile(storeId, {
+          specialty: "client",
+          role: "client",
+          category: "client" as any,
+          isAvailable: false,
+        });
+      } else {
+        await setUserProfile(storeId, {
+          specialty: editedSpecialty,
+          role: "artisan",
+          category: getCategoryForSpecialty(editedSpecialty),
+          isAvailable: true,
+        });
+      }
+      setSpecialtyEditorVisible(false);
+      router.replace("/profile" as any);
+    } catch (error) {
+      console.error("save store specialty failed:", error);
+      Alert.alert("تعذر تغيير التخصص", "تحقق من الاتصال ثم حاول مرة أخرى.");
+    } finally {
+      setSavingSpecialty(false);
+    }
+  };
+
+  const confirmOwnerSignOut = () => {
+    if (!isOwner) return;
+    Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من حسابك؟", [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "تسجيل الخروج",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await performSignOut();
+            router.replace("/");
+          } catch (error) {
+            console.error("store owner sign out failed:", error);
+            Alert.alert("تعذر تسجيل الخروج", "حاول مرة أخرى.");
+          }
+        },
+      },
+    ]);
+  };
+
   const submitRating = async () => {
     const viewer = auth.currentUser;
     if (!viewer || !storeId) {
@@ -299,7 +417,19 @@ export default function ShopScreen() {
                   ) : null}
                 </View>
                 <View style={S.storeIdentityText}>
-                  <Text style={S.storeName} numberOfLines={1}>{profile.name || "المتجر"}</Text>
+                  <View style={S.storeNameRow}>
+                    <Text style={S.storeName} numberOfLines={1}>{profile.name || "المتجر"}</Text>
+                    {isOwner ? (
+                      <Pressable
+                        onPress={openNameEditor}
+                        style={S.nameEditButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="تغيير اسم المتجر"
+                      >
+                        <Feather name="edit-3" size={15} color={C.accent} />
+                      </Pressable>
+                    ) : null}
+                  </View>
                   <Text style={S.storeSubtitle}>متجر فورس</Text>
                 </View>
               </View>
@@ -322,6 +452,29 @@ export default function ShopScreen() {
                 >
                   <Feather name="clipboard" size={16} color={C.accent} />
                   <Text style={S.ownerSecondaryText}>طلبات المتجر</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {isOwner ? (
+              <View style={S.ownerAccountActions}>
+                <Pressable
+                  style={S.ownerAccountAction}
+                  onPress={openSpecialtyEditor}
+                  accessibilityRole="button"
+                  accessibilityLabel="تغيير التخصص"
+                >
+                  <Feather name="briefcase" size={16} color={C.accent} />
+                  <Text style={S.ownerAccountActionText}>تغيير التخصص</Text>
+                </Pressable>
+                <Pressable
+                  style={[S.ownerAccountAction, S.ownerLogoutAction]}
+                  onPress={confirmOwnerSignOut}
+                  accessibilityRole="button"
+                  accessibilityLabel="تسجيل الخروج"
+                >
+                  <Feather name="log-out" size={16} color="#DC2626" />
+                  <Text style={[S.ownerAccountActionText, S.ownerLogoutText]}>تسجيل الخروج</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -450,6 +603,90 @@ export default function ShopScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal visible={nameEditorVisible} transparent animationType="slide" onRequestClose={() => setNameEditorVisible(false)}>
+        <Pressable style={S.modalOverlay} onPress={() => setNameEditorVisible(false)}>
+          <Pressable style={S.accountModalSheet} onPress={(event) => event.stopPropagation()}>
+            <View style={S.modalHandle} />
+            <Text style={S.modalTitle}>تغيير اسم المتجر</Text>
+            <TextInput
+              style={S.accountInput}
+              value={editedName}
+              onChangeText={setEditedName}
+              placeholder="اكتب الاسم الجديد"
+              placeholderTextColor={C.textMuted}
+              textAlign="right"
+              autoCapitalize="words"
+              maxLength={60}
+              returnKeyType="done"
+              onSubmitEditing={() => void saveStoreName()}
+            />
+            <View style={S.accountModalActions}>
+              <Pressable
+                style={S.accountCancelButton}
+                onPress={() => setNameEditorVisible(false)}
+                disabled={savingName}
+              >
+                <Text style={S.accountCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[S.accountSaveButton, savingName && S.accountButtonDisabled]}
+                onPress={() => void saveStoreName()}
+                disabled={savingName}
+              >
+                {savingName ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={S.accountSaveText}>حفظ الاسم</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={specialtyEditorVisible} transparent animationType="slide" onRequestClose={() => setSpecialtyEditorVisible(false)}>
+        <Pressable style={S.modalOverlay} onPress={() => setSpecialtyEditorVisible(false)}>
+          <Pressable
+            style={[S.specialtyModalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <View style={S.modalHandle} />
+            <Text style={S.modalTitle}>اختر التخصص الجديد</Text>
+            <ScrollView style={S.specialtyOptions} showsVerticalScrollIndicator={false}>
+              {[{ key: "client", label: "عام" }, ...ALL_SPECIALTIES].map((item) => {
+                const selected = editedSpecialty === item.key;
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={[S.specialtyOption, selected && S.specialtyOptionSelected]}
+                    onPress={() => setEditedSpecialty(item.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[S.specialtyOptionText, selected && S.specialtyOptionTextSelected]}>
+                      {item.label}
+                    </Text>
+                    {selected ? <Feather name="check" size={17} color={C.accent} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={S.accountModalActions}>
+              <Pressable
+                style={S.accountCancelButton}
+                onPress={() => setSpecialtyEditorVisible(false)}
+                disabled={savingSpecialty}
+              >
+                <Text style={S.accountCancelText}>إلغاء</Text>
+              </Pressable>
+              <Pressable
+                style={[S.accountSaveButton, savingSpecialty && S.accountButtonDisabled]}
+                onPress={() => void saveSpecialty()}
+                disabled={savingSpecialty}
+              >
+                {savingSpecialty ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={S.accountSaveText}>حفظ التخصص</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -474,13 +711,20 @@ const S = StyleSheet.create({
   logoFallback: { alignItems: "center", justifyContent: "center" },
   logoEditButton: { position: "absolute", left: -5, bottom: -4, width: 27, height: 27, borderRadius: 14, borderWidth: 2, borderColor: "#FFF", backgroundColor: "#0D1B3E", alignItems: "center", justifyContent: "center" },
   storeIdentityText: { flex: 1 },
-  storeName: { color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
+  storeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 7 },
+  storeName: { flex: 1, color: "#FFF", fontSize: 20, fontWeight: "800", textAlign: "right" },
+  nameEditButton: { width: 29, height: 29, borderRadius: 10, backgroundColor: "rgba(8,15,33,.72)", alignItems: "center", justifyContent: "center" },
   storeSubtitle: { color: "rgba(255,255,255,.78)", fontSize: 12, marginTop: 4, textAlign: "right" },
   ownerActions: { marginHorizontal: 14, marginTop: 12, flexDirection: "row", gap: 9 },
   ownerPrimaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.accent, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   ownerPrimaryText: { color: C.primary, fontSize: 12, fontWeight: "700" },
   ownerSecondaryAction: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   ownerSecondaryText: { color: C.text, fontSize: 12, fontWeight: "600" },
+  ownerAccountActions: { marginHorizontal: 14, marginTop: 9, flexDirection: "row", gap: 9 },
+  ownerAccountAction: { flex: 1, minHeight: 43, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  ownerAccountActionText: { color: C.text, fontSize: 12, fontWeight: "600" },
+  ownerLogoutAction: { backgroundColor: "rgba(220,38,38,.06)", borderColor: "rgba(220,38,38,.2)" },
+  ownerLogoutText: { color: "#DC2626" },
   ratingCard: { margin: 14, marginBottom: 4, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   ratingMetrics: { flex: 1, gap: 7 },
   ratingSummary: { flexDirection: "row", alignItems: "center", gap: 7 },
@@ -528,4 +772,18 @@ const S = StyleSheet.create({
   optionTextActive: { color: C.accent, fontWeight: "700" },
   ratingModal: { margin: 22, backgroundColor: C.card, borderRadius: 20, padding: 22, gap: 20, alignItems: "center" },
   ratingChoices: { flexDirection: "row", gap: 8 },
+  accountModalSheet: { backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 28, gap: 16 },
+  specialtyModalSheet: { maxHeight: "88%", backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 14, gap: 12 },
+  accountInput: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: C.border, backgroundColor: C.background, paddingHorizontal: 14, color: C.text, fontSize: 15 },
+  accountModalActions: { flexDirection: "row", gap: 10, marginTop: 2 },
+  accountCancelButton: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: C.border, alignItems: "center", justifyContent: "center" },
+  accountCancelText: { color: C.textSecondary, fontSize: 13, fontWeight: "600" },
+  accountSaveButton: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  accountSaveText: { color: C.primary, fontSize: 13, fontWeight: "700" },
+  accountButtonDisabled: { opacity: 0.6 },
+  specialtyOptions: { maxHeight: 430 },
+  specialtyOption: { minHeight: 45, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  specialtyOptionSelected: { backgroundColor: "rgba(201,168,76,.1)", borderRadius: 10 },
+  specialtyOptionText: { color: C.text, fontSize: 14, textAlign: "right" },
+  specialtyOptionTextSelected: { color: C.accent, fontWeight: "700" },
 });
