@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { queryClient } from "@/lib/query-client";
-import { BackHandler, I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, I18nManager, Linking, Modal, Pressable, Text, View } from "react-native";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
@@ -320,7 +320,25 @@ export default function RootLayout() {
     );
   }
 
-  if (!fontsReady || !authChecked || !accountStatusChecked) return null;
+  if (!fontsReady || !authChecked || !accountStatusChecked) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#0D1B3E",
+          gap: 14,
+        }}
+      >
+        <Text style={{ color: "#C9A84C", fontSize: 38, fontWeight: "800" }}>F</Text>
+        <ActivityIndicator size="large" color="#C9A84C" />
+        <Text style={{ color: "rgba(255,255,255,0.76)", fontSize: 14 }}>
+          جارٍ تحميل فورس...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <ErrorBoundary>
