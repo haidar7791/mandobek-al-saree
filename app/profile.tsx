@@ -232,6 +232,10 @@ export default function ProfileScreen() {
             router.replace({ pathname: "/shop/[id]", params: { id: user.uid } } as any);
             return;
           }
+          if (profile?.specialty === "restaurant") {
+            router.replace({ pathname: "/restaurant/[id]", params: { id: user.uid } } as any);
+            return;
+          }
 
           if (profile) {
             setName(profile.name || "");
@@ -460,6 +464,10 @@ export default function ProfileScreen() {
       setEditModalVisible(false);
       if (safeSpecialty === "store") {
         router.replace({ pathname: "/shop/[id]", params: { id: currentUserId } } as any);
+        return;
+      }
+      if (safeSpecialty === "restaurant") {
+        router.replace({ pathname: "/restaurant/[id]", params: { id: currentUserId } } as any);
         return;
       }
       Alert.alert("تم الحفظ ✓", "تم تحديث ملفك الشخصي بنجاح");

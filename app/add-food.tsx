@@ -72,7 +72,7 @@ export default function AddFoodScreen() {
     }
 
     if (!cleanName) {
-      Alert.alert("تنبيه", "اكتب اسم الطبق.");
+      Alert.alert("تنبيه", "اكتب اسم الوجبة.");
       return;
     }
 
@@ -129,7 +129,7 @@ export default function AddFoodScreen() {
 
       Alert.alert(
         "تم النشر",
-        "تم نشر الطبق بنجاح في قسم المأكولات.",
+        "تم نشر الوجبة بنجاح في قسم المأكولات.",
         [
           {
             text: "حسناً",
@@ -142,7 +142,7 @@ export default function AddFoodScreen() {
 
       Alert.alert(
         "تعذر النشر",
-        error?.message || "حدث خطأ أثناء نشر الطبق."
+        error?.message || "حدث خطأ أثناء نشر الوجبة."
       );
     } finally {
       setPublishing(false);
@@ -165,7 +165,7 @@ export default function AddFoodScreen() {
             size={23}
             color={C.accent}
           />
-          <Text style={styles.title}>إضافة طبق طعام</Text>
+          <Text style={styles.title}>إضافة وجبة</Text>
         </View>
 
         <View style={styles.headerBtn} />
@@ -240,7 +240,7 @@ export default function AddFoodScreen() {
         )}
 
         <Text style={styles.label}>
-          اسم الطبق أو اسم الأكلة
+          اسم الوجبة أو اسم الأكلة
         </Text>
 
         <TextInput
@@ -301,7 +301,7 @@ export default function AddFoodScreen() {
                 color="#FFF"
               />
               <Text style={styles.publishText}>
-                نشر الطبق
+                نشر الوجبة
               </Text>
             </>
           )}

@@ -105,6 +105,10 @@ export default function ArtisanProfileScreen() {
           router.replace({ pathname: "/shop/[id]", params: { id: artisanData.userId } } as any);
           return;
         }
+        if (artisanData.specialty === "restaurant") {
+          router.replace({ pathname: "/restaurant/[id]", params: { id: artisanData.userId } } as any);
+          return;
+        }
         // Canonical routing: client accounts always use /user-profile so the
         // public profile looks identical regardless of where it was opened.
         if (artisanData.specialty === "client") {

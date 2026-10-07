@@ -180,6 +180,25 @@ function ArtisanCard({
       : null;
 
   const isRestaurant = artisan.specialty === "restaurant";
+  const [restaurantFollowers, setRestaurantFollowers] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isRestaurant) {
+      setRestaurantFollowers(null);
+      return;
+    }
+    let active = true;
+    getProfileFollowerCount(artisan.id)
+      .then((count) => {
+        if (active) setRestaurantFollowers(count);
+      })
+      .catch((error) => {
+        console.error("Failed to load restaurant follower count:", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [artisan.id, isRestaurant]);
 
   const initials = artisan.name
     .split(" ")
@@ -195,13 +214,6 @@ function ArtisanCard({
     typeof artisan.rating === "number" && artisan.rating > 0
       ? artisan.rating.toFixed(1)
       : null;
-
-  const distanceText =
-    distance !== null
-      ? distance < 1
-        ? `${Math.round(distance * 1000)} م`
-        : `${distance.toFixed(1)} كم`
-      : "غير محددة";
 
   /*
    * Restaurant cards use the profile photo as a premium banner until a
@@ -226,7 +238,7 @@ function ArtisanCard({
             });
           }}
         >
-          <View style={styles.restaurantHero}>
+          <View style={[styles.restaurantHero, { height: 150 }]}>
             {artisan.coverUri || artisan.photoUri ? (
               <Image
                 source={{ uri: artisan.coverUri || artisan.photoUri || undefined }}
@@ -261,7 +273,7 @@ function ArtisanCard({
               </View>
             )}
 
-            <View style={styles.restaurantLogoWrap}>
+            <View style={[styles.restaurantLogoWrap, { bottom: 14, left: 14, right: undefined }]}>
               {artisan.restaurantLogoUri ? (
                 <Image
                   source={{ uri: artisan.restaurantLogoUri }}
@@ -289,83 +301,25 @@ function ArtisanCard({
               />
             </View>
 
-            <View style={styles.restaurantHeroText}>
-              <Text
-                style={styles.restaurantName}
-                numberOfLines={1}
-              >
-                {artisan.name}
-              </Text>
-
-              <Text
-                style={styles.restaurantCuisine}
-                numberOfLines={1}
-              >
-                {artisan.restaurantCategory || "مطعم"}
-              </Text>
-
-              {!!artisan.restaurantAddress?.trim() && (
-                <Text
-                  style={styles.restaurantAddress}
-                  numberOfLines={1}
-                >
-                  {artisan.restaurantAddress.trim()}
-                </Text>
-              )}
-            </View>
           </View>
 
-          <View style={styles.restaurantInfoBar}>
-            <View style={styles.restaurantInfoItem}>
-              <Ionicons
-                name="star"
-                size={18}
-                color="#F6C945"
-              />
-              <Text style={styles.restaurantInfoValue}>
-                {rating ? rating : "جديد"}
+          <View style={styles.storeDirectoryInfoBar}>
+            <Text style={styles.storeDirectoryName} numberOfLines={1}>
+              {artisan.name || "المطعم"}
+            </Text>
+            <View style={styles.storeDirectoryMetric}>
+              <Feather name="users" size={13} color={C.accent} />
+              <Text style={styles.storeDirectoryMetricValue}>
+                {restaurantFollowers === null
+                  ? "—"
+                  : restaurantFollowers.toLocaleString("ar-IQ-u-nu-latn")}
               </Text>
-              {reviewCount > 0 && (
-                <Text style={styles.restaurantReviewCount}>
-                  ({reviewCount} تقييم)
-                </Text>
-              )}
+              <Text style={styles.storeDirectoryMetricLabel}>متابع</Text>
             </View>
-
-            <View style={styles.restaurantInfoDivider} />
-
-            <View style={styles.restaurantInfoItem}>
-              <View
-                style={[
-                  styles.restaurantLiveDot,
-                  artisan.isAvailable
-                    ? styles.restaurantStatusOpen
-                    : styles.restaurantStatusClosed,
-                ]}
-              />
-              <Text
-                style={[
-                  styles.restaurantInfoValue,
-                  artisan.isAvailable
-                    ? styles.restaurantOpenText
-                    : styles.restaurantClosedText,
-                ]}
-              >
-                {artisan.isAvailable ? "مفتوح الآن" : "مغلق"}
-              </Text>
-            </View>
-
-            <View style={styles.restaurantInfoDivider} />
-
-            <View style={styles.restaurantInfoItem}>
-              <Feather
-                name="map-pin"
-                size={15}
-                color={C.accent}
-              />
-              <Text style={styles.restaurantInfoValue}>
-                {distanceText}
-              </Text>
+            <View style={styles.storeDirectoryMetric}>
+              <Ionicons name="star" size={14} color="#F6C945" />
+              <Text style={styles.storeDirectoryMetricValue}>{rating || "جديد"}</Text>
+              <Text style={styles.storeDirectoryMetricLabel}>({reviewCount} تقييم)</Text>
             </View>
           </View>
         </Pressable>
@@ -2693,13 +2647,29 @@ const isFocused = useIsFocused();
                     Haptics.impactAsync(
                       Haptics.ImpactFeedbackStyle.Medium
                     );
-                    navigateWithHomeBase(
-                      liveProfile?.specialty === "store" ? "/store-manager" as any : "/add-product" as any
-                    );
+                    if (liveProfile?.specialty === "store") {
+                      navigateWithHomeBase("/store-manager" as any);
+                    } else if (liveProfile?.specialty === "restaurant") {
+                      navigateWithHomeBase("/restaurant-manager" as any);
+                    } else {
+                      navigateWithHomeBase("/add-product" as any);
+                    }
                   }}
                 >
-                  <Feather name={liveProfile?.specialty === "store" ? "settings" : "shopping-bag"} size={20} color="#111" />
-                  <Text style={styles.newMenuText}>{liveProfile?.specialty === "store" ? "إدارة المتجر" : "إضافة منتج"}</Text>
+                  {liveProfile?.specialty === "store" ? (
+                    <Feather name="settings" size={20} color="#111" />
+                  ) : liveProfile?.specialty === "restaurant" ? (
+                    <Ionicons name="restaurant-outline" size={20} color="#111" />
+                  ) : (
+                    <Feather name="shopping-bag" size={20} color="#111" />
+                  )}
+                  <Text style={styles.newMenuText}>
+                    {liveProfile?.specialty === "store"
+                      ? "إدارة المتجر"
+                      : liveProfile?.specialty === "restaurant"
+                        ? "إدارة المطعم"
+                        : "إضافة منتج"}
+                  </Text>
                 </Pressable>
               </View>
             )}

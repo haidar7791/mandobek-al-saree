@@ -44,7 +44,7 @@ const C = Colors.light;
 
 
 const menuTabs: { key: RestaurantDishCategory; label: string; emoji: string }[] = [
-  { key: "main", label: "الأطباق الرئيسية", emoji: "🍢" },
+  { key: "main", label: "المأكولات", emoji: "🍢" },
   { key: "appetizer", label: "المقبلات", emoji: "🥗" },
   { key: "drink", label: "المشروبات", emoji: "🥤" },
   { key: "dessert", label: "الحلويات", emoji: "🍰" },
@@ -289,7 +289,7 @@ export default function RestaurantManagerScreen() {
       setEditingDish(null);
     } catch (error) {
       console.error("save restaurant dish failed:", error);
-      Alert.alert("تعذر حفظ الطبق", "لم يتم حفظ الطبق. حاول مرة أخرى.");
+      Alert.alert("تعذر حفظ الوجبة", "لم يتم حفظ الوجبة. حاول مرة أخرى.");
     } finally {
       setSavingDish(false);
     }
@@ -301,7 +301,7 @@ export default function RestaurantManagerScreen() {
   };
 
   const confirmDeleteDish = (dish: FoodItem) => {
-    Alert.alert("حذف الطبق", `هل تريد حذف «${dish.name}» من قائمتك؟`, [
+    Alert.alert("حذف الوجبة", `هل تريد حذف «${dish.name}» من قائمتك؟`, [
       { text: "إلغاء", style: "cancel" },
       {
         text: "حذف",
@@ -314,7 +314,7 @@ export default function RestaurantManagerScreen() {
               setFoods((current) => current.filter((food) => food.id !== dish.id));
             } catch (error) {
               console.error("delete restaurant dish failed:", error);
-              Alert.alert("تعذر الحذف", "لم يتم حذف الطبق. حاول مرة أخرى.");
+              Alert.alert("تعذر الحذف", "لم يتم حذف الوجبة. حاول مرة أخرى.");
             } finally {
               setDeletingDishId(null);
             }
@@ -534,11 +534,11 @@ export default function RestaurantManagerScreen() {
           <View style={styles.menuHeader}>
             <Pressable onPress={() => openDishEditor()} style={styles.addDishButton}>
               <Feather name="plus" size={16} color={C.primary} />
-              <Text style={styles.addDishText}>إضافة طبق</Text>
+              <Text style={styles.addDishText}>إضافة وجبة</Text>
             </Pressable>
             <View style={styles.menuHeadingText}>
               <Text style={styles.sectionTitle}>قائمة الطعام</Text>
-              <Text style={styles.sectionSubtitle}>{foods.length} أطباق في قائمتك</Text>
+              <Text style={styles.sectionSubtitle}>{foods.length} وجبة في قائمتك</Text>
             </View>
           </View>
 
@@ -576,10 +576,10 @@ export default function RestaurantManagerScreen() {
               <Text style={styles.emptyMenuTitle}>
                 لا توجد أطباق في هذه الفئة
               </Text>
-              <Text style={styles.emptyMenuHint}>أضف طبقاً أو غيّر الفئة لمتابعة إدارة قائمتك.</Text>
+              <Text style={styles.emptyMenuHint}>أضف وجبة أو غيّر الفئة لمتابعة إدارة قائمتك.</Text>
               <Pressable onPress={() => openDishEditor()} style={styles.emptyAddButton}>
                 <Feather name="plus" size={15} color={C.primary} />
-                <Text style={styles.emptyAddText}>إضافة أول طبق</Text>
+                <Text style={styles.emptyAddText}>إضافة أول وجبة</Text>
               </Pressable>
             </View>
           ) : (
@@ -600,7 +600,7 @@ export default function RestaurantManagerScreen() {
                     <View style={styles.dishInfo}>
                       <Text style={styles.dishName} numberOfLines={1}>{dish.name}</Text>
                       <Text style={styles.dishCategory}>
-                        {tabInfo?.emoji ?? "🍽️"} {tabInfo?.label ?? "أطباق رئيسية"}
+                        {tabInfo?.emoji ?? "🍽️"} {tabInfo?.label ?? "المأكولات"}
                       </Text>
                       {!!(dish.description || dish.appetizers) && (
                         <Text style={styles.dishDescription} numberOfLines={1}>
@@ -612,14 +612,14 @@ export default function RestaurantManagerScreen() {
                       </Text>
                     </View>
                     <View style={styles.dishActions}>
-                      <Pressable onPress={() => openDishEditor(dish)} style={styles.actionIcon} accessibilityLabel="تعديل الطبق">
+                      <Pressable onPress={() => openDishEditor(dish)} style={styles.actionIcon} accessibilityLabel="تعديل الوجبة">
                         <Feather name="edit-2" size={15} color={C.textSecondary} />
                       </Pressable>
                       <Pressable
                         onPress={() => confirmDeleteDish(dish)}
                         style={styles.actionIcon}
                         disabled={isDeleting}
-                        accessibilityLabel="حذف الطبق"
+                        accessibilityLabel="حذف الوجبة"
                       >
                         {isDeleting ? <ActivityIndicator size="small" color={C.danger} /> : <Feather name="trash-2" size={15} color={C.danger} />}
                       </Pressable>

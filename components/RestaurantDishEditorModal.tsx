@@ -32,7 +32,7 @@ export type RestaurantDishDraft = {
 };
 
 const categories: { key: RestaurantDishCategory; label: string; emoji: string }[] = [
-  { key: "main", label: "أطباق رئيسية", emoji: "🍢" },
+  { key: "main", label: "المأكولات", emoji: "🍢" },
   { key: "appetizer", label: "مقبلات", emoji: "🥗" },
   { key: "drink", label: "مشروبات", emoji: "🥤" },
   { key: "dessert", label: "حلويات", emoji: "🍰" },
@@ -90,7 +90,7 @@ export default function RestaurantDishEditorModal({
     const cleanName = name.trim();
     const numericPrice = Number(price.replace(/[^\d]/g, ""));
     if (!cleanName) {
-      setError("اكتب اسم الطبق.");
+      setError("اكتب اسم الوجبة.");
       return;
     }
     if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
@@ -98,7 +98,7 @@ export default function RestaurantDishEditorModal({
       return;
     }
     if (!imageUri) {
-      setError("أضف صورة للطبق.");
+      setError("أضف صورة للوجبة.");
       return;
     }
     onSave({
@@ -131,7 +131,7 @@ export default function RestaurantDishEditorModal({
             <View style={styles.headingRow}>
               <View>
                 <Text style={styles.title}>
-                  {initialDish ? "تعديل الطبق" : "إضافة طبق جديد"}
+                  {initialDish ? "تعديل الوجبة" : "إضافة وجبة جديدة"}
                 </Text>
                 <Text style={styles.subtitle}>أدخل تفاصيل واضحة لعملائك</Text>
               </View>
@@ -150,7 +150,7 @@ export default function RestaurantDishEditorModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.label}>صورة الطبق</Text>
+              <Text style={styles.label}>صورة الوجبة</Text>
               <Pressable style={styles.imagePicker} onPress={() => void chooseImage()}>
                 {imageUri ? (
                   <>
@@ -163,12 +163,12 @@ export default function RestaurantDishEditorModal({
                 ) : (
                   <View style={styles.imageEmpty}>
                     <Ionicons name="image-outline" size={30} color={C.accent} />
-                    <Text style={styles.imageEmptyText}>اختر صورة جذابة للطبق</Text>
+                    <Text style={styles.imageEmptyText}>اختر صورة جذابة للوجبة</Text>
                   </View>
                 )}
               </Pressable>
 
-              <Text style={styles.label}>اسم الطبق</Text>
+              <Text style={styles.label}>اسم الوجبة</Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
@@ -183,7 +183,7 @@ export default function RestaurantDishEditorModal({
               <TextInput
                 value={description}
                 onChangeText={setDescription}
-                placeholder="اكتب وصفاً قصيراً للطبق..."
+                placeholder="اكتب وصفاً قصيراً للوجبة..."
                 placeholderTextColor={C.textMuted}
                 style={[styles.input, styles.multiline]}
                 textAlign="right"

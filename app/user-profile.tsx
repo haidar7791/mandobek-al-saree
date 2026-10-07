@@ -77,6 +77,10 @@ export default function UserProfileScreen() {
             router.replace({ pathname: "/shop/[id]", params: { id: userId } } as any);
             return;
           }
+          if (p.specialty === "restaurant") {
+            router.replace({ pathname: "/restaurant/[id]", params: { id: userId } } as any);
+            return;
+          }
           // Hand off only real specialty owners to the richer artisan view.
           // Client accounts may have legacy role=artisan data, but must use
           // the same public client profile everywhere.

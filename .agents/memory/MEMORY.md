@@ -21,3 +21,4 @@
 - [Chat unread state](chat-unread-state.md) — keep list highlighting separate from the home badge's latest-sender rule
 - [Content like operation semantics](content-like-operation-semantics.md) — idempotent like/unlike helpers return whether a write occurred, not the final liked state
 - [Store-owner account controls](store-owner-account-controls.md) — keep store-owner identity actions on the owner-only storefront reached from their profile
+- [Restaurant/store boundary](restaurant-store-boundary.md) — restaurant changes must not alter the completed store screens or behavior
