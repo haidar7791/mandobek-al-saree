@@ -4631,7 +4631,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 9,
     backgroundColor: C.card,
-    direction: "rtl",
   },
 
   storeDirectoryName: {
