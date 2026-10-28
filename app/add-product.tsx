@@ -22,6 +22,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { auth } from "@/lib/firebase";
 import { createProduct, getUserProfile, type LocalProductMedia } from "@/lib/db_logic";
+import { createVideoThumbnail } from "@/lib/video-thumbnail";
 import ProductMediaCarousel from "@/components/ProductMediaCarousel";
 import Colors from "@/constants/colors";
 import {
@@ -118,11 +119,23 @@ export default function AddProductScreen() {
     goHome();
     try {
       const profile = await getUserProfile(user.uid);
+      let localThumbnailUri: string | undefined;
+      if (!selectedMedia.some((media) => media.type === "image")) {
+        const video = selectedMedia.find((media) => media.type === "video");
+        if (video) {
+          try {
+            localThumbnailUri = await createVideoThumbnail(video.uri, 2000);
+          } catch (thumbnailError) {
+            console.warn("product thumbnail generation failed:", thumbnailError);
+          }
+        }
+      }
       await createProduct({
         title: title.trim(),
         price: parsedPrice,
         description: description.trim(),
         localMedia: selectedMedia,
+        localThumbnailUri,
         sellerId: user.uid,
         sellerName: profile?.name || "مجهول",
         sellerPhone: profile?.phone || "",

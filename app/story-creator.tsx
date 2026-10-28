@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
 } from "react-native";
-import { router } from "expo-router";
 import { goBack, goHome } from "@/lib/navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -36,9 +35,9 @@ import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
 import {
   createStory,
-  generateStoryVideoThumbnail,
   uploadStoryMedia,
 } from "@/lib/stories_logic";
+import { createVideoThumbnail } from "@/lib/video-thumbnail";
 import Colors from "@/constants/colors";
 
 const C = Colors.light;
@@ -147,6 +146,21 @@ export default function StoryCreatorScreen() {
     void (async () => {
       try {
         const profile = await getUserProfile(user.uid);
+        let thumbnailUrl: string | null = null;
+        if (mediaType === "video") {
+          try {
+            const thumbnailUri = await createVideoThumbnail(mediaUri, 2000);
+            thumbnailUrl = await uploadStoryMedia(
+              thumbnailUri,
+              "image",
+              user.uid,
+              "image/jpeg",
+              "thumbnail.jpg",
+            );
+          } catch (thumbnailError) {
+            console.warn("[story-creator] local thumbnail generation failed:", thumbnailError);
+          }
+        }
         const mediaUrl = await uploadStoryMedia(
           mediaUri,
           mediaType,
@@ -155,23 +169,17 @@ export default function StoryCreatorScreen() {
           mediaFileName
         );
 
-        const storyId = await createStory({
+        await createStory({
           userId: user.uid,
           userName: profile?.name || "مستخدم فورس",
           userPhotoUri: profile?.photoUri || null,
           mediaUrl,
           mediaType,
-          thumbnailUrl: mediaType === "image" ? mediaUrl : null,
+          thumbnailUrl: mediaType === "image" ? mediaUrl : thumbnailUrl,
           text: overlayText.trim() || null,
           textColor: overlayText.trim() ? textColor : null,
           musicName: selectedMusic.id === "none" ? null : selectedMusic.name,
         });
-
-        if (mediaType === "video") {
-          // Thumbnail generation is intentionally part of the same background
-          // task and must never keep the creator screen open.
-          await generateStoryVideoThumbnail(storyId);
-        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (err) {

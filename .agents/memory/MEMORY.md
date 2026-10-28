@@ -22,3 +22,4 @@
 - [Content like operation semantics](content-like-operation-semantics.md) — idempotent like/unlike helpers return whether a write occurred, not the final liked state
 - [Store-owner account controls](store-owner-account-controls.md) — keep store-owner identity actions on the owner-only storefront reached from their profile
 - [Restaurant/store boundary](restaurant-store-boundary.md) — restaurant changes must not alter the completed store screens or behavior
+- [Firebase Spark architecture](firebase-spark-architecture.md) — keep app-facing backend behavior on Firebase client services and Hosting; do not add Cloud Functions under Spark

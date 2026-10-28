@@ -8,11 +8,8 @@ export interface GoogleAccountSelection {
 }
 
 /**
- * Opens the native Google account chooser and returns only the selected email.
- *
- * Google is used only as an email/account picker.
- * The selected email is returned to the existing email/password
- * authentication system.
+ * Opens the native Google account chooser and returns the verified identity
+ * token for Firebase Authentication, along with the account's email.
  *
  * IMPORTANT:
  * The Google Sign-In native module is loaded dynamically.
@@ -91,8 +88,8 @@ export async function pickGoogleEmail(): Promise<GoogleAccountSelection | null> 
       : null;
   } finally {
     /**
-     * Google is only being used as an email picker.
-     * We don't keep the Google account signed in.
+     * Firebase Authentication uses the returned ID token. The native chooser
+     * itself does not need to retain a separate Google session.
      */
     await GoogleSignin.signOut().catch(() => {});
   }

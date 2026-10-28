@@ -29,12 +29,17 @@ import {
   GENERAL_SERVICES,
   HOME_SERVICES,
   ensureUserDocument,
+  getUserProfile,
 } from "@/lib/db_logic";
-import { getApiUrl, GOOGLE_EMAIL_LOGIN_PATH } from "@/lib/config";
 import {
+  GoogleAuthProvider,
   createUserWithEmailAndPassword,
-  signInWithCustomToken,
+  linkWithCredential,
+  sendPasswordResetEmail,
+  signInWithCredential,
   signInWithEmailAndPassword,
+  signOut,
+  type AuthCredential,
 } from "firebase/auth";
 import { pickGoogleEmail } from "@/lib/google-email-picker";
 
@@ -49,45 +54,6 @@ const SPECIALTY_GROUPS = [
   { title: "خدمات طبية", items: GENERAL_SERVICES },
   { title: "خدمات التوصيل", items: DELIVERY_SERVICES },
 ];
-
-type ApiResponse = {
-  ok?: boolean;
-  exists?: boolean;
-  customToken?: string;
-  email?: string;
-  error?: string;
-  message?: string;
-};
-
-async function readApiJson(response: Response): Promise<ApiResponse> {
-  const raw = await response.text();
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (!raw.trim()) {
-    throw new Error(`الخادم لم يُرجع استجابة (HTTP ${response.status})`);
-  }
-
-  let data: ApiResponse;
-  try {
-    data = JSON.parse(raw) as ApiResponse;
-  } catch {
-    console.error("[API] Non-JSON response", {
-      status: response.status,
-      contentType,
-      preview: raw.slice(0, 240),
-    });
-    if (response.status === 404) {
-      throw new Error("خدمة المصادقة غير محدثة على Google Cloud. يرجى نشر Backend الأخير.");
-    }
-    throw new Error(`الخادم أرجع استجابة غير صالحة (HTTP ${response.status})`);
-  }
-
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error ?? data.message ?? `فشل الطلب (HTTP ${response.status})`);
-  }
-
-  return data;
-}
 
 function validEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -161,6 +127,9 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  const [googleSignupPending, setGoogleSignupPending] = useState(false);
+  const [googleLinkCredential, setGoogleLinkCredential] = useState<AuthCredential | null>(null);
+  const [googleLinkEmail, setGoogleLinkEmail] = useState<string | null>(null);
   const [newAccountName, setNewAccountName] = useState("");
   const [newAccountPassword, setNewAccountPassword] = useState("");
   const [newAccountSpecialty, setNewAccountSpecialty] = useState("client");
@@ -200,6 +169,25 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      if (googleLinkCredential && googleLinkEmail === normalizedEmail) {
+        try {
+          await linkWithCredential(credential.user, googleLinkCredential);
+        } catch (linkError: any) {
+          if (linkError?.code !== "auth/provider-already-linked") {
+            console.warn("[Google account linking] could not link provider:", linkError);
+            Alert.alert(
+              "تم تسجيل الدخول",
+              "تم الدخول بكلمة المرور، لكن تعذّر ربط Google بهذا الحساب. يمكنك متابعة استخدام كلمة المرور."
+            );
+          }
+        } finally {
+          setGoogleLinkCredential(null);
+          setGoogleLinkEmail(null);
+        }
+      } else if (googleLinkCredential) {
+        setGoogleLinkCredential(null);
+        setGoogleLinkEmail(null);
+      }
       await ensureUserDocument(credential.user.uid, normalizedEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
@@ -225,38 +213,55 @@ export default function AuthScreen() {
     if (googleLoading || loading || createLoading) return;
 
     setGoogleLoading(true);
+    let pendingGoogleCredential: AuthCredential | null = null;
+    let pendingGoogleEmail: string | null = null;
     try {
       const selection = await pickGoogleEmail();
       if (!selection?.email) return;
 
       const selectedEmail = selection.email.trim().toLowerCase();
-      const response = await fetch(getApiUrl(GOOGLE_EMAIL_LOGIN_PATH), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: selectedEmail }),
-      });
-      const data = await readApiJson(response);
+      if (!selection.idToken) {
+        throw new Error("تعذّر الحصول على رمز تسجيل Google");
+      }
 
-      if (data.exists && data.customToken) {
-        const credential = await signInWithCustomToken(auth, data.customToken);
-        await ensureUserDocument(credential.user.uid, selectedEmail);
+      const googleCredential = GoogleAuthProvider.credential(selection.idToken);
+      pendingGoogleCredential = googleCredential;
+      pendingGoogleEmail = selectedEmail;
+      const result = await signInWithCredential(auth, googleCredential);
+      const existingProfile = await getUserProfile(result.user.uid);
+
+      if (!existingProfile) {
+        setGoogleSignupPending(true);
+        setGoogleEmail(selectedEmail);
+        setNewAccountName(result.user.displayName?.trim() || "");
+        setNewAccountPassword("");
+        setNewAccountSpecialty("client");
+        setSpecialtyPickerVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace("/dashboard" as any);
+        setTimeout(() => newAccountNameRef.current?.focus(), 200);
         return;
       }
 
-      // New email: keep this on the same screen and show only the two fields
-      // needed to create the account. No email OTP or verification code is sent.
-      setGoogleEmail(selectedEmail);
-      setNewAccountName("");
-      setNewAccountPassword("");
-       setNewAccountSpecialty("client");
-       setSpecialtyPickerVisible(false);
+      await ensureUserDocument(result.user.uid, selectedEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => newAccountNameRef.current?.focus(), 200);
+      router.replace("/dashboard" as any);
     } catch (error: any) {
       console.error("[Google email auth]", error);
-      showError(error?.message ?? "تعذّر اختيار حساب Google");
+      if (error?.code === "auth/account-exists-with-different-credential") {
+        if (pendingGoogleCredential && pendingGoogleEmail) {
+          setGoogleLinkCredential(pendingGoogleCredential);
+          setGoogleLinkEmail(pendingGoogleEmail);
+          setEmail(pendingGoogleEmail);
+          setGoogleEmail(null);
+          showError("هذا الحساب مسجل بكلمة مرور. سجّل الدخول بها مرة واحدة لربط حساب Google.");
+        } else {
+          showError("هذا الحساب مسجل بكلمة مرور. استخدم الدخول بالبريد وكلمة المرور.");
+        }
+      } else if (error?.code === "auth/operation-not-allowed") {
+        showError("تسجيل Google غير مفعّل في إعدادات Firebase Authentication.");
+      } else {
+        showError(error?.message ?? "تعذّر تسجيل الدخول بواسطة Google");
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -271,23 +276,29 @@ export default function AuthScreen() {
       showError("يرجى إدخال الاسم الكامل");
       return;
     }
-    if (newAccountPassword.length < 6) {
+    if (!googleSignupPending && newAccountPassword.length < 6) {
       showError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
       return;
     }
 
     setCreateLoading(true);
     try {
-      const credential = await createUserWithEmailAndPassword(
-        auth,
-        selectedEmail,
-        newAccountPassword,
-      );
-      await ensureUserDocument(credential.user.uid, selectedEmail, "client", {
+      const user = googleSignupPending
+        ? auth.currentUser
+        : (await createUserWithEmailAndPassword(
+            auth,
+            selectedEmail,
+            newAccountPassword,
+          )).user;
+      if (!user || user.email?.trim().toLowerCase() !== selectedEmail) {
+        throw new Error("انتهت جلسة Google، أعد اختيار الحساب");
+      }
+      await ensureUserDocument(user.uid, selectedEmail, "client", {
         name,
         specialty: newAccountSpecialty,
         location: null,
       });
+      setGoogleSignupPending(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
     } catch (error: any) {
@@ -313,12 +324,7 @@ export default function AuthScreen() {
 
     setForgotLoading(true);
     try {
-      const response = await fetch(getApiUrl("/api/forgot-password"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: normalizedEmail }),
-      });
-      await readApiJson(response);
+      await sendPasswordResetEmail(auth, normalizedEmail);
       setForgotVisible(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
@@ -326,7 +332,11 @@ export default function AuthScreen() {
         `تم إرسال رابط إعادة تعيين كلمة المرور إلى ${normalizedEmail}`,
       );
     } catch (error: any) {
-      showError(error?.message ?? "تعذّر إرسال رابط إعادة التعيين");
+      showError(
+        error?.code === "auth/invalid-email"
+          ? "يرجى إدخال بريد إلكتروني صحيح"
+          : "تعذّر إرسال رابط إعادة التعيين. تحقق من البريد وحاول مجدداً."
+      );
     } finally {
       setForgotLoading(false);
     }
@@ -392,18 +402,23 @@ export default function AuthScreen() {
                   onChangeText={setNewAccountName}
                   icon={<Feather name="user" size={18} color={C.textSecondary} />}
                   inputRef={newAccountNameRef}
-                  onSubmitEditing={() => newPasswordRef.current?.focus()}
+                  onSubmitEditing={() => {
+                    if (googleSignupPending) void handleCreateGoogleAccount();
+                    else newPasswordRef.current?.focus();
+                  }}
                 />
-                <InputField
-                  label="كلمة المرور"
-                  placeholder="6 أحرف على الأقل"
-                  value={newAccountPassword}
-                  onChangeText={setNewAccountPassword}
-                  icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                  secureTextEntry
-                  inputRef={newPasswordRef}
-                  onSubmitEditing={handleCreateGoogleAccount}
-                />
+                {!googleSignupPending && (
+                  <InputField
+                    label="كلمة المرور"
+                    placeholder="6 أحرف على الأقل"
+                    value={newAccountPassword}
+                    onChangeText={setNewAccountPassword}
+                    icon={<Feather name="lock" size={18} color={C.textSecondary} />}
+                    secureTextEntry
+                    inputRef={newPasswordRef}
+                    onSubmitEditing={handleCreateGoogleAccount}
+                  />
+                )}
 
                  <View style={styles.fieldWrap}>
                    <Text style={styles.fieldLabel}>التخصص المهني</Text>
@@ -449,7 +464,12 @@ export default function AuthScreen() {
                 </Pressable>
 
                 <Pressable
-                  onPress={() => setGoogleEmail(null)}
+                  onPress={() => {
+                    const signedInForSetup = googleSignupPending;
+                    setGoogleSignupPending(false);
+                    setGoogleEmail(null);
+                    if (signedInForSetup) void signOut(auth).catch(() => {});
+                  }}
                   style={styles.secondaryButton}
                   disabled={createLoading}
                 >

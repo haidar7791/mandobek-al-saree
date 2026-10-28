@@ -3909,6 +3909,7 @@ export const createProduct = async (data: {
   price: number;
   description?: string;
   localMedia: LocalProductMedia[];
+  localThumbnailUri?: string;
   sellerId: string;
   sellerName: string;
   sellerPhone: string;
@@ -3922,6 +3923,23 @@ export const createProduct = async (data: {
     data.localMedia.map((item, index) => uploadProductMedia(item, docRef.id, index))
   );
   const imageUrl = media.find((item) => item.type === "image")?.url || media[0].url;
+  let uploadedThumbnail: ProductMedia | null = null;
+  if (data.localThumbnailUri) {
+    try {
+      uploadedThumbnail = await uploadProductMedia(
+        {
+          uri: data.localThumbnailUri,
+          type: "image",
+          mimeType: "image/jpeg",
+          fileName: "thumbnail.jpg",
+        },
+        docRef.id,
+        data.localMedia.length,
+      );
+    } catch (error) {
+      console.warn("product thumbnail upload failed; continuing without it:", error);
+    }
+  }
 
   // Carry seller's active featured-until so the marketplace can sort/badge instantly
   const sellerSnap = await getDoc(doc(db, "users", data.sellerId));
@@ -3938,6 +3956,7 @@ export const createProduct = async (data: {
     price: data.price,
     description: data.description || "",
     imageUrl,
+    ...(uploadedThumbnail ? { thumbnailUrl: uploadedThumbnail.url } : {}),
     media,
     sellerId: data.sellerId,
     sellerName: currentSellerName,

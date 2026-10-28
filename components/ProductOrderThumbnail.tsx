@@ -10,13 +10,12 @@ import {
 import { Video, ResizeMode } from "expo-av";
 import { Feather } from "@expo/vector-icons";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import type { ProductMedia } from "@/lib/db_logic";
 import Colors from "@/constants/colors";
-import { API_BASE_URL } from "@/lib/config";
+import { createVideoThumbnail } from "@/lib/video-thumbnail";
 
 const C = Colors.light;
-const API_ORIGIN = API_BASE_URL;
 
 type ProductOrderThumbnailProps = {
   imageUrl?: string | null;
@@ -53,7 +52,7 @@ export default function ProductOrderThumbnail({
   const [product, setProduct] = useState<ProductThumbnailData | null>(
     productId ? productCache[productId] ?? null : null,
   );
-  const [serverThumbnailUrl, setServerThumbnailUrl] = useState<string | null>(null);
+  const [generatedThumbnailUri, setGeneratedThumbnailUri] = useState<string | null>(null);
   const didLoadProduct = useRef(false);
   const didRequestThumbnail = useRef(false);
 
@@ -91,7 +90,7 @@ export default function ProductOrderThumbnail({
     imageFromMedia ??
     (!imageUrl || isVideoUrl(imageUrl) ? null : imageUrl);
   const resolvedImageUrl =
-    serverThumbnailUrl ?? product?.thumbnailUrl ?? directImageUrl;
+    product?.thumbnailUrl ?? directImageUrl ?? generatedThumbnailUri;
 
   useEffect(() => {
     if (
@@ -104,26 +103,11 @@ export default function ProductOrderThumbnail({
     }
     didRequestThumbnail.current = true;
 
-    auth.currentUser
-      ?.getIdToken()
-      .then((idToken) =>
-        fetch(`${API_ORIGIN}/api/products/${encodeURIComponent(productId)}/video-thumbnail`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${idToken}` },
-        }),
-      )
-      .then(async (response) => {
-        if (!response?.ok) return;
-        const data = (await response.json()) as { thumbnailUrl?: string };
-        if (data.thumbnailUrl) {
-          setServerThumbnailUrl(data.thumbnailUrl);
-          productCache[productId] = {
-            ...(productCache[productId] ?? {}),
-            thumbnailUrl: data.thumbnailUrl,
-          };
-        }
-      })
-      .catch(() => {});
+    void createVideoThumbnail(videoUrl, 2000)
+      .then(setGeneratedThumbnailUri)
+      .catch((error) => {
+        console.warn("local product thumbnail generation failed:", error);
+      });
   }, [productId, videoUrl, resolvedImageUrl]);
 
   if (resolvedImageUrl) {

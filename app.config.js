@@ -62,6 +62,21 @@ module.exports = {
             host: "forus-backend-911663879269.europe-west1.run.app",
             pathPrefix: "/user",
           },
+          {
+            scheme: "https",
+            host: "mandobek-al-saree.web.app",
+            pathPrefix: "/product",
+          },
+          {
+            scheme: "https",
+            host: "mandobek-al-saree.web.app",
+            pathPrefix: "/profile",
+          },
+          {
+            scheme: "https",
+            host: "mandobek-al-saree.web.app",
+            pathPrefix: "/user",
+          },
         ],
       },
     ],
@@ -69,12 +84,13 @@ module.exports = {
   web: {
     favicon: "./assets/images/icon.png",
     name: "فورس",
+    output: "single",
   },
   plugins: [
     [
       "expo-router",
       {
-        origin: "https://mandobek-al-saree.firebaseapp.com/",
+        origin: "https://mandobek-al-saree.web.app/",
       },
     ],
     "@react-native-google-signin/google-signin",

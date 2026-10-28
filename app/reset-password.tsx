@@ -17,12 +17,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
-import { getApiUrl } from "@/lib/config";
+import { auth } from "@/lib/firebase";
+import { confirmPasswordReset } from "firebase/auth";
 
 const C = Colors.light;
-
-// ─── Backend URL ──────────────────────────────────────────────────────────────
-/** Cloud Run production backend — stable URL */
 
 // ─── PasswordInput helper ─────────────────────────────────────────────────────
 
@@ -74,7 +72,8 @@ function PasswordInput({
 
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token, oobCode } = useLocalSearchParams<{ token?: string; oobCode?: string }>();
+  const actionCode = oobCode || token || "";
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -84,7 +83,7 @@ export default function ResetPasswordScreen() {
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
 
   const handleSubmit = async () => {
-    if (!token) {
+    if (!actionCode) {
       Alert.alert("خطأ", "رابط إعادة التعيين غير صالح");
       return;
     }
@@ -99,25 +98,17 @@ export default function ResetPasswordScreen() {
 
     setLoading(true);
     try {
-      const endpoint = getApiUrl("/api/reset-password-with-token");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, newPassword }),
-      });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-
-      if (!res.ok || !data.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("خطأ", data.error ?? "تعذّر تحديث كلمة المرور");
-        return;
-      }
-
+      await confirmPasswordReset(auth, actionCode, newPassword);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDone(true);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("خطأ", "تعذّر الاتصال بالخادم — تحقق من الإنترنت وأعد المحاولة");
+      Alert.alert(
+        "خطأ",
+        err?.code === "auth/expired-action-code" || err?.code === "auth/invalid-action-code"
+          ? "انتهت صلاحية رابط إعادة التعيين أو تم استخدامه. اطلب رابطاً جديداً."
+          : "تعذّر تحديث كلمة المرور. تحقق من الرابط وحاول مرة أخرى."
+      );
     } finally {
       setLoading(false);
     }

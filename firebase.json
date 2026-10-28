@@ -4,5 +4,30 @@
   },
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/product/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/profile/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/user/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
 }

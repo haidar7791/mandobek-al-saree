@@ -264,10 +264,14 @@ export default function RootLayout() {
       if (url.startsWith("forus://")) {
         path = url.replace(/^forus:\/\//, "");
       } else if (
+        url.startsWith("https://mandobek-al-saree.web.app/") ||
         url.startsWith("https://forus-backend-911663879269.europe-west1.run.app/") ||
         url.startsWith("https://forus-backend-new-911663879269.europe-west1.run.app/")
       ) {
-        path = url.replace(/^https:\/\/forus-backend-911663879269\.europe-west1\.run\.app\//, "");
+        path = url.replace(/^https:\/\/mandobek-al-saree\.web\.app\//, "");
+        if (path === url) {
+          path = url.replace(/^https:\/\/forus-backend-911663879269\.europe-west1\.run\.app\//, "");
+        }
         if (path === url) {
           path = url.replace(/^https:\/\/forus-backend-new-911663879269\.europe-west1\.run\.app\//, "");
         }

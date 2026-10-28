@@ -12,7 +12,7 @@
  *   likes: string[]  — userIds who liked
  */
 
-import { auth, db, storage } from "./firebase";
+import { db, storage } from "./firebase";
 import {
   collection,
   addDoc,
@@ -28,7 +28,6 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getApiUrl } from "./config";
 import { createActivityNotification } from "./notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -167,45 +166,6 @@ export async function createStory(data: {
     likes: [],
   });
   return docRef.id;
-}
-
-/**
- * Generate the thumbnail for a newly published video story.
- * Uses Google Cloud Run backend directly via getApiUrl to handle full production URLs securely.
- */
-export async function generateStoryVideoThumbnail(
-  storyId: string
-): Promise<string | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
-
-  try {
-    const idToken = await user.getIdToken();
-    const endpoint = getApiUrl(`api/stories/${encodeURIComponent(storyId)}/thumbnail`);
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({ captureTime: 2 }),
-    });
-
-    const contentType = response.headers.get("content-type");
-
-    if (!response.ok || !contentType || !contentType.includes("application/json")) {
-      const errorText = await response.text();
-      console.warn("[Thumbnail Warning] Non-JSON response:", errorText.slice(0, 100));
-      return null;
-    }
-
-    const data = (await response.json()) as { thumbnailUrl?: string };
-    return data.thumbnailUrl ?? null;
-  } catch (error) {
-    console.error("[generateStoryVideoThumbnail] Fetch Error:", error);
-    return null;
-  }
 }
 
 export async function deleteStory(storyId: string): Promise<void> {
