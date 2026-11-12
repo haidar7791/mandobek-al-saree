@@ -21,19 +21,11 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { auth } from "@/lib/firebase";
 import {
-  ALL_SPECIALTIES,
-  RESTAURANT_SPECIALTY,
-  STORE_SPECIALTY,
-  CAR_SERVICES,
-  DELIVERY_SERVICES,
-  GENERAL_SERVICES,
-  HOME_SERVICES,
   ensureUserDocument,
   getUserProfile,
 } from "@/lib/db_logic";
 import {
   GoogleAuthProvider,
-  createUserWithEmailAndPassword,
   linkWithCredential,
   sendPasswordResetEmail,
   signInWithCredential,
@@ -46,14 +38,6 @@ import { pickGoogleEmail } from "@/lib/google-email-picker";
 const C = Colors.light;
 const PRIVACY_POLICY_URL =
   "https://www.termsfeed.com/live/84beb1e7-05c9-4efc-983e-252e64c5765b";
-
-const SPECIALTY_GROUPS = [
-  { title: "المطاعم والمتاجر", items: [RESTAURANT_SPECIALTY, STORE_SPECIALTY] },
-  { title: "خدمات المنزل", items: HOME_SERVICES },
-  { title: "خدمات السيارات", items: CAR_SERVICES },
-  { title: "خدمات طبية", items: GENERAL_SERVICES },
-  { title: "خدمات التوصيل", items: DELIVERY_SERVICES },
-];
 
 function validEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -122,18 +106,13 @@ export default function AuthScreen() {
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const newAccountNameRef = useRef<TextInput>(null);
-  const newPasswordRef = useRef<TextInput>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
-  const [googleSignupPending, setGoogleSignupPending] = useState(false);
   const [googleLinkCredential, setGoogleLinkCredential] = useState<AuthCredential | null>(null);
   const [googleLinkEmail, setGoogleLinkEmail] = useState<string | null>(null);
   const [newAccountName, setNewAccountName] = useState("");
-  const [newAccountPassword, setNewAccountPassword] = useState("");
-  const [newAccountSpecialty, setNewAccountSpecialty] = useState("client");
-  const [specialtyPickerVisible, setSpecialtyPickerVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -231,12 +210,8 @@ export default function AuthScreen() {
       const existingProfile = await getUserProfile(result.user.uid);
 
       if (!existingProfile) {
-        setGoogleSignupPending(true);
         setGoogleEmail(selectedEmail);
         setNewAccountName(result.user.displayName?.trim() || "");
-        setNewAccountPassword("");
-        setNewAccountSpecialty("client");
-        setSpecialtyPickerVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => newAccountNameRef.current?.focus(), 200);
         return;
@@ -276,40 +251,25 @@ export default function AuthScreen() {
       showError("يرجى إدخال الاسم الكامل");
       return;
     }
-    if (!googleSignupPending && newAccountPassword.length < 6) {
-      showError("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-      return;
-    }
-
     setCreateLoading(true);
     try {
-      const user = googleSignupPending
-        ? auth.currentUser
-        : (await createUserWithEmailAndPassword(
-            auth,
-            selectedEmail,
-            newAccountPassword,
-          )).user;
+      const user = auth.currentUser;
       if (!user || user.email?.trim().toLowerCase() !== selectedEmail) {
         throw new Error("انتهت جلسة Google، أعد اختيار الحساب");
       }
       await ensureUserDocument(user.uid, selectedEmail, "client", {
         name,
-        specialty: newAccountSpecialty,
+        specialty: "client",
         location: null,
       });
-      setGoogleSignupPending(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/dashboard" as any);
     } catch (error: any) {
-      const code = error?.code ?? "";
-      if (code === "auth/email-already-in-use") {
-        showError("هذا البريد مسجل مسبقاً. استخدم الدخول اليدوي.");
-      } else if (code === "auth/weak-password") {
-        showError("كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل");
-      } else {
-        showError("حدث خطأ أثناء إنشاء الحساب");
-      }
+      showError(
+        error?.code === "auth/user-mismatch"
+          ? "انتهت جلسة Google، أعد اختيار الحساب."
+          : "تعذّر إعداد حساب اللعبة. تحقق من الاتصال وحاول مرة أخرى."
+      );
     } finally {
       setCreateLoading(false);
     }
@@ -351,14 +311,14 @@ export default function AuthScreen() {
       </View>
       <Text style={styles.appName}>فورس</Text>
       <Text style={styles.appNameLatin}>ForUs</Text>
-      <Text style={styles.tagline}>وجهتك الأولى للمنتجات و الخدمات والترفيه</Text>
+      <Text style={styles.tagline}>ازرع، احصد، وابنِ مزرعتك خطوة بخطوة</Text>
     </View>
   );
 
   return (
-    <View style={styles.root}>
+      <View style={styles.root}>
       <LinearGradient
-        colors={["#0D1B3E", "#162452", "#0D1B3E"]}
+        colors={["#153D2A", "#245C3C", "#153D2A"]}
         locations={[0, 0.52, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -402,46 +362,8 @@ export default function AuthScreen() {
                   onChangeText={setNewAccountName}
                   icon={<Feather name="user" size={18} color={C.textSecondary} />}
                   inputRef={newAccountNameRef}
-                  onSubmitEditing={() => {
-                    if (googleSignupPending) void handleCreateGoogleAccount();
-                    else newPasswordRef.current?.focus();
-                  }}
+                  onSubmitEditing={() => void handleCreateGoogleAccount()}
                 />
-                {!googleSignupPending && (
-                  <InputField
-                    label="كلمة المرور"
-                    placeholder="6 أحرف على الأقل"
-                    value={newAccountPassword}
-                    onChangeText={setNewAccountPassword}
-                    icon={<Feather name="lock" size={18} color={C.textSecondary} />}
-                    secureTextEntry
-                    inputRef={newPasswordRef}
-                    onSubmitEditing={handleCreateGoogleAccount}
-                  />
-                )}
-
-                 <View style={styles.fieldWrap}>
-                   <Text style={styles.fieldLabel}>التخصص المهني</Text>
-                   <Pressable
-                     style={styles.specialtyPickerBtn}
-                     onPress={() => setSpecialtyPickerVisible(true)}
-                     disabled={createLoading}
-                   >
-                     <Feather name="chevron-left" size={17} color={C.textSecondary} />
-                     <Text
-                       style={[
-                         styles.specialtyPickerValue,
-                         newAccountSpecialty === "client" && { color: C.textMuted },
-                       ]}
-                     >
-                       {newAccountSpecialty === "client"
-                         ? "عام"
-                         : ALL_SPECIALTIES.find((item) => item.key === newAccountSpecialty)?.label ||
-                           "اختر التخصص"}
-                     </Text>
-                     <Feather name="briefcase" size={17} color={C.textSecondary} />
-                   </Pressable>
-                 </View>
 
                 <Pressable
                   style={[styles.primaryButton, createLoading && styles.disabled]}
@@ -465,10 +387,8 @@ export default function AuthScreen() {
 
                 <Pressable
                   onPress={() => {
-                    const signedInForSetup = googleSignupPending;
-                    setGoogleSignupPending(false);
                     setGoogleEmail(null);
-                    if (signedInForSetup) void signOut(auth).catch(() => {});
+                    void signOut(auth).catch(() => {});
                   }}
                   style={styles.secondaryButton}
                   disabled={createLoading}
@@ -621,85 +541,12 @@ export default function AuthScreen() {
         </Pressable>
       </Modal>
 
-      <Modal
-        visible={specialtyPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSpecialtyPickerVisible(false)}
-      >
-        <Pressable
-          style={styles.specialtyModalOverlay}
-          onPress={() => setSpecialtyPickerVisible(false)}
-        >
-          <Pressable style={styles.specialtySheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.specialtyModalTitle}>اختر التخصص المهني</Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.specialtyOptionsScroll}>
-              <Pressable
-                style={[
-                  styles.specialtyOption,
-                  newAccountSpecialty === "client" && styles.specialtyOptionActive,
-                ]}
-                onPress={() => {
-                  setNewAccountSpecialty("client");
-                  setSpecialtyPickerVisible(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.specialtyOptionLabel,
-                    newAccountSpecialty === "client" && styles.specialtyOptionLabelActive,
-                  ]}
-                >
-                  عام
-                </Text>
-                {newAccountSpecialty === "client" && (
-                  <Feather name="check" size={16} color={C.primary} />
-                )}
-              </Pressable>
-
-              {SPECIALTY_GROUPS.map((group) => (
-                <View key={group.title}>
-                  <Text style={styles.specialtyGroupTitle}>{group.title}</Text>
-                  {group.items.map((item) => (
-                    <Pressable
-                      key={item.key}
-                      style={[
-                        styles.specialtyOption,
-                        newAccountSpecialty === item.key && styles.specialtyOptionActive,
-                      ]}
-                      onPress={() => {
-                        setNewAccountSpecialty(item.key);
-                        setSpecialtyPickerVisible(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.specialtyOptionLabel,
-                          newAccountSpecialty === item.key && styles.specialtyOptionLabelActive,
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
-                      {newAccountSpecialty === item.key && (
-                        <Feather name="check" size={16} color={C.primary} />
-                      )}
-                    </Pressable>
-                  ))}
-                </View>
-              ))}
-              <View style={{ height: 24 }} />
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0D1B3E" },
+  root: { flex: 1, backgroundColor: "#153D2A" },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20, gap: 14 },
   brand: { alignItems: "center", gap: 5 },

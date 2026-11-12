@@ -548,5 +548,31 @@ service cloud.firestore {
         && request.resource.data.status == "open";
       allow read, update, delete: if isAdmin();
     }
+
+    // Private player progress for the Spark-hosted farm game.
+    match /farms/{playerId} {
+      allow read: if isSignedIn() && request.auth.uid == playerId;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == playerId
+        && request.resource.data.keys().hasOnly([
+          "version",
+          "coins",
+          "seeds",
+          "inventory",
+          "plots",
+          "totalHarvests",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.version == 1
+        && request.resource.data.coins is number
+        && request.resource.data.coins >= 0
+        && request.resource.data.seeds is map
+        && request.resource.data.inventory is map
+        && request.resource.data.plots is list
+        && request.resource.data.plots.size() == 12
+        && request.resource.data.totalHarvests is number;
+      allow delete: if false;
+    }
   }
 }

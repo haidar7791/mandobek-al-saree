@@ -23,3 +23,4 @@
 - [Store-owner account controls](store-owner-account-controls.md) — keep store-owner identity actions on the owner-only storefront reached from their profile
 - [Restaurant/store boundary](restaurant-store-boundary.md) — restaurant changes must not alter the completed store screens or behavior
 - [Firebase Spark architecture](firebase-spark-architecture.md) — keep app-facing backend behavior on Firebase client services and Hosting; do not add Cloud Functions under Spark
+- [FORUS farm-game direction](forus-farm-game.md) — replace the marketplace home with a farm-management game while retaining Firebase Auth and private player saves
