@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, FontAwesome, Ionicons } from "@expo/vector-icons";
@@ -103,6 +103,7 @@ function InputField({
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
+  const { showLogin } = useLocalSearchParams<{ showLogin?: string }>();
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const newAccountNameRef = useRef<TextInput>(null);
@@ -122,6 +123,12 @@ export default function AuthScreen() {
 
   const topPad = Platform.OS === "web" ? Math.max(insets.top, 38) : insets.top;
   const bottomPad = Platform.OS === "web" ? Math.max(insets.bottom, 24) : insets.bottom;
+
+  useEffect(() => {
+    if (Platform.OS === "web" && __DEV__ && showLogin !== "1") {
+      router.replace("/farm-preview" as any);
+    }
+  }, [showLogin]);
 
   const showError = (message: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -483,7 +490,16 @@ export default function AuthScreen() {
             )}
           </View>
 
-          <Text style={styles.footerText}>خدمات موثوقة بالقرب منك في ثوانٍ</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/farm-preview" as any)}
+            style={({ pressed }) => [styles.previewGameButton, pressed && styles.previewGameButtonPressed]}
+          >
+            <Feather name="eye" size={16} color="#FFFFFF" />
+            <Text style={styles.previewGameButtonText}>معاينة لعبة المزرعة</Text>
+          </Pressable>
+
+          <Text style={styles.footerText}>ازرع أول محصول وابدأ رحلتك</Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -731,6 +747,26 @@ const styles = StyleSheet.create({
     color: C.accent,
   },
   disabled: { opacity: 0.58 },
+  previewGameButton: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+  previewGameButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
+  previewGameButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: undefined,
+    fontWeight: "800",
+  },
   footerText: {
     textAlign: "center",
     fontSize: 12,

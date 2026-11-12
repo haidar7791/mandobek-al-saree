@@ -43,6 +43,8 @@ function RootLayoutNav({ isLoggedIn }: { isLoggedIn: boolean }) {
         <Stack.Screen name="reset-password" />
       </Stack.Protected>
 
+      <Stack.Screen name="farm-preview" />
+
       <Stack.Protected guard={isLoggedIn}>
         <Stack.Screen name="dashboard" />
         <Stack.Screen name="admin" />

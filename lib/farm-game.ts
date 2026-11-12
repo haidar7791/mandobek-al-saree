@@ -105,6 +105,20 @@ function createInitialFarm(now = Date.now()): FarmGameSave {
   };
 }
 
+export function createDemoFarmGame(now = Date.now()): FarmGameSave {
+  const farm = createInitialFarm(now);
+  farm.coins = 245;
+  farm.seeds = { wheat: 4, carrot: 2, corn: 1 };
+  farm.inventory = { wheat: 3, carrot: 1, corn: 0 };
+  farm.totalHarvests = 4;
+  farm.plots[0] = { id: 0, unlocked: true, cropId: "wheat", plantedAt: now - 35_000 };
+  farm.plots[1] = { id: 1, unlocked: true, cropId: "carrot", plantedAt: now - 24_000 };
+  farm.plots[2] = { id: 2, unlocked: true, cropId: "corn", plantedAt: now - 48_000 };
+  farm.plots[3] = { id: 3, unlocked: true, cropId: "wheat", plantedAt: now - 7_000 };
+  farm.updatedAt = now;
+  return farm;
+}
+
 function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGameSave {
   const seeds = (data.seeds ?? {}) as Record<string, unknown>;
   const inventory = (data.inventory ?? {}) as Record<string, unknown>;
@@ -166,64 +180,73 @@ export async function performFarmAction(
     const farm = snapshot.exists()
       ? normalizeFarm(snapshot.data())
       : createInitialFarm();
-    const next: FarmGameSave = {
-      ...farm,
-      seeds: { ...farm.seeds },
-      inventory: { ...farm.inventory },
-      plots: farm.plots.map((plot) => ({ ...plot })),
-      updatedAt: Date.now(),
-    };
-    const plot =
-      action.type === "buySeed" || action.type === "sellCrop"
-        ? undefined
-        : next.plots[action.plotId];
-
-    switch (action.type) {
-      case "buySeed": {
-        const crop = CROPS[action.cropId];
-        if (next.coins < crop.seedPrice) throw new Error("لا توجد عملات كافية لشراء البذور");
-        next.coins -= crop.seedPrice;
-        next.seeds[action.cropId] += 1;
-        break;
-      }
-      case "sellCrop": {
-        const amount = next.inventory[action.cropId];
-        if (amount < 1) throw new Error("لا يوجد محصول للبيع");
-        next.coins += amount * CROPS[action.cropId].sellPrice;
-        next.inventory[action.cropId] = 0;
-        break;
-      }
-      case "unlockPlot": {
-        if (!plot || plot.unlocked) throw new Error("هذه الأرض مفتوحة بالفعل");
-        const unlockedCount = next.plots.filter((item) => item.unlocked).length;
-        const cost = FIRST_PLOT_EXPANSION_COST + Math.max(0, unlockedCount - INITIAL_UNLOCKED_PLOTS) * 35;
-        if (next.coins < cost) throw new Error("اجمع المزيد من العملات لفتح أرض جديدة");
-        next.coins -= cost;
-        plot.unlocked = true;
-        break;
-      }
-      case "plant": {
-        if (!plot?.unlocked) throw new Error("افتح هذه الأرض أولاً");
-        if (plot.cropId) throw new Error("هذه الأرض مزروعة بالفعل");
-        if (next.seeds[action.cropId] < 1) throw new Error("لا توجد بذور كافية؛ اشترِ بذوراً من السوق");
-        next.seeds[action.cropId] -= 1;
-        plot.cropId = action.cropId;
-        plot.plantedAt = Date.now();
-        break;
-      }
-      case "harvest": {
-        if (!plot?.cropId || !plot.plantedAt) throw new Error("لا يوجد محصول في هذه الأرض");
-        const crop = CROPS[plot.cropId];
-        if (Date.now() - plot.plantedAt < crop.growMs) throw new Error("المحصول لم ينضج بعد");
-        next.inventory[plot.cropId] += crop.harvestAmount;
-        next.totalHarvests += 1;
-        plot.cropId = null;
-        plot.plantedAt = null;
-        break;
-      }
-    }
-
+    const next = applyFarmActionToState(farm, action);
     transaction.set(farmRef, next);
     return next;
   });
+}
+
+export function applyFarmActionToState(
+  farm: FarmGameSave,
+  action: FarmAction,
+  now = Date.now(),
+): FarmGameSave {
+  const next: FarmGameSave = {
+    ...farm,
+    seeds: { ...farm.seeds },
+    inventory: { ...farm.inventory },
+    plots: farm.plots.map((plot) => ({ ...plot })),
+    updatedAt: now,
+  };
+  const plot =
+    action.type === "buySeed" || action.type === "sellCrop"
+      ? undefined
+      : next.plots[action.plotId];
+
+  switch (action.type) {
+    case "buySeed": {
+      const crop = CROPS[action.cropId];
+      if (next.coins < crop.seedPrice) throw new Error("لا توجد عملات كافية لشراء البذور");
+      next.coins -= crop.seedPrice;
+      next.seeds[action.cropId] += 1;
+      break;
+    }
+    case "sellCrop": {
+      const amount = next.inventory[action.cropId];
+      if (amount < 1) throw new Error("لا يوجد محصول للبيع");
+      next.coins += amount * CROPS[action.cropId].sellPrice;
+      next.inventory[action.cropId] = 0;
+      break;
+    }
+    case "unlockPlot": {
+      if (!plot || plot.unlocked) throw new Error("هذه الأرض مفتوحة بالفعل");
+      const unlockedCount = next.plots.filter((item) => item.unlocked).length;
+      const cost = FIRST_PLOT_EXPANSION_COST + Math.max(0, unlockedCount - INITIAL_UNLOCKED_PLOTS) * 35;
+      if (next.coins < cost) throw new Error("اجمع المزيد من العملات لفتح أرض جديدة");
+      plot.unlocked = true;
+      next.coins -= cost;
+      break;
+    }
+    case "plant": {
+      if (!plot?.unlocked) throw new Error("افتح هذه الأرض أولاً");
+      if (plot.cropId) throw new Error("هذه الأرض مزروعة بالفعل");
+      if (next.seeds[action.cropId] < 1) throw new Error("لا توجد بذور كافية؛ اشترِ بذوراً من السوق");
+      next.seeds[action.cropId] -= 1;
+      plot.cropId = action.cropId;
+      plot.plantedAt = now;
+      break;
+    }
+    case "harvest": {
+      if (!plot?.cropId || !plot.plantedAt) throw new Error("لا يوجد محصول في هذه الأرض");
+      const crop = CROPS[plot.cropId];
+      if (now - plot.plantedAt < crop.growMs) throw new Error("المحصول لم ينضج بعد");
+      next.inventory[plot.cropId] += crop.harvestAmount;
+      next.totalHarvests += 1;
+      plot.cropId = null;
+      plot.plantedAt = null;
+      break;
+    }
+  }
+
+  return next;
 }

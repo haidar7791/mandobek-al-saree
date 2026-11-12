@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
@@ -22,6 +23,8 @@ import {
   FARM_PLOT_COUNT,
   FIRST_PLOT_EXPANSION_COST,
   INITIAL_UNLOCKED_PLOTS,
+  applyFarmActionToState,
+  createDemoFarmGame,
   loadFarmGame,
   performFarmAction,
   type CropId,
@@ -208,7 +211,7 @@ function PlotTile({
   );
 }
 
-export default function FarmGameScreen() {
+export default function FarmGameScreen({ previewMode = false }: { previewMode?: boolean }) {
   const insets = useSafeAreaInsets();
   const player = auth.currentUser;
   const [farm, setFarm] = useState<FarmGameSave | null>(null);
@@ -229,6 +232,13 @@ export default function FarmGameScreen() {
   const levelProgress = farm ? (farm.totalHarvests % 5) / 5 : 0;
 
   const refreshFarm = useCallback(async () => {
+    if (previewMode) {
+      setFarm(createDemoFarmGame());
+      setPlayerName("زائر المزرعة");
+      setError("");
+      setLoading(false);
+      return;
+    }
     if (!playerId) {
       setError("سجّل الدخول أولاً لفتح مزرعتك.");
       setLoading(false);
@@ -249,7 +259,7 @@ export default function FarmGameScreen() {
     } finally {
       setLoading(false);
     }
-  }, [playerId, player?.displayName]);
+  }, [playerId, player?.displayName, previewMode]);
 
   useEffect(() => {
     void refreshFarm();
@@ -262,12 +272,14 @@ export default function FarmGameScreen() {
 
   const act = useCallback(
     async (action: FarmAction) => {
-      if (!playerId || busy) return;
+      if (busy || (!previewMode && !playerId) || (previewMode && !farm)) return;
       setBusy(true);
       setError("");
       setHint("");
       try {
-        const updated = await performFarmAction(playerId, action);
+        const updated = previewMode
+          ? applyFarmActionToState(farm!, action)
+          : await performFarmAction(playerId, action);
         setFarm(updated);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       } catch (actionError) {
@@ -281,7 +293,7 @@ export default function FarmGameScreen() {
         setBusy(false);
       }
     },
-    [busy, playerId],
+    [busy, farm, playerId, previewMode],
   );
 
   const handlePlotPress = (plot: FarmPlot) => {
@@ -354,6 +366,14 @@ export default function FarmGameScreen() {
           />
         }
       >
+        {previewMode ? (
+          <View style={styles.previewBanner}>
+            <Ionicons name="eye-outline" size={17} color={C.greenDark} />
+            <Text style={styles.previewBannerText}>
+              معاينة تفاعلية ببيانات تجريبية — التغييرات هنا لا تُحفظ
+            </Text>
+          </View>
+        ) : null}
         <LinearGradient
           colors={["#BFE5A9", "#E7F1B8", "#F5EDBC"]}
           style={styles.hero}
@@ -364,15 +384,23 @@ export default function FarmGameScreen() {
           <View style={styles.heroTopRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="تسجيل الخروج"
+              accessibilityLabel={previewMode ? "العودة إلى تسجيل الدخول" : "تسجيل الخروج"}
               onPress={() => {
+                if (previewMode) {
+                  router.replace("/?showLogin=1" as any);
+                  return;
+                }
                 void signOut(auth).catch(() => {
                   setHint("تعذّر تسجيل الخروج. حاول مرة أخرى.");
                 });
               }}
               style={styles.avatar}
             >
-              <Ionicons name="log-out-outline" size={21} color={C.greenDark} />
+              <Ionicons
+                name={previewMode ? "close-outline" : "log-out-outline"}
+                size={21}
+                color={C.greenDark}
+              />
             </Pressable>
             <View style={styles.heroGreeting}>
               <Text style={styles.heroEyebrow}>مزرعتك الصغيرة</Text>
@@ -591,8 +619,16 @@ export default function FarmGameScreen() {
         </View>
 
         <View style={styles.footerNote}>
-          <Ionicons name="cloud-done-outline" size={16} color={C.muted} />
-          <Text style={styles.footerNoteText}>تقدمك محفوظ في حساب Firebase الخاص بك</Text>
+          <Ionicons
+            name={previewMode ? "leaf-outline" : "cloud-done-outline"}
+            size={16}
+            color={C.muted}
+          />
+          <Text style={styles.footerNoteText}>
+            {previewMode
+              ? "هذه تجربة فقط؛ سجل الدخول لحفظ مزرعتك في Firebase"
+              : "تقدمك محفوظ في حساب Firebase الخاص بك"}
+          </Text>
         </View>
       </ScrollView>
       {busy ? (
@@ -848,6 +884,19 @@ const styles = StyleSheet.create({
   emptyStorageText: { color: C.muted, fontSize: 11, fontWeight: "600" },
   footerNote: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingTop: 2 },
   footerNoteText: { color: C.muted, fontSize: 10, fontWeight: "600" },
+  previewBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: "#DDEFD5",
+    borderColor: "#BFD9B3",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  previewBannerText: { color: C.greenDark, fontSize: 10, fontWeight: "800", textAlign: "center", flexShrink: 1 },
   savingPill: {
     position: "absolute",
     bottom: 18,
