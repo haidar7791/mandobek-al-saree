@@ -17,6 +17,7 @@ import { router } from "expo-router";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
+import FarmScene from "./FarmScene";
 import {
   CROPS,
   CROP_ORDER,
@@ -116,7 +117,7 @@ function FarmActionButton({
   );
 }
 
-function PlotTile({
+export function PlotTile({
   plot,
   now,
   selectedCrop,
@@ -605,20 +606,22 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             </Pressable>
           </View>
 
-          <View style={styles.plotGrid}>
-            {farm.plots.map((plot) => (
-              <PlotTile
-                key={plot.id}
-                plot={plot}
-                now={now}
-                selectedCrop={selectedCrop}
-                seedCount={farm.seeds[selectedCrop]}
-                expansionCost={expansionCost}
-                toolMode={toolMode}
-                busy={busy}
-                onPress={() => handlePlotPress(plot)}
-              />
-            ))}
+          <View style={styles.farmSceneViewport}>
+            <FarmScene
+              plots={farm.plots}
+              selectedCrop={selectedCrop}
+              toolMode={toolMode}
+              expansionCost={expansionCost}
+              houseBuilt={farm.houseBuilt}
+              now={now}
+              onPlotPress={handlePlotPress}
+            />
+          </View>
+          <View style={styles.sceneGestureHint}>
+            <Ionicons name="hand-left-outline" size={14} color="#55764A" />
+            <Text style={styles.sceneGestureText}>
+              اسحب لتحريك المزرعة، وقرّب بإصبعين أو بعجلة الفأرة
+            </Text>
           </View>
         </LinearGradient>
 
@@ -1015,7 +1018,23 @@ const styles = StyleSheet.create({
   waterToolButtonActive: { backgroundColor: "#287BA1", borderColor: "#287BA1" },
   waterToolText: { color: "#287BA1", fontSize: 9, fontWeight: "900" },
   waterToolTextActive: { color: "#FFFFFF" },
-  plotGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 9 },
+  farmSceneViewport: {
+    height: 390,
+    width: "100%",
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#B9D991",
+    borderWidth: 1,
+    borderColor: "rgba(75,112,60,0.25)",
+  },
+  sceneGestureHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingTop: 9,
+  },
+  sceneGestureText: { color: "#55764A", fontSize: 10, fontWeight: "700" },
   plotTile: {
     width: "31.5%",
     minHeight: 116,
