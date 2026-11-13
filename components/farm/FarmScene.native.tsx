@@ -1,7 +1,7 @@
 /* eslint-disable react/no-unknown-property */
 import React, { useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Canvas, useFrame, useThree } from "@react-three/fiber/native";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { CROPS, getPlotGrowthState, type CropId, type FarmPlot } from "../../lib/farm-game";
 
 export interface FarmSceneProps {
@@ -488,7 +488,6 @@ export default function FarmScene(props: FarmSceneProps) {
         style={styles.canvas}
         camera={{ position: [10, 12, 12], fov: 34, near: 0.1, far: 80 }}
         gl={{ antialias: true, alpha: false, powerPreference: "low-power" }}
-        accessibilityLabel="مزرعة ثلاثية الأبعاد. اسحب لتحريك المشهد، واستخدم إصبعين للتقريب."
       >
         <SceneContents
           {...props}
