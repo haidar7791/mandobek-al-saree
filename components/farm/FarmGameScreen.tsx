@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { signOut } from "firebase/auth";
@@ -21,38 +20,50 @@ import FarmScene from "./FarmScene";
 import {
   CROPS,
   CROP_ORDER,
-  FARM_PLOT_COUNT,
-  FIRST_PLOT_EXPANSION_COST,
-  INITIAL_UNLOCKED_PLOTS,
-  WATER_CAPACITY,
+  DECORATIONS,
+  DECORATION_ORDER,
+  FARM_MAP_COLUMNS,
+  FARM_MAP_ROWS,
+  FRUIT_TREES,
+  FRUIT_TREE_ORDER,
   applyFarmActionToState,
   createDemoFarmGame,
-  getFarmHouseActionCost,
-  getCurrentWater,
   getPlotGrowthState,
-  getWaterRefillMs,
-  loadFarmGame,
-  performFarmAction,
+  getTreeGrowthState,
   type CropId,
   type FarmAction,
   type FarmGameSave,
-  type FarmPlot,
+  type FarmObjectRef,
+  type FarmPosition,
+  type FarmTool,
 } from "@/lib/farm-game";
+import { loadFarmGame, performFarmAction } from "@/lib/farm-game-persistence";
 
 const C = {
-  ink: "#173D2B",
-  muted: "#67816E",
-  green: "#33834F",
-  greenDark: "#205D3A",
-  greenLight: "#E9F5E6",
-  canvas: "#F3F8EC",
+  ink: "#28432B",
+  muted: "#738571",
+  green: "#4F8B4D",
+  greenDark: "#315F3A",
+  greenLight: "#EAF5E5",
+  canvas: "#F3F7E9",
   paper: "#FFFFFF",
   gold: "#E7B943",
-  soil: "#9C653D",
-  soilDark: "#74482D",
-  border: "#E1EBDD",
+  soil: "#96603D",
+  border: "#DDE8D5",
   red: "#C05A46",
 };
+
+const TOOLS: { id: FarmTool; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: "walk", label: "تحرّك", icon: "walk-outline" },
+  { id: "plant", label: "ازرع", icon: "leaf-outline" },
+  { id: "move", label: "حرّك عنصراً", icon: "move-outline" },
+  { id: "buildHouse", label: "ابنِ المنزل", icon: "home-outline" },
+  { id: "apple", label: "تفاح", icon: "nutrition-outline" },
+  { id: "orange", label: "برتقال", icon: "nutrition-outline" },
+  { id: "flowerBed", label: "زهور", icon: "flower-outline" },
+  { id: "gardenLamp", label: "مصباح", icon: "bulb-outline" },
+  { id: "fence", label: "سياج", icon: "grid-outline" },
+];
 
 function formatCoins(value: number): string {
   return new Intl.NumberFormat("ar-IQ", { maximumFractionDigits: 0 }).format(value);
@@ -61,171 +72,26 @@ function formatCoins(value: number): string {
 function formatTime(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000));
   if (seconds < 60) return `${seconds} ث`;
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  const remain = seconds % 60;
+  return remain ? `${minutes} د ${remain} ث` : `${minutes} د`;
 }
 
-function getUnlockCost(farm: FarmGameSave): number {
-  const unlockedCount = farm.plots.filter((plot) => plot.unlocked).length;
-  return FIRST_PLOT_EXPANSION_COST + Math.max(0, unlockedCount - INITIAL_UNLOCKED_PLOTS) * 35;
+function toolDescription(tool: FarmTool, selectedCrop: CropId) {
+  if (tool === "walk") return "اضغط على خانة فارغة أو استخدم الأسهم ليتحرك المزارع.";
+  if (tool === "plant") return `ازرع ${CROPS[selectedCrop].name} في أي مكان فارغ على الأرض.`;
+  if (tool === "move") return "اختر منزلاً أو حقلاً أو شجرة أو زينة، ثم اختر مكاناً فارغاً.";
+  if (tool === "buildHouse") return "اختر خانة فارغة لوضع منزل المزرعة.";
+  if (tool === "apple" || tool === "orange") return `اختر خانة فارغة لشراء ووضع ${FRUIT_TREES[tool].name}.`;
+  return `اختر خانة فارغة لوضع ${DECORATIONS[tool].name}.`;
 }
 
-function getPlotTiming(plot: FarmPlot, now: number) {
-  return getPlotGrowthState(plot, now);
-}
-
-function FarmActionButton({
-  label,
-  icon,
-  onPress,
-  disabled,
-  variant = "green",
-}: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  disabled?: boolean;
-  variant?: "green" | "gold" | "quiet";
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.actionButton,
-        variant === "green" && styles.actionButtonGreen,
-        variant === "gold" && styles.actionButtonGold,
-        variant === "quiet" && styles.actionButtonQuiet,
-        disabled && styles.disabledButton,
-        pressed && !disabled && styles.pressed,
-      ]}
-    >
-      <Ionicons
-        name={icon}
-        size={17}
-        color={variant === "quiet" ? C.greenDark : "#FFFFFF"}
-      />
-      <Text
-        style={[
-          styles.actionButtonText,
-          variant === "quiet" && styles.actionButtonTextQuiet,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-export function PlotTile({
-  plot,
-  now,
-  selectedCrop,
-  seedCount,
-  expansionCost,
-  toolMode,
-  busy,
-  onPress,
-}: {
-  plot: FarmPlot;
-  now: number;
-  selectedCrop: CropId;
-  seedCount: number;
-  expansionCost: number;
-  toolMode: "plant" | "water";
-  busy: boolean;
-  onPress: () => void;
-}) {
-  const timing = getPlotTiming(plot, now);
-  const crop = plot.cropId ? CROPS[plot.cropId] : null;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={
-        !plot.unlocked
-          ? `فتح أرض جديدة مقابل ${expansionCost} عملة`
-          : crop
-            ? toolMode === "water"
-              ? `سقي ${crop.name}`
-              : timing.ready
-                ? `حصاد ${crop.name}`
-                : `${crop.name}، ${timing.watered ? "تنمو" : "بحاجة إلى الري"}`
-            : toolMode === "water"
-              ? "لا يوجد محصول للسقي"
-              : `زراعة ${CROPS[selectedCrop].name}`
-      }
-      onPress={onPress}
-      disabled={busy}
-      style={({ pressed }) => [
-        styles.plotTile,
-        !plot.unlocked && styles.lockedPlot,
-        timing.ready && styles.readyPlot,
-        toolMode === "water" && crop && !timing.ready && styles.waterTargetPlot,
-        pressed && !busy && styles.plotPressed,
-      ]}
-    >
-      {!plot.unlocked ? (
-        <>
-          <View style={styles.lockIconCircle}>
-            <Ionicons name="lock-closed-outline" size={20} color="#8B846A" />
-          </View>
-          <Text style={styles.lockedTitle}>أرض جديدة</Text>
-          <Text style={styles.lockedCost}>{formatCoins(expansionCost)} عملة</Text>
-        </>
-      ) : crop ? (
-        <>
-          <View style={[styles.cropBadge, { backgroundColor: crop.lightColor }]}>
-            <Ionicons
-              name={
-                timing.ready
-                  ? "sparkles-outline"
-                  : timing.progress === 0
-                    ? "ellipse-outline"
-                    : "leaf"
-              }
-              size={22}
-              color={crop.color}
-            />
-          </View>
-          <Text style={styles.plotCropName}>{crop.name}</Text>
-          {timing.ready ? (
-            <Text style={styles.readyLabel}>جاهز للحصاد</Text>
-          ) : (
-            <>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.max(6, timing.progress * 100)}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.plotTimer}>
-                {timing.progress === 0
-                  ? timing.watered
-                    ? "بذور مروية"
-                    : "بذور"
-                  : timing.watered
-                    ? `تنمو · ${formatTime(timing.remaining)}`
-                    : `جافة · اسقِ لتواصل`}
-              </Text>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <View style={styles.soilMark}>
-            <Ionicons name="add" size={25} color="#FFF6DF" />
-          </View>
-          <Text style={styles.emptyPlotTitle}>ازرع هنا</Text>
-          <Text style={styles.emptyPlotSub}>
-            {seedCount > 0 ? CROPS[selectedCrop].name : "لا توجد بذور"}
-          </Text>
-        </>
-      )}
-    </Pressable>
-  );
+function objectName(object: FarmObjectRef | null): string {
+  if (!object) return "";
+  if (object.type === "house") return "منزل المزرعة";
+  if (object.type === "plot") return "حقل";
+  if (object.type === "tree") return "شجرة فاكهة";
+  return "قطعة ديكور";
 }
 
 export default function FarmGameScreen({ previewMode = false }: { previewMode?: boolean }) {
@@ -233,23 +99,29 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const player = auth.currentUser;
   const [farm, setFarm] = useState<FarmGameSave | null>(null);
   const [selectedCrop, setSelectedCrop] = useState<CropId>("wheat");
-  const [toolMode, setToolMode] = useState<"plant" | "water">("plant");
+  const [tool, setTool] = useState<FarmTool>("walk");
+  const [selectedMoveObject, setSelectedMoveObject] = useState<FarmObjectRef | null>(null);
   const [playerName, setPlayerName] = useState("المزارع");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
   const [now, setNow] = useState(Date.now());
-
   const playerId = player?.uid ?? "";
-  const unlockedCount = useMemo(
-    () => farm?.plots.filter((plot) => plot.unlocked).length ?? 0,
-    [farm],
+
+  const readyFields = useMemo(
+    () => farm?.plots.filter((plot) => getPlotGrowthState(plot, now).ready).length ?? 0,
+    [farm, now],
+  );
+  const readyTrees = useMemo(
+    () => farm?.trees.filter((tree) => getTreeGrowthState(tree, now).ready).length ?? 0,
+    [farm, now],
   );
   const level = farm ? Math.floor(farm.totalHarvests / 5) + 1 : 1;
-  const levelProgress = farm ? (farm.totalHarvests % 5) / 5 : 0;
-  const waterCount = farm ? getCurrentWater(farm, now) : 0;
-  const waterRefill = farm ? getWaterRefillMs(farm, now) : 0;
+  const totalStored = farm
+    ? Object.values(farm.inventory).reduce((sum, amount) => sum + amount, 0)
+      + Object.values(farm.fruitInventory).reduce((sum, amount) => sum + amount, 0)
+    : 0;
 
   const refreshFarm = useCallback(async () => {
     if (previewMode) {
@@ -275,7 +147,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       setPlayerName(profile?.name?.trim() || player?.displayName?.trim() || "المزارع");
     } catch (loadError) {
       console.error("Could not load farm:", loadError);
-      setError("تعذّر تحميل المزرعة. تحقق من الاتصال ثم أعد المحاولة.");
+      setError("تعذّر تحميل المزرعة. تحقق من الاتصال وقواعد Firestore ثم أعد المحاولة.");
     } finally {
       setLoading(false);
     }
@@ -292,23 +164,19 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
   const act = useCallback(
     async (action: FarmAction) => {
-      if (busy || (!previewMode && !playerId) || (previewMode && !farm)) return;
+      if (busy || !farm || (!previewMode && !playerId)) return false;
       setBusy(true);
       setError("");
-      setHint("");
       try {
         const updated = previewMode
-          ? applyFarmActionToState(farm!, action)
+          ? applyFarmActionToState(farm, action)
           : await performFarmAction(playerId, action);
         setFarm(updated);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setHint("");
+        return true;
       } catch (actionError) {
-        const message =
-          actionError instanceof Error
-            ? actionError.message
-            : "تعذّر تنفيذ الحركة. حاول مرة أخرى.";
-        setHint(message);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        setHint(actionError instanceof Error ? actionError.message : "تعذّر تنفيذ الحركة. حاول مرة أخرى.");
+        return false;
       } finally {
         setBusy(false);
       }
@@ -316,51 +184,114 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     [busy, farm, playerId, previewMode],
   );
 
-  const handlePlotPress = (plot: FarmPlot) => {
-    if (!farm) return;
-    if (!plot.unlocked) {
-      void act({ type: "unlockPlot", plotId: plot.id });
+  const changeTool = (nextTool: FarmTool) => {
+    if (nextTool === "buildHouse" && farm?.houseBuilt) {
+      setTool("move");
+      setSelectedMoveObject({ type: "house", id: "house" });
+      setHint("المنزل مبني بالفعل. اختر خانة فارغة لنقله.");
       return;
     }
-    if (toolMode === "water") {
-      if (!plot.cropId) {
-        setHint("اختر حقلاً مزروعاً لاستخدام أداة الري.");
-      } else {
-        const timing = getPlotTiming(plot, now);
-        if (timing.ready) {
-          setHint("المحصول جاهز للحصاد ولا يحتاج إلى الري.");
-        } else if (timing.watered) {
-          setHint("هذا الحقل رُوي بالفعل؛ سيواصل النمو حتى ينفد الماء.");
+    setTool(nextTool);
+    setSelectedMoveObject(null);
+    setHint(toolDescription(nextTool, selectedCrop));
+  };
+
+  const handleTilePress = async (position: FarmPosition, object: FarmObjectRef | null) => {
+    if (!farm || busy) return;
+
+    if (tool === "move") {
+      if (!selectedMoveObject) {
+        if (!object) {
+          setHint("اضغط أولاً على المنزل أو الحقل أو الشجرة أو الزينة التي تريد نقلها.");
         } else {
-          void act({ type: "waterPlot", plotId: plot.id });
+          setSelectedMoveObject(object);
+          setHint(`تم اختيار ${objectName(object)}. اختر مكاناً فارغاً لنقله.`);
         }
+        return;
+      }
+      const moving = selectedMoveObject;
+      const moved = await act({
+        type: "moveObjectTo",
+        object: moving,
+        x: position.x,
+        y: position.y,
+      });
+      if (moved) {
+        setSelectedMoveObject(null);
+        setHint(`${objectName(moving)} انتقل إلى المكان الجديد.`);
       }
       return;
     }
-    if (plot.cropId) {
-      const timing = getPlotTiming(plot, now);
-      if (timing.ready) {
-        void act({ type: "harvest", plotId: plot.id });
-      } else if (!timing.watered) {
-        setHint(`توقف نمو ${CROPS[plot.cropId].name}. اختر أداة الري ليستمر نموه.`);
+
+    if (object?.type === "plot") {
+      const plot = farm.plots.find((item) => item.id === object.id);
+      if (!plot?.cropId) return;
+      const growth = getPlotGrowthState(plot, now);
+      if (growth.ready) {
+        await act({ type: "harvestPlot", plotId: plot.id });
       } else {
-        setHint(`ينمو ${CROPS[plot.cropId].name}. تبقى ${formatTime(timing.remaining)} من وقت النمو.`);
+        setHint(`ينمو ${CROPS[plot.cropId].name} الآن. سيصبح جاهزاً خلال ${formatTime(growth.remaining)}.`);
       }
       return;
     }
-    if (farm.seeds[selectedCrop] < 1) {
-      setHint(`لا توجد بذور ${CROPS[selectedCrop].name}. اشترِ بذوراً من السوق أدناه.`);
+    if (object?.type === "tree") {
+      const tree = farm.trees.find((item) => item.id === object.id);
+      if (!tree) return;
+      const growth = getTreeGrowthState(tree, now);
+      if (growth.ready) {
+        await act({ type: "harvestFruit", treeId: tree.id });
+      } else {
+        setHint(`ثمار ${FRUIT_TREES[tree.kind].fruitName} تنمو. ستجهز خلال ${formatTime(growth.remaining)}.`);
+      }
       return;
     }
-    void act({ type: "plant", plotId: plot.id, cropId: selectedCrop });
+
+    if (object) {
+      setHint("هذه الخانة مشغولة. اختر خانة خضراء فارغة.");
+      return;
+    }
+
+    switch (tool) {
+      case "walk":
+        await act({ type: "movePlayerTo", x: position.x, y: position.y });
+        break;
+      case "plant":
+        if (farm.seeds[selectedCrop] < 1) {
+          setHint(`لا توجد بذور ${CROPS[selectedCrop].name}. اشترِ بذوراً من المتجر.`);
+          return;
+        }
+        await act({ type: "plantAt", x: position.x, y: position.y, cropId: selectedCrop });
+        break;
+      case "buildHouse":
+        await act({ type: "buildHouseAt", x: position.x, y: position.y });
+        break;
+      case "apple":
+      case "orange":
+        await act({ type: "buyTreeAt", treeId: tool, x: position.x, y: position.y });
+        break;
+      case "flowerBed":
+      case "gardenLamp":
+      case "fence":
+        await act({ type: "buyDecorationAt", decorationId: tool, x: position.x, y: position.y });
+        break;
+    }
+  };
+
+  const movePlayer = (dx: number, dy: number) => {
+    if (!farm) return;
+    const x = farm.playerPosition.x + dx;
+    const y = farm.playerPosition.y + dy;
+    if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) {
+      setHint("وصلت إلى طرف أرض المزرعة.");
+      return;
+    }
+    void act({ type: "movePlayerTo", x, y });
   };
 
   if (loading && !farm) {
     return (
       <View style={[styles.loadingPage, { paddingTop: insets.top }]}>
-        <View style={styles.loadingIcon}>
-          <Ionicons name="leaf" size={30} color={C.green} />
-        </View>
+        <View style={styles.loadingIcon}><Ionicons name="leaf" size={30} color={C.green} /></View>
         <ActivityIndicator color={C.green} size="large" />
         <Text style={styles.loadingText}>نجهّز مزرعتك...</Text>
       </View>
@@ -370,22 +301,13 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   if (!farm) {
     return (
       <View style={[styles.loadingPage, { paddingTop: insets.top }]}>
-        <View style={styles.errorIcon}>
-          <Ionicons name="cloud-offline-outline" size={30} color={C.red} />
-        </View>
+        <View style={styles.errorIcon}><Ionicons name="cloud-offline-outline" size={30} color={C.red} /></View>
         <Text style={styles.errorTitle}>تعذّر فتح المزرعة</Text>
         <Text style={styles.errorCopy}>{error || "تحقق من تسجيل الدخول والاتصال."}</Text>
-        <FarmActionButton
-          label="إعادة المحاولة"
-          icon="refresh-outline"
-          onPress={() => void refreshFarm()}
-        />
+        <ActionButton label="إعادة المحاولة" icon="refresh-outline" onPress={() => void refreshFarm()} />
       </View>
     );
   }
-
-  const expansionCost = getUnlockCost(farm);
-  const houseActionCost = getFarmHouseActionCost(farm.houseLevel);
 
   return (
     <View style={styles.screen}>
@@ -394,378 +316,299 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 28 },
+          { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 28 },
         ]}
         refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={() => void refreshFarm()}
-            tintColor={C.green}
-          />
+          <RefreshControl refreshing={loading} onRefresh={() => void refreshFarm()} tintColor={C.green} />
         }
       >
         {previewMode ? (
           <View style={styles.previewBanner}>
-            <Ionicons name="eye-outline" size={17} color={C.greenDark} />
-            <Text style={styles.previewBannerText}>
-              معاينة تفاعلية ببيانات تجريبية — التغييرات هنا لا تُحفظ
-            </Text>
+            <Ionicons name="eye-outline" size={16} color={C.greenDark} />
+            <Text style={styles.previewBannerText}>مزرعة تجريبية — التغييرات لا تُحفظ</Text>
           </View>
         ) : null}
-        <LinearGradient
-          colors={["#BFE5A9", "#E7F1B8", "#F5EDBC"]}
-          style={styles.hero}
-        >
-          <View style={styles.heroSun} />
-          <View style={styles.hillBack} />
-          <View style={styles.hillFront} />
-          <View style={styles.heroTopRow}>
+
+        <LinearGradient colors={["#DFF1C7", "#F5E8B6"]} style={styles.header}>
+          <View style={styles.headerTop}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={previewMode ? "العودة إلى تسجيل الدخول" : "تسجيل الخروج"}
               onPress={() => {
-                if (previewMode) {
-                  router.replace("/?showLogin=1" as any);
-                  return;
-                }
-                void signOut(auth).catch(() => {
-                  setHint("تعذّر تسجيل الخروج. حاول مرة أخرى.");
-                });
+                if (previewMode) router.replace("/?showLogin=1" as any);
+                else void signOut(auth);
               }}
-              style={styles.avatar}
+              style={styles.headerIconButton}
             >
+              <Ionicons name={previewMode ? "close-outline" : "log-out-outline"} size={19} color={C.greenDark} />
+            </Pressable>
+            <View style={styles.greeting}>
+              <Text style={styles.eyebrow}>يوم جميل في المزرعة</Text>
+              <Text numberOfLines={1} style={styles.title}>أهلاً، {playerName}</Text>
+            </View>
+            <View style={styles.coins}>
+              <Ionicons name="cash" size={17} color="#986D1F" />
+              <Text style={styles.coinText}>{formatCoins(farm.coins)}</Text>
+            </View>
+          </View>
+          <View style={styles.headerBottom}>
+            <View style={styles.levelPill}>
+              <Ionicons name="ribbon-outline" size={16} color="#986D1F" />
+              <Text style={styles.levelText}>المستوى {level}</Text>
+            </View>
+            <Text style={styles.headerPrompt}>ازرع، اجمع الثمار، وزيّن أرضك كما تحب</Text>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.statusStrip}>
+          <StatusItem icon="leaf-outline" value={String(farm.plots.length)} label="حقول" />
+          <StatusItem icon="sparkles-outline" value={String(readyFields + readyTrees)} label="جاهز للجمع" />
+          <StatusItem icon="basket-outline" value={String(totalStored)} label="في المخزن" />
+          <StatusItem icon="home-outline" value={farm.houseBuilt ? "موجود" : "قابل للبناء"} label="المنزل" />
+        </View>
+
+        <View style={styles.sectionHead}>
+          <View>
+            <Text style={styles.sectionTitle}>مزرعتك المفتوحة</Text>
+            <Text style={styles.sectionSubtitle}>اسحب لاستكشاف الأرض، واضغط لاختيار مكانك</Text>
+          </View>
+          <View style={styles.sunBadge}><Ionicons name="sunny" size={16} color="#C28D2F" /></View>
+        </View>
+
+        <View style={styles.worldCard}>
+          <FarmScene farm={farm} now={now} onTilePress={(position, object) => void handleTilePress(position, object)} />
+          <View style={styles.worldFooter}>
+            <Ionicons name="hand-left-outline" size={15} color={C.greenDark} />
+            <Text style={styles.worldFooterText}>أرض واسعة {FARM_MAP_COLUMNS} × {FARM_MAP_ROWS} — حرّك المزارع بحرية</Text>
+          </View>
+        </View>
+
+        <View style={styles.currentTool}>
+          <View style={styles.toolHintIcon}>
+            <Ionicons name={TOOLS.find((item) => item.id === tool)?.icon ?? "hand-left-outline"} size={18} color={C.greenDark} />
+          </View>
+          <View style={styles.toolHintCopy}>
+            <Text style={styles.toolHintTitle}>{TOOLS.find((item) => item.id === tool)?.label}</Text>
+            <Text style={styles.toolHintText}>
+              {selectedMoveObject ? `اختر مكاناً جديداً لـ ${objectName(selectedMoveObject)}.` : toolDescription(tool, selectedCrop)}
+            </Text>
+          </View>
+          {busy ? <ActivityIndicator size="small" color={C.green} /> : null}
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolList}>
+          {TOOLS.map((item) => {
+            const active = tool === item.id;
+            const disabled = item.id === "buildHouse" && farm.houseBuilt;
+            const price =
+              item.id === "apple" || item.id === "orange"
+                ? FRUIT_TREES[item.id].price
+                : item.id === "flowerBed" || item.id === "gardenLamp" || item.id === "fence"
+                  ? DECORATIONS[item.id].price
+                  : null;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => changeTool(item.id)}
+                style={[styles.toolButton, active && styles.toolButtonActive, disabled && styles.toolButtonDimmed]}
+              >
+                <Ionicons name={item.icon} size={17} color={active ? "#FFFFFF" : C.greenDark} />
+                <Text style={[styles.toolButtonText, active && styles.toolButtonTextActive]}>{item.label}</Text>
+                {price !== null ? <Text style={[styles.toolPrice, active && styles.toolButtonTextActive]}>{price}</Text> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.movePadSection}>
+          <View style={styles.sectionHeadCompact}>
+            <Text style={styles.sectionTitleSmall}>تحكّم بحركة المزارع</Text>
+            <Text style={styles.sectionSubtitle}>أو اختر وجهته مباشرة على الخريطة</Text>
+          </View>
+          <View style={styles.movePad}>
+            <View style={styles.movePadSpacer} />
+            <MoveButton icon="chevron-up" label="للأعلى" onPress={() => movePlayer(0, -1)} />
+            <View style={styles.movePadSpacer} />
+            <MoveButton icon="chevron-back" label="لليسار" onPress={() => movePlayer(-1, 0)} />
+            <View style={styles.playerDot}><Ionicons name="person" size={15} color="#FFFFFF" /></View>
+            <MoveButton icon="chevron-forward" label="لليمين" onPress={() => movePlayer(1, 0)} />
+            <View style={styles.movePadSpacer} />
+            <MoveButton icon="chevron-down" label="للأسفل" onPress={() => movePlayer(0, 1)} />
+            <View style={styles.movePadSpacer} />
+          </View>
+        </View>
+
+        <View style={styles.sectionHead}>
+          <View>
+            <Text style={styles.sectionTitle}>متجر البذور</Text>
+            <Text style={styles.sectionSubtitle}>ازرع في أي خانة خضراء فارغة</Text>
+          </View>
+          <Ionicons name="leaf-outline" size={21} color={C.green} />
+        </View>
+        <View style={styles.shopList}>
+          {CROP_ORDER.map((cropId) => {
+            const crop = CROPS[cropId];
+            const selected = selectedCrop === cropId;
+            return (
+              <View key={cropId} style={[styles.shopCard, selected && styles.shopCardSelected]}>
+                <Pressable
+                  onPress={() => {
+                    setSelectedCrop(cropId);
+                    setTool("plant");
+                    setSelectedMoveObject(null);
+                    setHint(`تم اختيار ${crop.name}. اضغط على خانة خضراء فارغة لزراعتها.`);
+                  }}
+                  style={styles.shopMain}
+                >
+                  <View style={[styles.cropIcon, { backgroundColor: crop.lightColor }]}>
+                    <Ionicons name="leaf" size={21} color={crop.color} />
+                  </View>
+                  <View style={styles.shopCopy}>
+                    <Text style={styles.shopName}>{crop.name}</Text>
+                    <Text style={styles.shopMeta}>
+                      {formatTime(crop.growMs)} · {crop.harvestAmount} للحصاد
+                    </Text>
+                    <Text style={styles.stockLine}>البذور: {farm.seeds[cropId]}</Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`شراء بذرة ${crop.name} بسعر ${crop.seedPrice}`}
+                  disabled={busy}
+                  onPress={() => void act({ type: "buySeed", cropId })}
+                  style={styles.buyButton}
+                >
+                  <Ionicons name="add" size={16} color="#FFFFFF" />
+                  <Text style={styles.buyButtonText}>{crop.seedPrice}</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.sectionHead}>
+          <View>
+            <Text style={styles.sectionTitle}>الأشجار المثمرة</Text>
+            <Text style={styles.sectionSubtitle}>اشترِ شجرة وضعها، ثم اجمع الثمار عند نضجها</Text>
+          </View>
+          <Ionicons name="nutrition-outline" size={22} color={C.green} />
+        </View>
+        <View style={styles.shopList}>
+          {FRUIT_TREE_ORDER.map((treeId) => {
+            const tree = FRUIT_TREES[treeId];
+            const placedCount = farm.trees.filter((item) => item.kind === treeId).length;
+            return (
+              <View key={treeId} style={styles.shopCard}>
+                <Pressable onPress={() => changeTool(treeId)} style={styles.shopMain}>
+                  <View style={[styles.treeIcon, { backgroundColor: "#E3F0D4" }]}>
+                    <Ionicons name="leaf" size={21} color={tree.fruitColor} />
+                  </View>
+                  <View style={styles.shopCopy}>
+                    <Text style={styles.shopName}>{tree.name}</Text>
+                    <Text style={styles.shopMeta}>
+                      أول ثمار بعد {formatTime(tree.growMs)} · {tree.harvestAmount} {tree.fruitName}
+                    </Text>
+                    <Text style={styles.stockLine}>في المزرعة: {placedCount}</Text>
+                  </View>
+                </Pressable>
+                <Pressable onPress={() => changeTool(treeId)} style={styles.buyButton}>
+                  <Ionicons name="cart-outline" size={15} color="#FFFFFF" />
+                  <Text style={styles.buyButtonText}>{tree.price}</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.sectionHead}>
+          <View>
+            <Text style={styles.sectionTitle}>الديكور والبناء</Text>
+            <Text style={styles.sectionSubtitle}>ضع العناصر في أي خانة، وانقلها لاحقاً</Text>
+          </View>
+          <Ionicons name="color-palette-outline" size={22} color={C.green} />
+        </View>
+        <View style={styles.decorGrid}>
+          <Pressable
+            onPress={() => changeTool(farm.houseBuilt ? "move" : "buildHouse")}
+            style={styles.decorCard}
+          >
+            <Ionicons name="home-outline" size={23} color={C.greenDark} />
+            <Text style={styles.decorName}>{farm.houseBuilt ? "نقل المنزل" : "بناء المنزل"}</Text>
+            <Text style={styles.decorPrice}>{farm.houseBuilt ? "مبني" : `${formatCoins(180)} عملة`}</Text>
+          </Pressable>
+          {DECORATION_ORDER.map((id) => (
+            <Pressable key={id} onPress={() => changeTool(id)} style={styles.decorCard}>
               <Ionicons
-                name={previewMode ? "close-outline" : "log-out-outline"}
-                size={21}
+                name={id === "flowerBed" ? "flower-outline" : id === "gardenLamp" ? "bulb-outline" : "grid-outline"}
+                size={23}
                 color={C.greenDark}
               />
+              <Text style={styles.decorName}>{DECORATIONS[id].name}</Text>
+              <Text style={styles.decorPrice}>{formatCoins(DECORATIONS[id].price)} عملة</Text>
             </Pressable>
-            <View style={styles.heroGreeting}>
-              <Text style={styles.heroEyebrow}>مزرعتك الصغيرة</Text>
-              <Text numberOfLines={1} style={styles.heroName}>
-                أهلاً، {playerName}
-              </Text>
-            </View>
-            <View style={styles.coinPill}>
-              <Ionicons name="cash" size={17} color="#865B11" />
-              <Text style={styles.coinPillText}>{formatCoins(farm.coins)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.heroMessage}>
-            <Text style={styles.heroTitle}>ازرعها اليوم، واحصدها قريباً</Text>
-            <Text style={styles.heroDescription}>
-              كل محصول جديد يقرّب مزرعتك من المستوى التالي.
-            </Text>
-          </View>
-
-          <View style={styles.heroGround}>
-            <View style={styles.heroRow}>
-              <View style={styles.tinyCrop}>
-                <View style={styles.tinyStem} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafLeft]} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafRight]} />
-              </View>
-              <View style={[styles.tinyCrop, styles.tinyCropTwo]}>
-                <View style={styles.tinyStem} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafLeft]} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafRight]} />
-              </View>
-              <View style={[styles.tinyCrop, styles.tinyCropThree]}>
-                <View style={styles.tinyStem} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafLeft]} />
-                <View style={[styles.tinyLeaf, styles.tinyLeafRight]} />
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.levelCard}>
-          <View style={styles.levelTop}>
-            <View style={styles.levelBadge}>
-              <Ionicons name="ribbon-outline" size={18} color="#9A701D" />
-              <Text style={styles.levelBadgeText}>المستوى {level}</Text>
-            </View>
-            <Text style={styles.levelHint}>{5 - (farm.totalHarvests % 5)} حصادات للمستوى التالي</Text>
-          </View>
-          <View style={styles.levelTrack}>
-            <View style={[styles.levelFill, { width: `${Math.max(levelProgress * 100, 4)}%` }]} />
-          </View>
-          <View style={styles.statRow}>
-            <StatItem icon="leaf-outline" value={String(farm.totalHarvests)} label="حصاد" />
-            <View style={styles.statDivider} />
-            <StatItem icon="grid-outline" value={`${unlockedCount}/${FARM_PLOT_COUNT}`} label="أرض مفتوحة" />
-            <View style={styles.statDivider} />
-            <StatItem icon="basket-outline" value={String(Object.values(farm.inventory).reduce((sum, n) => sum + n, 0))} label="في المخزن" />
-          </View>
+          ))}
         </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>أرض المزرعة</Text>
-            <Text style={styles.sectionSubtitle}>
-              {toolMode === "water"
-                ? "اضغط على محصول جاف ليسقيه الماء"
-                : `اختر بذرة ${CROPS[selectedCrop].name} للزراعة؛ اسقِ محصولك ليستمر في النمو`}
-            </Text>
-          </View>
-          <View style={styles.sunTag}>
-            <Ionicons name="sunny-outline" size={16} color="#A4741C" />
-            <Text style={styles.sunTagText}>طقس مناسب</Text>
-          </View>
-        </View>
-
-        <LinearGradient colors={["#D5E9B9", "#C7DFAB"]} style={styles.farmBoard}>
-          <View style={styles.boardTop}>
-            <View style={styles.boardLabel}>
-              <Ionicons name="leaf" size={17} color={C.greenDark} />
-              <Text style={styles.boardLabelText}>حقولك</Text>
-            </View>
-            <Text style={styles.boardCount}>{unlockedCount} قطع أرض مفتوحة</Text>
-          </View>
-
-          <View style={styles.housePanel}>
-            <View style={styles.houseIcon}>
-              <Ionicons
-                name={farm.houseBuilt ? "home" : "home-outline"}
-                size={22}
-                color={farm.houseBuilt ? C.greenDark : "#8B633D"}
-              />
-            </View>
-            <View style={styles.houseInfo}>
-              <Text style={styles.houseTitle}>منزل المزرعة</Text>
-              <Text style={styles.houseSubtitle}>
-                {farm.houseBuilt
-                  ? `المستوى ${farm.houseLevel} · طوّر مظهر منزلك`
-                  : "ابنِ منزلك ليكتمل مركز المزرعة"}
-              </Text>
-            </View>
-            {houseActionCost === null ? (
-              <Text style={styles.houseBuiltTag}>المستوى الأعلى</Text>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${farm.houseBuilt ? "تطوير" : "بناء"} المنزل مقابل ${houseActionCost} عملة`}
-                onPress={() => void act({ type: farm.houseBuilt ? "upgradeHouse" : "buildHouse" })}
-                disabled={busy}
-                style={({ pressed }) => [
-                  styles.buildHouseButton,
-                  busy && styles.disabledButton,
-                  pressed && !busy && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  name={farm.houseBuilt ? "sparkles-outline" : "hammer-outline"}
-                  size={15}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.buildHouseText}>
-                  {farm.houseBuilt ? "تطوير" : "بناء"} · {formatCoins(houseActionCost)}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.toolPanel}>
-            <View style={styles.waterDetails}>
-              <View style={styles.waterIcon}>
-                <Ionicons name="water" size={19} color="#287BA1" />
-              </View>
-              <View style={styles.waterCopy}>
-                <Text style={styles.waterCount}>
-                  الماء {waterCount}/{WATER_CAPACITY}
-                </Text>
-                <Text style={styles.waterRefill}>
-                  {waterCount >= WATER_CAPACITY
-                    ? "الخزان ممتلئ"
-                    : `قطرة جديدة خلال ${formatTime(waterRefill)}`}
-                </Text>
-              </View>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: toolMode === "water" }}
-              onPress={() => {
-                setToolMode((current) => (current === "water" ? "plant" : "water"));
-                setHint(
-                  toolMode === "water"
-                    ? `تم اختيار بذور ${CROPS[selectedCrop].name}.`
-                    : "أداة الري جاهزة؛ اضغط على محصول جاف.",
-                );
-              }}
-              style={({ pressed }) => [
-                styles.waterToolButton,
-                toolMode === "water" && styles.waterToolButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name={toolMode === "water" ? "checkmark-circle" : "water-outline"}
-                size={17}
-                color={toolMode === "water" ? "#FFFFFF" : "#287BA1"}
-              />
-              <Text
-                style={[
-                  styles.waterToolText,
-                  toolMode === "water" && styles.waterToolTextActive,
-                ]}
-              >
-                {toolMode === "water" ? "الري محدد" : "أداة الري"}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.farmSceneViewport}>
-            <FarmScene
-              plots={farm.plots}
-              selectedCrop={selectedCrop}
-              toolMode={toolMode}
-              expansionCost={expansionCost}
-              houseBuilt={farm.houseBuilt}
-              houseLevel={farm.houseLevel}
-              now={now}
-              onPlotPress={handlePlotPress}
-            />
-          </View>
-          <View style={styles.sceneGestureHint}>
-            <Ionicons name="hand-left-outline" size={14} color="#55764A" />
-            <Text style={styles.sceneGestureText}>
-              اسحب لتحريك المزرعة، وقرّب بإصبعين أو بعجلة الفأرة
-            </Text>
-          </View>
-        </LinearGradient>
 
         {hint ? (
           <View style={styles.hintBox}>
             <Ionicons name="information-circle-outline" size={18} color={C.greenDark} />
             <Text style={styles.hintText}>{hint}</Text>
-            <Pressable onPress={() => setHint("")} hitSlop={8}>
-              <Ionicons name="close" size={17} color={C.muted} />
-            </Pressable>
+            <Pressable onPress={() => setHint("")} hitSlop={8}><Ionicons name="close" size={17} color={C.muted} /></Pressable>
           </View>
         ) : null}
-        {error ? (
-          <View style={styles.errorBanner}>
-            <Ionicons name="alert-circle-outline" size={18} color={C.red} />
-            <Text style={styles.errorBannerText}>{error}</Text>
-          </View>
-        ) : null}
+        {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
-        <View style={styles.sectionHeader}>
+        <View style={styles.sectionHead}>
           <View>
-            <Text style={styles.sectionTitle}>اختر البذور</Text>
-            <Text style={styles.sectionSubtitle}>الرصيد يحفظ تلقائياً مع حسابك</Text>
+            <Text style={styles.sectionTitle}>مخزن المحاصيل والثمار</Text>
+            <Text style={styles.sectionSubtitle}>بع الفائض لتحصل على عملات للمزرعة</Text>
           </View>
-          <Ionicons name="water-outline" size={22} color={C.green} />
+          <Ionicons name="basket-outline" size={22} color={C.green} />
         </View>
-
-        <View style={styles.cropList}>
-          {CROP_ORDER.map((cropId) => {
-            const crop = CROPS[cropId];
-            const selected = selectedCrop === cropId;
-            return (
-              <Pressable
-                key={cropId}
-                onPress={() => {
-                  setSelectedCrop(cropId);
-                  setToolMode("plant");
-                  setHint(`تم اختيار بذور ${crop.name}. اضغط على قطعة أرض فارغة لزراعتها.`);
-                }}
-                style={({ pressed }) => [
-                  styles.cropCard,
-                  selected && styles.cropCardSelected,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={[styles.cropCardGlyph, { backgroundColor: crop.lightColor }]}>
-                  <Ionicons name="leaf" size={21} color={crop.color} />
-                </View>
-                <View style={styles.cropInfo}>
-                  <Text style={styles.cropName}>{crop.name}</Text>
-                  <Text style={styles.cropMeta}>
-                    ينمو خلال {formatTime(crop.growMs)} · حصاد {crop.harvestAmount}
-                  </Text>
-                  <Text style={styles.seedAmount}>بذورك: {farm.seeds[cropId]}</Text>
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`شراء بذرة ${crop.name} مقابل ${crop.seedPrice} عملات`}
-                  onPress={() => void act({ type: "buySeed", cropId })}
-                  disabled={busy}
-                  style={({ pressed }) => [
-                    styles.buySeedButton,
-                    pressed && !busy && styles.pressed,
-                    busy && styles.disabledButton,
-                  ]}
-                >
-                  <Ionicons name="add" size={17} color="#FFFFFF" />
-                  <Text style={styles.buySeedText}>{crop.seedPrice}</Text>
-                </Pressable>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>مخزن المحاصيل</Text>
-            <Text style={styles.sectionSubtitle}>حوّل حصادك إلى عملات لتوسيع المزرعة</Text>
-          </View>
-          <Ionicons name="file-tray-stacked-outline" size={22} color={C.green} />
-        </View>
-
         <View style={styles.storageCard}>
-          {CROP_ORDER.map((cropId, index) => {
-            const crop = CROPS[cropId];
-            const amount = farm.inventory[cropId];
-            return (
-              <View
-                key={cropId}
-                style={[
-                  styles.storageRow,
-                  index < CROP_ORDER.length - 1 && styles.storageRowBorder,
-                ]}
-              >
-                <View style={[styles.storageGlyph, { backgroundColor: crop.lightColor }]}>
-                  <Ionicons name="leaf" size={17} color={crop.color} />
-                </View>
-                <View style={styles.storageInfo}>
-                  <Text style={styles.storageName}>{crop.name}</Text>
-                  <Text style={styles.storagePrice}>{crop.sellPrice} عملات للحبة</Text>
-                </View>
-                <Text style={styles.storageCount}>× {amount}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void act({ type: "sellCrop", cropId })}
-                  disabled={busy || amount < 1}
-                  style={({ pressed }) => [
-                    styles.sellButton,
-                    (busy || amount < 1) && styles.sellButtonDisabled,
-                    pressed && amount > 0 && !busy && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.sellButtonText}>بيع</Text>
-                </Pressable>
+          {CROP_ORDER.map((cropId) => (
+            <View key={cropId} style={styles.storageRow}>
+              <Text style={styles.storageCount}>× {farm.inventory[cropId]}</Text>
+              <View style={styles.storageCopy}>
+                <Text style={styles.storageName}>{CROPS[cropId].name}</Text>
+                <Text style={styles.storageMeta}>{CROPS[cropId].sellPrice} عملات للحبة</Text>
               </View>
-            );
-          })}
-          {Object.values(farm.inventory).every((amount) => amount === 0) ? (
-            <View style={styles.emptyStorage}>
-              <Text style={styles.emptyStorageText}>احصد أول محصول ليظهر هنا.</Text>
+              <Pressable
+                disabled={busy || farm.inventory[cropId] < 1}
+                onPress={() => void act({ type: "sellCrop", cropId })}
+                style={[styles.sellButton, farm.inventory[cropId] < 1 && styles.disabled]}
+              >
+                <Text style={styles.sellText}>بيع</Text>
+              </Pressable>
             </View>
+          ))}
+          {FRUIT_TREE_ORDER.map((treeId) => (
+            <View key={treeId} style={styles.storageRow}>
+              <Text style={styles.storageCount}>× {farm.fruitInventory[treeId]}</Text>
+              <View style={styles.storageCopy}>
+                <Text style={styles.storageName}>{FRUIT_TREES[treeId].fruitName}</Text>
+                <Text style={styles.storageMeta}>{FRUIT_TREES[treeId].sellPrice} عملات للحبة</Text>
+              </View>
+              <Pressable
+                disabled={busy || farm.fruitInventory[treeId] < 1}
+                onPress={() => void act({ type: "sellFruit", treeId })}
+                style={[styles.sellButton, farm.fruitInventory[treeId] < 1 && styles.disabled]}
+              >
+                <Text style={styles.sellText}>بيع</Text>
+              </Pressable>
+            </View>
+          ))}
+          {farm.plots.length === 0 && farm.trees.length === 0 ? (
+            <Text style={styles.emptyStock}>ازرع حقلك الأول لتبدأ بتخزين المحاصيل.</Text>
           ) : null}
         </View>
 
         <View style={styles.footerNote}>
-          <Ionicons
-            name={previewMode ? "leaf-outline" : "cloud-done-outline"}
-            size={16}
-            color={C.muted}
-          />
-          <Text style={styles.footerNoteText}>
-            {previewMode
-              ? "هذه تجربة فقط؛ سجل الدخول لحفظ مزرعتك في Firebase"
-              : "تقدمك محفوظ في حساب Firebase الخاص بك"}
+          <Ionicons name={previewMode ? "leaf-outline" : "cloud-done-outline"} size={16} color={C.muted} />
+          <Text style={styles.footerText}>
+            {previewMode ? "هذه تجربة فقط؛ تقدمك الحقيقي يحفظ في حساب Firebase" : "مزرعتك محفوظة في حساب Firebase الخاص بك"}
           </Text>
         </View>
       </ScrollView>
@@ -779,7 +622,24 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   );
 }
 
-function StatItem({
+function ActionButton({
+  label,
+  icon,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.actionButton}>
+      <Ionicons name={icon} size={17} color="#FFFFFF" />
+      <Text style={styles.actionButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function StatusItem({
   icon,
   value,
   label,
@@ -789,371 +649,116 @@ function StatItem({
   label: string;
 }) {
   return (
-    <View style={styles.statItem}>
-      <Ionicons name={icon} size={17} color={C.green} />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.statusItem}>
+      <Ionicons name={icon} size={16} color={C.greenDark} />
+      <Text style={styles.statusValue}>{value}</Text>
+      <Text style={styles.statusLabel}>{label}</Text>
     </View>
+  );
+}
+
+function MoveButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`تحرك ${label}`} onPress={onPress} style={styles.moveButton}>
+      <Ionicons name={icon} size={18} color={C.greenDark} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.canvas },
-  scrollContent: { paddingHorizontal: 18, gap: 20 },
-  loadingPage: {
-    flex: 1,
-    backgroundColor: C.canvas,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 30,
-    gap: 16,
-  },
-  loadingIcon: {
-    width: 66,
-    height: 66,
-    borderRadius: 23,
-    backgroundColor: "#DDEFD5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: { color: C.greenDark, fontSize: 16, fontWeight: "700" },
-  errorIcon: {
-    width: 62,
-    height: 62,
-    borderRadius: 22,
-    backgroundColor: "#F8E7E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  errorTitle: { color: C.ink, fontSize: 19, fontWeight: "800", textAlign: "center" },
-  errorCopy: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: "center" },
-  hero: {
-    minHeight: 220,
-    borderRadius: 28,
-    overflow: "hidden",
-    padding: 18,
-    justifyContent: "space-between",
-  },
-  heroSun: {
-    position: "absolute",
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    top: 40,
-    right: 24,
-    backgroundColor: "rgba(255,255,255,0.45)",
-  },
-  hillBack: {
-    position: "absolute",
-    width: 280,
-    height: 130,
-    borderRadius: 100,
-    bottom: 25,
-    left: -88,
-    backgroundColor: "rgba(108,171,105,0.24)",
-  },
-  hillFront: {
-    position: "absolute",
-    width: 310,
-    height: 126,
-    borderRadius: 100,
-    bottom: 0,
-    right: -105,
-    backgroundColor: "rgba(93,156,86,0.26)",
-  },
-  heroTopRow: { flexDirection: "row", alignItems: "center", gap: 10, zIndex: 2 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-  },
-  heroGreeting: { flex: 1, minWidth: 0 },
-  heroEyebrow: { color: "#51795A", fontSize: 11, fontWeight: "700" },
-  heroName: { color: C.ink, fontSize: 15, fontWeight: "800", marginTop: 2 },
-  coinPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.8)",
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 18,
-  },
-  coinPillText: { color: "#744E10", fontSize: 13, fontWeight: "800" },
-  heroMessage: { zIndex: 2, marginTop: 22, alignItems: "flex-start" },
-  heroTitle: { color: C.ink, fontSize: 20, fontWeight: "900" },
-  heroDescription: { color: "#4F7652", fontSize: 12, fontWeight: "600", marginTop: 5 },
-  heroGround: {
-    position: "absolute",
-    bottom: -5,
-    left: 0,
-    right: 0,
-    height: 34,
-    backgroundColor: "rgba(86,142,70,0.3)",
-  },
-  heroRow: { flexDirection: "row", justifyContent: "space-evenly", marginTop: -18 },
-  tinyCrop: { width: 20, height: 38, alignItems: "center", justifyContent: "flex-end" },
-  tinyCropTwo: { height: 44 },
-  tinyCropThree: { height: 33 },
-  tinyStem: { width: 3, height: 24, borderRadius: 2, backgroundColor: "#43834B" },
-  tinyLeaf: { position: "absolute", width: 12, height: 7, borderRadius: 8, backgroundColor: "#5E9E5E" },
-  tinyLeafLeft: { left: 0, bottom: 13, transform: [{ rotate: "-28deg" }] },
-  tinyLeafRight: { right: 0, bottom: 20, transform: [{ rotate: "28deg" }] },
-  levelCard: {
-    backgroundColor: C.paper,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  levelTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  levelBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#FBF1D6",
-    borderRadius: 13,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  levelBadgeText: { color: "#87631B", fontSize: 12, fontWeight: "800" },
-  levelHint: { color: C.muted, fontSize: 11, fontWeight: "600" },
-  levelTrack: { height: 7, borderRadius: 5, backgroundColor: "#EDF1E7", marginTop: 13, overflow: "hidden" },
-  levelFill: { height: "100%", borderRadius: 5, backgroundColor: C.gold },
-  statRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", marginTop: 15 },
-  statItem: { alignItems: "center", minWidth: 72, gap: 3 },
-  statValue: { color: C.ink, fontSize: 15, fontWeight: "900" },
-  statLabel: { color: C.muted, fontSize: 10, fontWeight: "600" },
-  statDivider: { width: 1, height: 34, backgroundColor: C.border },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
-  sectionTitle: { color: C.ink, fontSize: 18, fontWeight: "900" },
-  sectionSubtitle: { color: C.muted, fontSize: 11, marginTop: 4, fontWeight: "600" },
-  sunTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#FFF5D9",
-    borderRadius: 14,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-  },
-  sunTagText: { color: "#8D6A26", fontSize: 10, fontWeight: "800" },
-  farmBoard: { borderRadius: 25, padding: 14, borderWidth: 1, borderColor: "#B6D59F" },
-  boardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 13 },
-  boardLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
-  boardLabelText: { color: C.greenDark, fontSize: 14, fontWeight: "900" },
-  boardCount: { color: "#5E805A", fontSize: 10, fontWeight: "700" },
-  housePanel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderWidth: 1,
-    borderColor: "rgba(115,145,94,0.24)",
-    borderRadius: 16,
-    padding: 9,
-    marginBottom: 10,
-  },
-  houseIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F5EBD6",
-  },
-  houseInfo: { flex: 1, minWidth: 0 },
-  houseTitle: { color: C.ink, fontSize: 11, fontWeight: "900" },
-  houseSubtitle: { color: C.muted, fontSize: 9, marginTop: 3 },
-  buildHouseButton: {
-    minWidth: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 8,
-    borderRadius: 11,
-    backgroundColor: "#98633D",
-  },
-  buildHouseText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
-  houseBuiltTag: {
-    color: C.greenDark,
-    backgroundColor: "#DFEFD7",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 9,
-    fontWeight: "900",
-  },
-  toolPanel: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    backgroundColor: "#E8F4F7",
-    borderWidth: 1,
-    borderColor: "#C8E2E9",
-    borderRadius: 16,
-    padding: 8,
-    marginBottom: 10,
-  },
-  waterDetails: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
-  waterIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#D3EAF1",
-  },
-  waterCopy: { flex: 1, minWidth: 0 },
-  waterCount: { color: "#245D75", fontSize: 10, fontWeight: "900" },
-  waterRefill: { color: "#5D7C88", fontSize: 8, marginTop: 2 },
-  waterToolButton: {
-    minHeight: 36,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#B9D9E3",
-    borderRadius: 12,
-    paddingHorizontal: 9,
-  },
-  waterToolButtonActive: { backgroundColor: "#287BA1", borderColor: "#287BA1" },
-  waterToolText: { color: "#287BA1", fontSize: 9, fontWeight: "900" },
-  waterToolTextActive: { color: "#FFFFFF" },
-  farmSceneViewport: {
-    height: 390,
-    width: "100%",
-    borderRadius: 20,
-    overflow: "hidden",
-    backgroundColor: "#B9D991",
-    borderWidth: 1,
-    borderColor: "rgba(75,112,60,0.25)",
-  },
-  sceneGestureHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingTop: 9,
-  },
-  sceneGestureText: { color: "#55764A", fontSize: 10, fontWeight: "700" },
-  plotTile: {
-    width: "31.5%",
-    minHeight: 116,
-    borderRadius: 18,
-    backgroundColor: C.soil,
-    borderWidth: 2,
-    borderColor: "#8B5938",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 8,
-    overflow: "hidden",
-  },
-  lockedPlot: { backgroundColor: "#E9E5D6", borderColor: "#D5D0BE" },
-  waterTargetPlot: { borderColor: "#4D9DB9" },
-  readyPlot: { backgroundColor: "#FFF8DF", borderColor: "#E6C45E" },
-  plotPressed: { transform: [{ scale: 0.97 }] },
-  lockIconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#DCD7C8", alignItems: "center", justifyContent: "center" },
-  lockedTitle: { color: "#756F5D", fontSize: 10, fontWeight: "800", marginTop: 6 },
-  lockedCost: { color: "#8B7341", fontSize: 9, fontWeight: "700", marginTop: 3 },
-  cropBadge: { width: 40, height: 40, borderRadius: 15, alignItems: "center", justifyContent: "center", marginBottom: 5 },
-  plotCropName: { color: C.ink, fontSize: 11, fontWeight: "900" },
-  readyLabel: { color: "#8A6719", fontSize: 9, fontWeight: "900", marginTop: 3 },
-  progressTrack: { width: "86%", height: 5, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.5)", marginTop: 6, overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: "#62A45C", borderRadius: 4 },
-  plotTimer: { color: "#FFF8E9", fontSize: 9, fontWeight: "800", marginTop: 3 },
-  soilMark: { width: 38, height: 38, borderRadius: 14, backgroundColor: "rgba(79,47,27,0.28)", alignItems: "center", justifyContent: "center" },
-  emptyPlotTitle: { color: "#FFF9E9", fontSize: 10, fontWeight: "900", marginTop: 5 },
-  emptyPlotSub: { color: "#F4D9AD", fontSize: 9, fontWeight: "700", marginTop: 2 },
-  hintBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#E4F1DE", padding: 11, borderRadius: 14 },
-  hintText: { flex: 1, color: C.greenDark, fontSize: 12, lineHeight: 18, fontWeight: "600" },
-  errorBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FBE9E4", padding: 11, borderRadius: 14 },
-  errorBannerText: { flex: 1, color: C.red, fontSize: 12, fontWeight: "700" },
-  cropList: { gap: 9 },
-  cropCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    backgroundColor: C.paper,
-    padding: 11,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  cropCardSelected: { borderColor: "#77AF68", backgroundColor: "#F4FAEF" },
-  cropCardGlyph: { width: 43, height: 43, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  cropInfo: { flex: 1, minWidth: 0 },
-  cropName: { color: C.ink, fontSize: 13, fontWeight: "900" },
-  cropMeta: { color: C.muted, fontSize: 9, marginTop: 3 },
-  seedAmount: { color: C.green, fontSize: 10, fontWeight: "800", marginTop: 3 },
-  buySeedButton: {
-    minWidth: 54,
-    height: 37,
-    borderRadius: 12,
-    backgroundColor: C.green,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    paddingHorizontal: 8,
-  },
-  buySeedText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
-  storageCard: { backgroundColor: C.paper, borderRadius: 20, borderWidth: 1, borderColor: C.border, paddingHorizontal: 13 },
-  storageRow: { minHeight: 61, flexDirection: "row", alignItems: "center", gap: 9 },
-  storageRowBorder: { borderBottomWidth: 1, borderBottomColor: "#EDF1E8" },
-  storageGlyph: { width: 35, height: 35, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  storageInfo: { flex: 1 },
-  storageName: { color: C.ink, fontSize: 12, fontWeight: "800" },
-  storagePrice: { color: C.muted, fontSize: 9, marginTop: 2 },
-  storageCount: { color: C.ink, fontSize: 12, fontWeight: "800", minWidth: 38, textAlign: "center" },
-  sellButton: { minWidth: 48, alignItems: "center", justifyContent: "center", borderRadius: 11, paddingVertical: 8, backgroundColor: "#E7F2E2" },
-  sellButtonDisabled: { backgroundColor: "#F1F3EF", opacity: 0.65 },
-  sellButtonText: { color: C.greenDark, fontSize: 10, fontWeight: "900" },
-  emptyStorage: { alignItems: "center", paddingVertical: 14 },
-  emptyStorageText: { color: C.muted, fontSize: 11, fontWeight: "600" },
-  footerNote: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingTop: 2 },
-  footerNoteText: { color: C.muted, fontSize: 10, fontWeight: "600" },
-  previewBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    backgroundColor: "#DDEFD5",
-    borderColor: "#BFD9B3",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  previewBannerText: { color: C.greenDark, fontSize: 10, fontWeight: "800", textAlign: "center", flexShrink: 1 },
-  savingPill: {
-    position: "absolute",
-    bottom: 18,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: C.greenDark,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    elevation: 5,
-  },
+  scrollContent: { width: "100%", maxWidth: 600, alignSelf: "center", paddingHorizontal: 14, gap: 14 },
+  loadingPage: { flex: 1, backgroundColor: C.canvas, alignItems: "center", justifyContent: "center", padding: 26, gap: 13 },
+  loadingIcon: { width: 62, height: 62, borderRadius: 22, backgroundColor: "#E6F2DC", alignItems: "center", justifyContent: "center" },
+  loadingText: { color: C.ink, fontSize: 14, fontWeight: "800" },
+  errorIcon: { width: 62, height: 62, borderRadius: 22, backgroundColor: "#FBE6DE", alignItems: "center", justifyContent: "center" },
+  errorTitle: { color: C.ink, fontSize: 17, fontWeight: "900" },
+  errorCopy: { color: C.muted, fontSize: 13, textAlign: "center", lineHeight: 21 },
+  actionButton: { minHeight: 46, paddingHorizontal: 17, borderRadius: 15, backgroundColor: C.green, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  actionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
+  previewBanner: { minHeight: 35, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#E7F2DF", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  previewBannerText: { color: C.greenDark, fontSize: 11, fontWeight: "800" },
+  header: { padding: 16, borderRadius: 22, borderWidth: 1, borderColor: "#D7E5BD", gap: 16, overflow: "hidden" },
+  headerTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerIconButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.72)", alignItems: "center", justifyContent: "center" },
+  greeting: { flex: 1, minWidth: 0 },
+  eyebrow: { color: C.greenDark, fontSize: 10, fontWeight: "800" },
+  title: { color: C.ink, fontSize: 17, fontWeight: "900", marginTop: 2 },
+  coins: { minHeight: 38, paddingHorizontal: 11, borderRadius: 14, backgroundColor: "#FFF8DA", flexDirection: "row", alignItems: "center", gap: 5 },
+  coinText: { color: "#775517", fontSize: 13, fontWeight: "900" },
+  headerBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 9 },
+  levelPill: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.66)", flexDirection: "row", alignItems: "center", gap: 5 },
+  levelText: { color: "#795B25", fontSize: 11, fontWeight: "900" },
+  headerPrompt: { flex: 1, color: "#5F7552", fontSize: 11, fontWeight: "700", textAlign: "right" },
+  statusStrip: { paddingVertical: 12, paddingHorizontal: 6, backgroundColor: C.paper, borderRadius: 17, borderWidth: 1, borderColor: C.border, flexDirection: "row", justifyContent: "space-around" },
+  statusItem: { alignItems: "center", justifyContent: "center", minWidth: 62, gap: 3 },
+  statusValue: { color: C.ink, fontSize: 12, fontWeight: "900" },
+  statusLabel: { color: C.muted, fontSize: 9, fontWeight: "700" },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
+  sectionTitle: { color: C.ink, fontSize: 16, fontWeight: "900", textAlign: "right" },
+  sectionSubtitle: { color: C.muted, fontSize: 10, marginTop: 3, textAlign: "right" },
+  sunBadge: { width: 35, height: 35, borderRadius: 13, backgroundColor: "#FFF3D6", alignItems: "center", justifyContent: "center" },
+  worldCard: { padding: 8, borderRadius: 22, backgroundColor: "#D8EAC3", borderWidth: 1, borderColor: "#C4DDB1", gap: 7 },
+  worldFooter: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 24 },
+  worldFooterText: { color: "#55734B", fontSize: 10, fontWeight: "800" },
+  currentTool: { minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#FFFFFF", borderRadius: 15, borderWidth: 1, borderColor: C.border, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  toolHintIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.greenLight, alignItems: "center", justifyContent: "center" },
+  toolHintCopy: { flex: 1, alignItems: "flex-end" },
+  toolHintTitle: { color: C.ink, fontSize: 12, fontWeight: "900" },
+  toolHintText: { color: C.muted, fontSize: 9, marginTop: 3, textAlign: "right" },
+  toolList: { flexDirection: "row-reverse", gap: 7, paddingVertical: 1 },
+  toolButton: { minHeight: 46, paddingHorizontal: 11, borderRadius: 14, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, flexDirection: "row-reverse", alignItems: "center", gap: 5 },
+  toolButtonActive: { backgroundColor: C.green, borderColor: C.green },
+  toolButtonDimmed: { opacity: 0.65 },
+  toolButtonText: { color: C.greenDark, fontSize: 10, fontWeight: "800" },
+  toolButtonTextActive: { color: "#FFFFFF" },
+  toolPrice: { color: "#9C7128", fontSize: 9, fontWeight: "900" },
+  movePadSection: { paddingHorizontal: 12, paddingVertical: 12, borderRadius: 18, borderWidth: 1, borderColor: C.border, backgroundColor: "#FFFFFF" },
+  sectionHeadCompact: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  sectionTitleSmall: { color: C.ink, fontSize: 12, fontWeight: "900" },
+  movePad: { marginTop: 10, alignSelf: "center", display: "flex", flexDirection: "row", flexWrap: "wrap", width: 150, justifyContent: "center", gap: 5 },
+  movePadSpacer: { width: 43, height: 39 },
+  moveButton: { width: 43, height: 39, borderRadius: 12, backgroundColor: "#EDF5E8", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#DCE8D3" },
+  playerDot: { width: 43, height: 39, borderRadius: 12, backgroundColor: C.green, alignItems: "center", justifyContent: "center" },
+  shopList: { gap: 8 },
+  shopCard: { minHeight: 76, padding: 9, borderRadius: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  shopCardSelected: { borderColor: "#88B574", backgroundColor: "#FBFFF8" },
+  shopMain: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  cropIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  treeIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  shopCopy: { flex: 1, alignItems: "flex-end" },
+  shopName: { color: C.ink, fontSize: 12, fontWeight: "900" },
+  shopMeta: { color: C.muted, fontSize: 9, marginTop: 3, textAlign: "right" },
+  stockLine: { color: C.green, fontSize: 9, fontWeight: "800", marginTop: 3 },
+  buyButton: { minWidth: 57, minHeight: 38, paddingHorizontal: 9, borderRadius: 12, backgroundColor: C.green, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 2 },
+  buyButtonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
+  decorGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  decorCard: { width: "48%", minHeight: 85, padding: 9, borderRadius: 15, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, alignItems: "center", justifyContent: "center", gap: 4 },
+  decorName: { color: C.ink, fontSize: 10, fontWeight: "900" },
+  decorPrice: { color: C.muted, fontSize: 9 },
+  hintBox: { padding: 11, borderRadius: 14, backgroundColor: "#E8F2DE", flexDirection: "row-reverse", alignItems: "center", gap: 7 },
+  hintText: { flex: 1, color: C.greenDark, fontSize: 11, lineHeight: 17, textAlign: "right" },
+  errorBanner: { color: C.red, padding: 10, borderRadius: 12, backgroundColor: "#FCEAE4", fontSize: 11, textAlign: "right" },
+  storageCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, borderRadius: 17, paddingHorizontal: 12 },
+  storageRow: { minHeight: 58, flexDirection: "row-reverse", alignItems: "center", gap: 9, borderBottomWidth: 1, borderBottomColor: "#EFF3EC" },
+  storageCopy: { flex: 1, alignItems: "flex-end" },
+  storageName: { color: C.ink, fontSize: 11, fontWeight: "900" },
+  storageMeta: { color: C.muted, fontSize: 9, marginTop: 2 },
+  storageCount: { color: C.ink, fontSize: 11, fontWeight: "900", minWidth: 45, textAlign: "left" },
+  sellButton: { minWidth: 50, minHeight: 32, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: "#E8F3E3" },
+  sellText: { color: C.greenDark, fontSize: 10, fontWeight: "900" },
+  disabled: { opacity: 0.4 },
+  emptyStock: { color: C.muted, padding: 13, fontSize: 10, textAlign: "center" },
+  footerNote: { minHeight: 38, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6 },
+  footerText: { color: C.muted, fontSize: 10, fontWeight: "700" },
+  savingPill: { position: "absolute", bottom: 18, alignSelf: "center", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: C.greenDark, flexDirection: "row", alignItems: "center", gap: 7, elevation: 5 },
   savingText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
-  actionButton: { minHeight: 44, paddingHorizontal: 17, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  actionButtonGreen: { backgroundColor: C.green },
-  actionButtonGold: { backgroundColor: "#C9972C" },
-  actionButtonQuiet: { backgroundColor: "#E6F1E1" },
-  actionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-  actionButtonTextQuiet: { color: C.greenDark },
-  disabledButton: { opacity: 0.55 },
-  pressed: { opacity: 0.78, transform: [{ scale: 0.98 }] },
 });

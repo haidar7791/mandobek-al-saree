@@ -549,7 +549,7 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // Private player progress for the Spark-hosted farm game.
+    // Private player progress for the open-grid farm game.
     match /farms/{playerId} {
       allow read: if isSignedIn() && request.auth.uid == playerId;
       allow create, update: if isSignedIn()
@@ -559,35 +559,54 @@ service cloud.firestore {
           "coins",
           "seeds",
           "inventory",
+          "fruitInventory",
           "plots",
-          "water",
-          "waterUpdatedAt",
+          "trees",
+          "decorations",
           "houseBuilt",
           "houseLevel",
+          "housePosition",
+          "playerPosition",
+          "nextPlotId",
           "totalHarvests",
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.version == 3
+        && request.resource.data.version == 4
         && request.resource.data.coins is number
         && request.resource.data.coins >= 0
         && request.resource.data.seeds is map
         && request.resource.data.inventory is map
+        && request.resource.data.fruitInventory is map
         && request.resource.data.plots is list
-        && request.resource.data.plots.size() == 24
-        && request.resource.data.water is number
-        && request.resource.data.water >= 0
-        && request.resource.data.water <= 8
-        && request.resource.data.waterUpdatedAt is number
+        && request.resource.data.plots.size() <= 432
+        && request.resource.data.trees is list
+        && request.resource.data.trees.size() <= 432
+        && request.resource.data.decorations is list
+        && request.resource.data.decorations.size() <= 432
         && request.resource.data.houseBuilt is bool
         && request.resource.data.houseLevel is number
         && request.resource.data.houseLevel >= 0
         && request.resource.data.houseLevel <= 3
         && (
-          (request.resource.data.houseBuilt == true && request.resource.data.houseLevel >= 1)
-          || (request.resource.data.houseBuilt == false && request.resource.data.houseLevel == 0)
+          (
+            request.resource.data.houseBuilt == true
+            && request.resource.data.houseLevel >= 1
+            && request.resource.data.housePosition is map
+          )
+          || (
+            request.resource.data.houseBuilt == false
+            && request.resource.data.houseLevel == 0
+            && request.resource.data.housePosition == null
+          )
         )
-        && request.resource.data.totalHarvests is number;
+        && request.resource.data.playerPosition is map
+        && request.resource.data.nextPlotId is number
+        && request.resource.data.nextPlotId > 0
+        && request.resource.data.totalHarvests is number
+        && request.resource.data.totalHarvests >= 0
+        && request.resource.data.createdAt is number
+        && request.resource.data.updatedAt is number;
       allow delete: if false;
     }
   }
