@@ -560,17 +560,25 @@ service cloud.firestore {
           "seeds",
           "inventory",
           "plots",
+          "water",
+          "waterUpdatedAt",
+          "houseBuilt",
           "totalHarvests",
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.version == 1
+        && request.resource.data.version == 2
         && request.resource.data.coins is number
         && request.resource.data.coins >= 0
         && request.resource.data.seeds is map
         && request.resource.data.inventory is map
         && request.resource.data.plots is list
-        && request.resource.data.plots.size() == 12
+        && request.resource.data.plots.size() == 24
+        && request.resource.data.water is number
+        && request.resource.data.water >= 0
+        && request.resource.data.water <= 8
+        && request.resource.data.waterUpdatedAt is number
+        && request.resource.data.houseBuilt is bool
         && request.resource.data.totalHarvests is number;
       allow delete: if false;
     }

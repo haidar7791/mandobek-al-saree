@@ -21,10 +21,15 @@ import {
   CROPS,
   CROP_ORDER,
   FARM_PLOT_COUNT,
+  FARM_HOUSE_COST,
   FIRST_PLOT_EXPANSION_COST,
   INITIAL_UNLOCKED_PLOTS,
+  WATER_CAPACITY,
   applyFarmActionToState,
   createDemoFarmGame,
+  getCurrentWater,
+  getPlotGrowthState,
+  getWaterRefillMs,
   loadFarmGame,
   performFarmAction,
   type CropId,
@@ -64,17 +69,7 @@ function getUnlockCost(farm: FarmGameSave): number {
 }
 
 function getPlotTiming(plot: FarmPlot, now: number) {
-  if (!plot.cropId || !plot.plantedAt) {
-    return { ready: false, progress: 0, remaining: 0 };
-  }
-  const duration = CROPS[plot.cropId].growMs;
-  const elapsed = Math.max(0, now - plot.plantedAt);
-  const progress = Math.min(1, elapsed / duration);
-  return {
-    ready: progress >= 1,
-    progress,
-    remaining: Math.max(0, duration - elapsed),
-  };
+  return getPlotGrowthState(plot, now);
 }
 
 function FarmActionButton({
@@ -127,6 +122,7 @@ function PlotTile({
   selectedCrop,
   seedCount,
   expansionCost,
+  toolMode,
   busy,
   onPress,
 }: {
@@ -135,6 +131,7 @@ function PlotTile({
   selectedCrop: CropId;
   seedCount: number;
   expansionCost: number;
+  toolMode: "plant" | "water";
   busy: boolean;
   onPress: () => void;
 }) {
@@ -148,10 +145,14 @@ function PlotTile({
         !plot.unlocked
           ? `فتح أرض جديدة مقابل ${expansionCost} عملة`
           : crop
-            ? timing.ready
-              ? `حصاد ${crop.name}`
-              : `${crop.name}، الوقت المتبقي ${formatTime(timing.remaining)}`
-            : `زراعة ${CROPS[selectedCrop].name}`
+            ? toolMode === "water"
+              ? `سقي ${crop.name}`
+              : timing.ready
+                ? `حصاد ${crop.name}`
+                : `${crop.name}، ${timing.watered ? "تنمو" : "بحاجة إلى الري"}`
+            : toolMode === "water"
+              ? "لا يوجد محصول للسقي"
+              : `زراعة ${CROPS[selectedCrop].name}`
       }
       onPress={onPress}
       disabled={busy}
@@ -159,6 +160,7 @@ function PlotTile({
         styles.plotTile,
         !plot.unlocked && styles.lockedPlot,
         timing.ready && styles.readyPlot,
+        toolMode === "water" && crop && !timing.ready && styles.waterTargetPlot,
         pressed && !busy && styles.plotPressed,
       ]}
     >
@@ -174,7 +176,13 @@ function PlotTile({
         <>
           <View style={[styles.cropBadge, { backgroundColor: crop.lightColor }]}>
             <Ionicons
-              name={timing.ready ? "sparkles-outline" : "leaf"}
+              name={
+                timing.ready
+                  ? "sparkles-outline"
+                  : timing.progress === 0
+                    ? "ellipse-outline"
+                    : "leaf"
+              }
               size={22}
               color={crop.color}
             />
@@ -192,7 +200,15 @@ function PlotTile({
                   ]}
                 />
               </View>
-              <Text style={styles.plotTimer}>{formatTime(timing.remaining)}</Text>
+              <Text style={styles.plotTimer}>
+                {timing.progress === 0
+                  ? timing.watered
+                    ? "بذور مروية"
+                    : "بذور"
+                  : timing.watered
+                    ? `تنمو · ${formatTime(timing.remaining)}`
+                    : `جافة · اسقِ لتواصل`}
+              </Text>
             </>
           )}
         </>
@@ -216,6 +232,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const player = auth.currentUser;
   const [farm, setFarm] = useState<FarmGameSave | null>(null);
   const [selectedCrop, setSelectedCrop] = useState<CropId>("wheat");
+  const [toolMode, setToolMode] = useState<"plant" | "water">("plant");
   const [playerName, setPlayerName] = useState("المزارع");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -230,6 +247,8 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   );
   const level = farm ? Math.floor(farm.totalHarvests / 5) + 1 : 1;
   const levelProgress = farm ? (farm.totalHarvests % 5) / 5 : 0;
+  const waterCount = farm ? getCurrentWater(farm, now) : 0;
+  const waterRefill = farm ? getWaterRefillMs(farm, now) : 0;
 
   const refreshFarm = useCallback(async () => {
     if (previewMode) {
@@ -302,12 +321,29 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       void act({ type: "unlockPlot", plotId: plot.id });
       return;
     }
+    if (toolMode === "water") {
+      if (!plot.cropId) {
+        setHint("اختر حقلاً مزروعاً لاستخدام أداة الري.");
+      } else {
+        const timing = getPlotTiming(plot, now);
+        if (timing.ready) {
+          setHint("المحصول جاهز للحصاد ولا يحتاج إلى الري.");
+        } else if (timing.watered) {
+          setHint("هذا الحقل رُوي بالفعل؛ سيواصل النمو حتى ينفد الماء.");
+        } else {
+          void act({ type: "waterPlot", plotId: plot.id });
+        }
+      }
+      return;
+    }
     if (plot.cropId) {
       const timing = getPlotTiming(plot, now);
       if (timing.ready) {
         void act({ type: "harvest", plotId: plot.id });
+      } else if (!timing.watered) {
+        setHint(`توقف نمو ${CROPS[plot.cropId].name}. اختر أداة الري ليستمر نموه.`);
       } else {
-        setHint(`ينمو ${CROPS[plot.cropId].name}. ينضج خلال ${formatTime(timing.remaining)}.`);
+        setHint(`ينمو ${CROPS[plot.cropId].name}. تبقى ${formatTime(timing.remaining)} من وقت النمو.`);
       }
       return;
     }
@@ -465,7 +501,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>أرض المزرعة</Text>
-            <Text style={styles.sectionSubtitle}>اختر بذرة ثم اضغط على قطعة أرض فارغة</Text>
+            <Text style={styles.sectionSubtitle}>
+              {toolMode === "water"
+                ? "اضغط على محصول جاف ليسقيه الماء"
+                : `اختر بذرة ${CROPS[selectedCrop].name} للزراعة؛ اسقِ محصولك ليستمر في النمو`}
+            </Text>
           </View>
           <View style={styles.sunTag}>
             <Ionicons name="sunny-outline" size={16} color="#A4741C" />
@@ -482,6 +522,89 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <Text style={styles.boardCount}>{unlockedCount} قطع أرض مفتوحة</Text>
           </View>
 
+          <View style={styles.housePanel}>
+            <View style={styles.houseIcon}>
+              <Ionicons
+                name={farm.houseBuilt ? "home" : "home-outline"}
+                size={22}
+                color={farm.houseBuilt ? C.greenDark : "#8B633D"}
+              />
+            </View>
+            <View style={styles.houseInfo}>
+              <Text style={styles.houseTitle}>منزل المزرعة</Text>
+              <Text style={styles.houseSubtitle}>
+                {farm.houseBuilt ? "منزلك جاهز لاستقبال المزارع" : "ابنِ منزلك ليكتمل مركز المزرعة"}
+              </Text>
+            </View>
+            {farm.houseBuilt ? (
+              <Text style={styles.houseBuiltTag}>مبني</Text>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`بناء المنزل مقابل ${FARM_HOUSE_COST} عملة`}
+                onPress={() => void act({ type: "buildHouse" })}
+                disabled={busy}
+                style={({ pressed }) => [
+                  styles.buildHouseButton,
+                  busy && styles.disabledButton,
+                  pressed && !busy && styles.pressed,
+                ]}
+              >
+                <Ionicons name="hammer-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.buildHouseText}>{formatCoins(FARM_HOUSE_COST)}</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <View style={styles.toolPanel}>
+            <View style={styles.waterDetails}>
+              <View style={styles.waterIcon}>
+                <Ionicons name="water" size={19} color="#287BA1" />
+              </View>
+              <View style={styles.waterCopy}>
+                <Text style={styles.waterCount}>
+                  الماء {waterCount}/{WATER_CAPACITY}
+                </Text>
+                <Text style={styles.waterRefill}>
+                  {waterCount >= WATER_CAPACITY
+                    ? "الخزان ممتلئ"
+                    : `قطرة جديدة خلال ${formatTime(waterRefill)}`}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: toolMode === "water" }}
+              onPress={() => {
+                setToolMode((current) => (current === "water" ? "plant" : "water"));
+                setHint(
+                  toolMode === "water"
+                    ? `تم اختيار بذور ${CROPS[selectedCrop].name}.`
+                    : "أداة الري جاهزة؛ اضغط على محصول جاف.",
+                );
+              }}
+              style={({ pressed }) => [
+                styles.waterToolButton,
+                toolMode === "water" && styles.waterToolButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name={toolMode === "water" ? "checkmark-circle" : "water-outline"}
+                size={17}
+                color={toolMode === "water" ? "#FFFFFF" : "#287BA1"}
+              />
+              <Text
+                style={[
+                  styles.waterToolText,
+                  toolMode === "water" && styles.waterToolTextActive,
+                ]}
+              >
+                {toolMode === "water" ? "الري محدد" : "أداة الري"}
+              </Text>
+            </Pressable>
+          </View>
+
           <View style={styles.plotGrid}>
             {farm.plots.map((plot) => (
               <PlotTile
@@ -491,6 +614,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                 selectedCrop={selectedCrop}
                 seedCount={farm.seeds[selectedCrop]}
                 expansionCost={expansionCost}
+                toolMode={toolMode}
                 busy={busy}
                 onPress={() => handlePlotPress(plot)}
               />
@@ -531,6 +655,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                 key={cropId}
                 onPress={() => {
                   setSelectedCrop(cropId);
+                  setToolMode("plant");
                   setHint(`تم اختيار بذور ${crop.name}. اضغط على قطعة أرض فارغة لزراعتها.`);
                 }}
                 style={({ pressed }) => [
@@ -808,6 +933,88 @@ const styles = StyleSheet.create({
   boardLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   boardLabelText: { color: C.greenDark, fontSize: 14, fontWeight: "900" },
   boardCount: { color: "#5E805A", fontSize: 10, fontWeight: "700" },
+  housePanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(115,145,94,0.24)",
+    borderRadius: 16,
+    padding: 9,
+    marginBottom: 10,
+  },
+  houseIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5EBD6",
+  },
+  houseInfo: { flex: 1, minWidth: 0 },
+  houseTitle: { color: C.ink, fontSize: 11, fontWeight: "900" },
+  houseSubtitle: { color: C.muted, fontSize: 9, marginTop: 3 },
+  buildHouseButton: {
+    minWidth: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 8,
+    borderRadius: 11,
+    backgroundColor: "#98633D",
+  },
+  buildHouseText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
+  houseBuiltTag: {
+    color: C.greenDark,
+    backgroundColor: "#DFEFD7",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  toolPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    backgroundColor: "#E8F4F7",
+    borderWidth: 1,
+    borderColor: "#C8E2E9",
+    borderRadius: 16,
+    padding: 8,
+    marginBottom: 10,
+  },
+  waterDetails: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
+  waterIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#D3EAF1",
+  },
+  waterCopy: { flex: 1, minWidth: 0 },
+  waterCount: { color: "#245D75", fontSize: 10, fontWeight: "900" },
+  waterRefill: { color: "#5D7C88", fontSize: 8, marginTop: 2 },
+  waterToolButton: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#B9D9E3",
+    borderRadius: 12,
+    paddingHorizontal: 9,
+  },
+  waterToolButtonActive: { backgroundColor: "#287BA1", borderColor: "#287BA1" },
+  waterToolText: { color: "#287BA1", fontSize: 9, fontWeight: "900" },
+  waterToolTextActive: { color: "#FFFFFF" },
   plotGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 9 },
   plotTile: {
     width: "31.5%",
@@ -822,6 +1029,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   lockedPlot: { backgroundColor: "#E9E5D6", borderColor: "#D5D0BE" },
+  waterTargetPlot: { borderColor: "#4D9DB9" },
   readyPlot: { backgroundColor: "#FFF8DF", borderColor: "#E6C45E" },
   plotPressed: { transform: [{ scale: 0.97 }] },
   lockIconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#DCD7C8", alignItems: "center", justifyContent: "center" },

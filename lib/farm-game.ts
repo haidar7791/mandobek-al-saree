@@ -48,23 +48,33 @@ export const CROPS: Record<CropId, CropDefinition> = {
 };
 
 export const CROP_ORDER: CropId[] = ["wheat", "carrot", "corn"];
-export const FARM_PLOT_COUNT = 12;
+export const FARM_PLOT_COUNT = 24;
 export const INITIAL_UNLOCKED_PLOTS = 6;
 export const FIRST_PLOT_EXPANSION_COST = 90;
+export const FARM_HOUSE_COST = 180;
+export const WATER_CAPACITY = 8;
+export const WATER_REGEN_MS = 30_000;
+export const WATERING_DURATION_MS = 45_000;
 
 export interface FarmPlot {
   id: number;
   unlocked: boolean;
   cropId: CropId | null;
   plantedAt: number | null;
+  growthProgressMs: number;
+  lastGrowthAt: number | null;
+  wateredUntil: number | null;
 }
 
 export interface FarmGameSave {
-  version: 1;
+  version: 2;
   coins: number;
   seeds: Record<CropId, number>;
   inventory: Record<CropId, number>;
   plots: FarmPlot[];
+  water: number;
+  waterUpdatedAt: number;
+  houseBuilt: boolean;
   totalHarvests: number;
   createdAt: number;
   updatedAt: number;
@@ -75,7 +85,9 @@ export type FarmAction =
   | { type: "harvest"; plotId: number }
   | { type: "buySeed"; cropId: CropId }
   | { type: "sellCrop"; cropId: CropId }
-  | { type: "unlockPlot"; plotId: number };
+  | { type: "unlockPlot"; plotId: number }
+  | { type: "waterPlot"; plotId: number }
+  | { type: "buildHouse" };
 
 function count(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
@@ -89,7 +101,7 @@ function isCropId(value: unknown): value is CropId {
 
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 1,
+    version: 2,
     coins: 80,
     seeds: { wheat: 3, carrot: 1, corn: 0 },
     inventory: { wheat: 0, carrot: 0, corn: 0 },
@@ -98,7 +110,13 @@ function createInitialFarm(now = Date.now()): FarmGameSave {
       unlocked: id < INITIAL_UNLOCKED_PLOTS,
       cropId: null,
       plantedAt: null,
+      growthProgressMs: 0,
+      lastGrowthAt: null,
+      wateredUntil: null,
     })),
+    water: WATER_CAPACITY,
+    waterUpdatedAt: now,
+    houseBuilt: false,
     totalHarvests: 0,
     createdAt: now,
     updatedAt: now,
@@ -111,12 +129,99 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   farm.seeds = { wheat: 4, carrot: 2, corn: 1 };
   farm.inventory = { wheat: 3, carrot: 1, corn: 0 };
   farm.totalHarvests = 4;
-  farm.plots[0] = { id: 0, unlocked: true, cropId: "wheat", plantedAt: now - 35_000 };
-  farm.plots[1] = { id: 1, unlocked: true, cropId: "carrot", plantedAt: now - 24_000 };
-  farm.plots[2] = { id: 2, unlocked: true, cropId: "corn", plantedAt: now - 48_000 };
-  farm.plots[3] = { id: 3, unlocked: true, cropId: "wheat", plantedAt: now - 7_000 };
+  farm.plots[0] = {
+    ...farm.plots[0],
+    cropId: "wheat",
+    plantedAt: now - 35_000,
+    growthProgressMs: CROPS.wheat.growMs,
+  };
+  farm.plots[1] = {
+    ...farm.plots[1],
+    cropId: "carrot",
+    plantedAt: now - 24_000,
+    growthProgressMs: 25_000,
+    lastGrowthAt: now,
+    wateredUntil: now + 20_000,
+  };
+  farm.plots[2] = {
+    ...farm.plots[2],
+    cropId: "corn",
+    plantedAt: now - 48_000,
+    growthProgressMs: 28_000,
+    lastGrowthAt: now,
+    wateredUntil: null,
+  };
+  farm.plots[3] = {
+    ...farm.plots[3],
+    cropId: "wheat",
+    plantedAt: now - 7_000,
+    growthProgressMs: 7_000,
+    lastGrowthAt: now,
+    wateredUntil: null,
+  };
+  farm.water = 5;
   farm.updatedAt = now;
   return farm;
+}
+
+function getGrowthProgressMs(plot: FarmPlot, now: number): number {
+  if (!plot.cropId) return 0;
+  const base = Math.max(0, plot.growthProgressMs);
+  const growthStart = plot.lastGrowthAt ?? now;
+  const growthEnd = plot.wateredUntil === null ? growthStart : Math.min(now, plot.wateredUntil);
+  const activeGrowth = Math.max(0, growthEnd - growthStart);
+  return Math.min(CROPS[plot.cropId].growMs, base + activeGrowth);
+}
+
+function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
+  const next: FarmGameSave = {
+    ...farm,
+    seeds: { ...farm.seeds },
+    inventory: { ...farm.inventory },
+    plots: farm.plots.map((plot) => ({ ...plot })),
+    updatedAt: now,
+  };
+  const elapsedWaterTime = Math.max(0, now - farm.waterUpdatedAt);
+  const regeneratedWater = Math.floor(elapsedWaterTime / WATER_REGEN_MS);
+  next.water = Math.min(WATER_CAPACITY, farm.water + regeneratedWater);
+  next.waterUpdatedAt =
+    next.water >= WATER_CAPACITY
+      ? now
+      : farm.waterUpdatedAt + regeneratedWater * WATER_REGEN_MS;
+
+  for (const plot of next.plots) {
+    if (!plot.cropId) continue;
+    plot.growthProgressMs = getGrowthProgressMs(plot, now);
+    plot.lastGrowthAt = now;
+  }
+  return next;
+}
+
+export function getCurrentWater(farm: FarmGameSave, now = Date.now()): number {
+  const regenerated = Math.floor(Math.max(0, now - farm.waterUpdatedAt) / WATER_REGEN_MS);
+  return Math.min(WATER_CAPACITY, farm.water + regenerated);
+}
+
+export function getWaterRefillMs(farm: FarmGameSave, now = Date.now()): number {
+  if (getCurrentWater(farm, now) >= WATER_CAPACITY) return 0;
+  const elapsed = Math.max(0, now - farm.waterUpdatedAt);
+  return WATER_REGEN_MS - (elapsed % WATER_REGEN_MS);
+}
+
+export function getPlotGrowthState(plot: FarmPlot, now = Date.now()) {
+  if (!plot.cropId) {
+    return { progressMs: 0, progress: 0, remaining: 0, ready: false, watered: false };
+  }
+  const duration = CROPS[plot.cropId].growMs;
+  const progressMs = getGrowthProgressMs(plot, now);
+  const progress = Math.min(1, progressMs / duration);
+  return {
+    progressMs,
+    progress,
+    remaining: Math.max(0, duration - progressMs),
+    ready: progress >= 1,
+    watered: plot.wateredUntil !== null && plot.wateredUntil > now,
+  };
 }
 
 function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGameSave {
@@ -125,8 +230,8 @@ function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGam
   const rawPlots = Array.isArray(data.plots) ? data.plots : [];
   const initial = createInitialFarm(now);
 
-  return {
-    version: 1,
+  const normalized: FarmGameSave = {
+    version: 2,
     coins: count(data.coins, initial.coins),
     seeds: {
       wheat: count(seeds.wheat, initial.seeds.wheat),
@@ -142,6 +247,10 @@ function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGam
       const raw = (rawPlots[id] ?? {}) as Record<string, unknown>;
       const cropId = isCropId(raw.cropId) ? raw.cropId : null;
       const plantedAt = typeof raw.plantedAt === "number" ? raw.plantedAt : null;
+      const legacyGrowth =
+        cropId && plantedAt !== null
+          ? Math.min(CROPS[cropId].growMs, Math.max(0, now - plantedAt))
+          : 0;
       return {
         id,
         unlocked:
@@ -149,19 +258,42 @@ function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGam
           (rawPlots.length === 0 && id < INITIAL_UNLOCKED_PLOTS),
         cropId: cropId && plantedAt ? cropId : null,
         plantedAt: cropId && plantedAt ? plantedAt : null,
+        growthProgressMs: count(raw.growthProgressMs, legacyGrowth),
+        lastGrowthAt:
+          cropId && plantedAt
+            ? (typeof raw.lastGrowthAt === "number" ? raw.lastGrowthAt : now)
+            : null,
+        wateredUntil:
+          cropId && typeof raw.wateredUntil === "number" ? raw.wateredUntil : null,
       };
     }),
+    water: Math.min(WATER_CAPACITY, count(data.water, initial.water)),
+    waterUpdatedAt: count(data.waterUpdatedAt, now),
+    houseBuilt: data.houseBuilt === true,
     totalHarvests: count(data.totalHarvests),
     createdAt: count(data.createdAt, now),
     updatedAt: count(data.updatedAt, now),
   };
+  return advanceFarmTime(normalized, now);
 }
 
 export async function loadFarmGame(playerId: string): Promise<FarmGameSave> {
   const farmRef = doc(db, "farms", playerId);
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(farmRef);
-    if (snapshot.exists()) return normalizeFarm(snapshot.data());
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      const farm = normalizeFarm(data);
+      const needsMigration =
+        data.version !== 2 ||
+        !Array.isArray(data.plots) ||
+        data.plots.length !== FARM_PLOT_COUNT ||
+        !("water" in data) ||
+        !("waterUpdatedAt" in data) ||
+        !("houseBuilt" in data);
+      if (needsMigration) transaction.set(farmRef, farm);
+      return farm;
+    }
 
     const initial = createInitialFarm();
     transaction.set(farmRef, initial);
@@ -191,15 +323,9 @@ export function applyFarmActionToState(
   action: FarmAction,
   now = Date.now(),
 ): FarmGameSave {
-  const next: FarmGameSave = {
-    ...farm,
-    seeds: { ...farm.seeds },
-    inventory: { ...farm.inventory },
-    plots: farm.plots.map((plot) => ({ ...plot })),
-    updatedAt: now,
-  };
+  const next = advanceFarmTime(farm, now);
   const plot =
-    action.type === "buySeed" || action.type === "sellCrop"
+    action.type === "buySeed" || action.type === "sellCrop" || action.type === "buildHouse"
       ? undefined
       : next.plots[action.plotId];
 
@@ -227,6 +353,13 @@ export function applyFarmActionToState(
       next.coins -= cost;
       break;
     }
+    case "buildHouse": {
+      if (next.houseBuilt) throw new Error("المنزل مبني بالفعل");
+      if (next.coins < FARM_HOUSE_COST) throw new Error("اجمع المزيد من العملات لبناء المنزل");
+      next.coins -= FARM_HOUSE_COST;
+      next.houseBuilt = true;
+      break;
+    }
     case "plant": {
       if (!plot?.unlocked) throw new Error("افتح هذه الأرض أولاً");
       if (plot.cropId) throw new Error("هذه الأرض مزروعة بالفعل");
@@ -234,16 +367,36 @@ export function applyFarmActionToState(
       next.seeds[action.cropId] -= 1;
       plot.cropId = action.cropId;
       plot.plantedAt = now;
+      plot.growthProgressMs = 0;
+      plot.lastGrowthAt = now;
+      plot.wateredUntil = null;
+      break;
+    }
+    case "waterPlot": {
+      if (!plot?.unlocked || !plot.cropId) throw new Error("ازرع الحقل قبل سقيه");
+      if (getGrowthProgressMs(plot, now) >= CROPS[plot.cropId].growMs) {
+        throw new Error("المحصول جاهز للحصاد ولا يحتاج إلى الري");
+      }
+      if (plot.wateredUntil !== null && plot.wateredUntil > now) {
+        throw new Error("هذا الحقل رُوي بالفعل؛ انتظر حتى يحتاج إلى الماء");
+      }
+      if (next.water < 1) throw new Error("نفد الماء؛ سيتجدد تلقائياً خلال قليل");
+      next.water -= 1;
+      plot.lastGrowthAt = now;
+      plot.wateredUntil = now + WATERING_DURATION_MS;
       break;
     }
     case "harvest": {
-      if (!plot?.cropId || !plot.plantedAt) throw new Error("لا يوجد محصول في هذه الأرض");
+      if (!plot?.cropId) throw new Error("لا يوجد محصول في هذه الأرض");
       const crop = CROPS[plot.cropId];
-      if (now - plot.plantedAt < crop.growMs) throw new Error("المحصول لم ينضج بعد");
+      if (getGrowthProgressMs(plot, now) < crop.growMs) throw new Error("المحصول لم ينضج بعد");
       next.inventory[plot.cropId] += crop.harvestAmount;
       next.totalHarvests += 1;
       plot.cropId = null;
       plot.plantedAt = null;
+      plot.growthProgressMs = 0;
+      plot.lastGrowthAt = null;
+      plot.wateredUntil = null;
       break;
     }
   }
