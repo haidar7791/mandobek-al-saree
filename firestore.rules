@@ -563,11 +563,12 @@ service cloud.firestore {
           "water",
           "waterUpdatedAt",
           "houseBuilt",
+          "houseLevel",
           "totalHarvests",
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.version == 2
+        && request.resource.data.version == 3
         && request.resource.data.coins is number
         && request.resource.data.coins >= 0
         && request.resource.data.seeds is map
@@ -579,6 +580,13 @@ service cloud.firestore {
         && request.resource.data.water <= 8
         && request.resource.data.waterUpdatedAt is number
         && request.resource.data.houseBuilt is bool
+        && request.resource.data.houseLevel is number
+        && request.resource.data.houseLevel >= 0
+        && request.resource.data.houseLevel <= 3
+        && (
+          (request.resource.data.houseBuilt == true && request.resource.data.houseLevel >= 1)
+          || (request.resource.data.houseBuilt == false && request.resource.data.houseLevel == 0)
+        )
         && request.resource.data.totalHarvests is number;
       allow delete: if false;
     }

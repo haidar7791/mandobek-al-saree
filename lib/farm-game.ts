@@ -52,6 +52,8 @@ export const FARM_PLOT_COUNT = 24;
 export const INITIAL_UNLOCKED_PLOTS = 6;
 export const FIRST_PLOT_EXPANSION_COST = 90;
 export const FARM_HOUSE_COST = 180;
+export const FARM_HOUSE_MAX_LEVEL = 3;
+export const FARM_HOUSE_UPGRADE_COSTS = [260, 420] as const;
 export const WATER_CAPACITY = 8;
 export const WATER_REGEN_MS = 30_000;
 export const WATERING_DURATION_MS = 45_000;
@@ -67,7 +69,7 @@ export interface FarmPlot {
 }
 
 export interface FarmGameSave {
-  version: 2;
+  version: 3;
   coins: number;
   seeds: Record<CropId, number>;
   inventory: Record<CropId, number>;
@@ -75,6 +77,7 @@ export interface FarmGameSave {
   water: number;
   waterUpdatedAt: number;
   houseBuilt: boolean;
+  houseLevel: number;
   totalHarvests: number;
   createdAt: number;
   updatedAt: number;
@@ -87,7 +90,14 @@ export type FarmAction =
   | { type: "sellCrop"; cropId: CropId }
   | { type: "unlockPlot"; plotId: number }
   | { type: "waterPlot"; plotId: number }
-  | { type: "buildHouse" };
+  | { type: "buildHouse" }
+  | { type: "upgradeHouse" };
+
+export function getFarmHouseActionCost(level: number): number | null {
+  if (level <= 0) return FARM_HOUSE_COST;
+  if (level >= FARM_HOUSE_MAX_LEVEL) return null;
+  return FARM_HOUSE_UPGRADE_COSTS[level - 1] ?? null;
+}
 
 function count(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
@@ -101,7 +111,7 @@ function isCropId(value: unknown): value is CropId {
 
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 2,
+    version: 3,
     coins: 80,
     seeds: { wheat: 3, carrot: 1, corn: 0 },
     inventory: { wheat: 0, carrot: 0, corn: 0 },
@@ -117,6 +127,7 @@ function createInitialFarm(now = Date.now()): FarmGameSave {
     water: WATER_CAPACITY,
     waterUpdatedAt: now,
     houseBuilt: false,
+    houseLevel: 0,
     totalHarvests: 0,
     createdAt: now,
     updatedAt: now,
@@ -231,7 +242,7 @@ function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGam
   const initial = createInitialFarm(now);
 
   const normalized: FarmGameSave = {
-    version: 2,
+    version: 3,
     coins: count(data.coins, initial.coins),
     seeds: {
       wheat: count(seeds.wheat, initial.seeds.wheat),
@@ -269,7 +280,13 @@ function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGam
     }),
     water: Math.min(WATER_CAPACITY, count(data.water, initial.water)),
     waterUpdatedAt: count(data.waterUpdatedAt, now),
-    houseBuilt: data.houseBuilt === true,
+    houseBuilt: data.houseBuilt === true || count(data.houseLevel) > 0,
+    houseLevel: Math.min(
+      FARM_HOUSE_MAX_LEVEL,
+      data.houseBuilt === true
+        ? Math.max(1, count(data.houseLevel, 1))
+        : count(data.houseLevel),
+    ),
     totalHarvests: count(data.totalHarvests),
     createdAt: count(data.createdAt, now),
     updatedAt: count(data.updatedAt, now),
@@ -285,12 +302,13 @@ export async function loadFarmGame(playerId: string): Promise<FarmGameSave> {
       const data = snapshot.data();
       const farm = normalizeFarm(data);
       const needsMigration =
-        data.version !== 2 ||
+        data.version !== 3 ||
         !Array.isArray(data.plots) ||
         data.plots.length !== FARM_PLOT_COUNT ||
         !("water" in data) ||
         !("waterUpdatedAt" in data) ||
-        !("houseBuilt" in data);
+        !("houseBuilt" in data) ||
+        !("houseLevel" in data);
       if (needsMigration) transaction.set(farmRef, farm);
       return farm;
     }
@@ -325,7 +343,10 @@ export function applyFarmActionToState(
 ): FarmGameSave {
   const next = advanceFarmTime(farm, now);
   const plot =
-    action.type === "buySeed" || action.type === "sellCrop" || action.type === "buildHouse"
+    action.type === "buySeed" ||
+    action.type === "sellCrop" ||
+    action.type === "buildHouse" ||
+    action.type === "upgradeHouse"
       ? undefined
       : next.plots[action.plotId];
 
@@ -358,6 +379,16 @@ export function applyFarmActionToState(
       if (next.coins < FARM_HOUSE_COST) throw new Error("اجمع المزيد من العملات لبناء المنزل");
       next.coins -= FARM_HOUSE_COST;
       next.houseBuilt = true;
+      next.houseLevel = 1;
+      break;
+    }
+    case "upgradeHouse": {
+      if (!next.houseBuilt || next.houseLevel < 1) throw new Error("ابنِ المنزل أولاً قبل تطويره");
+      const cost = getFarmHouseActionCost(next.houseLevel);
+      if (cost === null) throw new Error("وصل المنزل إلى أعلى مستوى");
+      if (next.coins < cost) throw new Error("اجمع المزيد من العملات لتطوير المنزل");
+      next.coins -= cost;
+      next.houseLevel += 1;
       break;
     }
     case "plant": {

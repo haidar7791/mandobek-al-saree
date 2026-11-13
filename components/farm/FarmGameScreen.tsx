@@ -22,12 +22,12 @@ import {
   CROPS,
   CROP_ORDER,
   FARM_PLOT_COUNT,
-  FARM_HOUSE_COST,
   FIRST_PLOT_EXPANSION_COST,
   INITIAL_UNLOCKED_PLOTS,
   WATER_CAPACITY,
   applyFarmActionToState,
   createDemoFarmGame,
+  getFarmHouseActionCost,
   getCurrentWater,
   getPlotGrowthState,
   getWaterRefillMs,
@@ -385,6 +385,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   }
 
   const expansionCost = getUnlockCost(farm);
+  const houseActionCost = getFarmHouseActionCost(farm.houseLevel);
 
   return (
     <View style={styles.screen}>
@@ -534,16 +535,18 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <View style={styles.houseInfo}>
               <Text style={styles.houseTitle}>منزل المزرعة</Text>
               <Text style={styles.houseSubtitle}>
-                {farm.houseBuilt ? "منزلك جاهز لاستقبال المزارع" : "ابنِ منزلك ليكتمل مركز المزرعة"}
+                {farm.houseBuilt
+                  ? `المستوى ${farm.houseLevel} · طوّر مظهر منزلك`
+                  : "ابنِ منزلك ليكتمل مركز المزرعة"}
               </Text>
             </View>
-            {farm.houseBuilt ? (
-              <Text style={styles.houseBuiltTag}>مبني</Text>
+            {houseActionCost === null ? (
+              <Text style={styles.houseBuiltTag}>المستوى الأعلى</Text>
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`بناء المنزل مقابل ${FARM_HOUSE_COST} عملة`}
-                onPress={() => void act({ type: "buildHouse" })}
+                accessibilityLabel={`${farm.houseBuilt ? "تطوير" : "بناء"} المنزل مقابل ${houseActionCost} عملة`}
+                onPress={() => void act({ type: farm.houseBuilt ? "upgradeHouse" : "buildHouse" })}
                 disabled={busy}
                 style={({ pressed }) => [
                   styles.buildHouseButton,
@@ -551,8 +554,14 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   pressed && !busy && styles.pressed,
                 ]}
               >
-                <Ionicons name="hammer-outline" size={15} color="#FFFFFF" />
-                <Text style={styles.buildHouseText}>{formatCoins(FARM_HOUSE_COST)}</Text>
+                <Ionicons
+                  name={farm.houseBuilt ? "sparkles-outline" : "hammer-outline"}
+                  size={15}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.buildHouseText}>
+                  {farm.houseBuilt ? "تطوير" : "بناء"} · {formatCoins(houseActionCost)}
+                </Text>
               </Pressable>
             )}
           </View>
@@ -613,6 +622,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
               toolMode={toolMode}
               expansionCost={expansionCost}
               houseBuilt={farm.houseBuilt}
+              houseLevel={farm.houseLevel}
               now={now}
               onPlotPress={handlePlotPress}
             />
