@@ -5,6 +5,7 @@ export type FarmTool =
   | "walk"
   | "plant"
   | "move"
+  | "buyPlot"
   | "buildHouse"
   | "apple"
   | "orange"
@@ -106,6 +107,7 @@ export const DECORATION_ORDER: DecorationId[] = ["flowerBed", "gardenLamp", "fen
 export const FARM_MAP_COLUMNS = 24;
 export const FARM_MAP_ROWS = 18;
 export const FARM_TILE_SIZE = 40;
+export const FARM_PLOT_COST = 25;
 export const FARM_HOUSE_COST = 180;
 export const INITIAL_SEEDS: Record<CropId, number> = {
   wheat: 4,
@@ -120,6 +122,7 @@ export interface FarmPosition {
 
 export interface FarmPlot extends FarmPosition {
   id: number;
+  unlocked?: boolean;
   cropId: CropId | null;
   plantedAt: number | null;
   growthProgressMs: number;
@@ -165,6 +168,8 @@ export type FarmObjectRef =
 type OccupancyException = FarmObjectRef | { type: "player"; id: "player" };
 
 export type FarmAction =
+  | { type: "buyPlotAt"; x: number; y: number }
+  | { type: "plantInPlot"; plotId: number; cropId: CropId }
   | { type: "plantAt"; x: number; y: number; cropId: CropId }
   | { type: "harvestPlot"; plotId: number }
   | { type: "buySeed"; cropId: CropId }
@@ -495,6 +500,35 @@ export function applyFarmActionToState(
       });
       break;
     }
+    case "buyPlotAt": {
+      assertFree(next, action.x, action.y);
+      if (next.coins < FARM_PLOT_COST) throw new Error("لا توجد عملات كافية لشراء حقل جديد.");
+      next.coins -= FARM_PLOT_COST;
+      next.plots.push({
+        id: next.nextPlotId++,
+        x: action.x,
+        y: action.y,
+        unlocked: true,
+        cropId: null,
+        plantedAt: null,
+        growthProgressMs: 0,
+        lastGrowthAt: null,
+      });
+      break;
+    }
+    case "plantInPlot": {
+      const plot = next.plots.find((item) => item.id === action.plotId);
+      if (!plot) throw new Error("لم يتم العثور على الحقل.");
+      if (plot.cropId) throw new Error("هذا الحقل مزروع بالفعل.");
+      if (next.seeds[action.cropId] < 1) throw new Error("لا توجد بذور كافية؛ اشترِ بذوراً من المتجر.");
+      next.seeds[action.cropId] -= 1;
+      plot.cropId = action.cropId;
+      plot.plantedAt = now;
+      plot.growthProgressMs = 0;
+      plot.lastGrowthAt = now;
+      plot.unlocked = true;
+      break;
+    }
     case "harvestPlot": {
       const plot = next.plots.find((item) => item.id === action.plotId);
       if (!plot?.cropId) throw new Error("لا يوجد محصول في هذه الخانة.");
@@ -503,7 +537,11 @@ export function applyFarmActionToState(
       const cropId = plot.cropId;
       next.inventory[cropId] += CROPS[cropId].harvestAmount;
       next.totalHarvests += 1;
-      next.plots = next.plots.filter((item) => item.id !== plot.id);
+      plot.cropId = null;
+      plot.plantedAt = null;
+      plot.growthProgressMs = 0;
+      plot.lastGrowthAt = null;
+      plot.unlocked = true;
       break;
     }
     case "buyTreeAt": {

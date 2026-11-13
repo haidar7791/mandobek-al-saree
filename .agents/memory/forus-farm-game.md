@@ -9,6 +9,8 @@ In Replit's development web preview, open a clearly labeled demo farm with local
 
 The farm world is an open grid: crops, the house, fruit trees, and decorations can be placed or moved within the player's land. Crop growth continues in real time without watering.
 
+The play area should read as one broad grassy landscape without visible tile-grid lines or manual zoom buttons. Put tools and purchases in a separate collapsible panel that takes its own layout space; use one-finger pan and two-finger pinch for world navigation. Empty purchased fields stay in place after harvest, and tapping one opens the crop picker.
+
 **Why:** the user asked for a classic open-grid farm game with real-time crops, collectible fruit trees, movable buildings and decorations, and saved player progress.
 
-**How to apply:** Treat the farm gameplay as the primary signed-in experience. Keep Replit's web demo separate from authenticated player saves; do not add watering mechanics or restore the marketplace dashboard as the home screen unless the user asks; preserve existing Firebase accounts and migrate each player's existing farm data forward without deleting it.
+**How to apply:** Treat the farm gameplay as the primary signed-in experience. Keep Replit's web demo separate from authenticated player saves; do not add watering mechanics or restore the marketplace dashboard as the home screen unless the user asks; preserve existing Firebase accounts and migrate each player's existing farm data forward without deleting it. Keep empty field objects persistent and start crop growth only after the player chooses a crop in the field picker.

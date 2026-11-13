@@ -1,11 +1,19 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  PanResponder,
-  Pressable,
   StyleSheet,
   View,
   type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, {
   Circle,
   Ellipse,
@@ -33,15 +41,18 @@ export interface FarmSceneProps {
   farm: FarmGameSave;
   now: number;
   onTilePress: (position: FarmPosition, object: FarmObjectRef | null) => void;
+  style?: StyleProp<ViewStyle>;
+}
+
+export interface FarmSceneHandle {
+  resolveDropPosition: (
+    screenX: number,
+    screenY: number,
+  ) => Promise<{ position: FarmPosition; object: FarmObjectRef | null } | null>;
 }
 
 const WORLD_WIDTH = FARM_MAP_COLUMNS * FARM_TILE_SIZE;
 const WORLD_HEIGHT = FARM_MAP_ROWS * FARM_TILE_SIZE;
-
-function tileColor(x: number, y: number) {
-  const variation = (x * 13 + y * 7 + (x * y) % 11) % 5;
-  return ["#A9CE7E", "#AED183", "#A5C979", "#B1D486", "#A8CC7C"][variation];
-}
 
 function FarmHouse({ level }: { level: number }) {
   const x = 7;
@@ -67,8 +78,6 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
   const crop = plot.cropId ? CROPS[plot.cropId] : null;
   const growth = crop ? getPlotGrowthState(plot, now) : null;
   const stage = growth?.ready ? 3 : (growth?.progress ?? 0) > 0.66 ? 2 : (growth?.progress ?? 0) > 0.12 ? 1 : 0;
-  const cx = FARM_TILE_SIZE / 2;
-  const cy = FARM_TILE_SIZE / 2 + 2;
   return (
     <G transform={`translate(${plot.x * FARM_TILE_SIZE} ${plot.y * FARM_TILE_SIZE})`}>
       <Rect x={2} y={8} width={36} height={28} rx={6} fill="#8A5938" stroke="#71462F" strokeWidth={1.5} />
@@ -95,11 +104,7 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
           ))}
           {growth?.ready && <Circle cx={33} cy={7} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />}
         </>
-      ) : (
-        <SvgText x={cx} y={cy + 2} fontSize={10} fill="#F8E5BB" textAnchor="middle" fontWeight="700">
-          حقل
-        </SvgText>
-      )}
+      ) : null}
     </G>
   );
 }
@@ -186,10 +191,15 @@ function Player({ position }: { position: FarmPosition }) {
   );
 }
 
-export default function FarmScene({ farm, now, onTilePress }: FarmSceneProps) {
+const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene(
+  { farm, now, onTilePress, style },
+  ref,
+) {
   const [size, setSize] = useState({ width: 360, height: 330 });
   const [zoom, setZoom] = useState(1);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
+  const shellRef = useRef<View>(null);
+  const centeredRef = useRef(false);
   const cameraRef = useRef(camera);
   const zoomRef = useRef(zoom);
   const sizeRef = useRef(size);
@@ -205,39 +215,26 @@ export default function FarmScene({ farm, now, onTilePress }: FarmSceneProps) {
     };
   };
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          Math.abs(gesture.dx) > 7 || Math.abs(gesture.dy) > 7,
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 7 || Math.abs(gesture.dy) > 7,
-        onPanResponderGrant: () => {
-          panStart.current = cameraRef.current;
-        },
-        onPanResponderMove: (_event, gesture) => {
-          const currentZoom = zoomRef.current;
-          setCamera(
-            clampCamera(
-              panStart.current.x - gesture.dx / currentZoom,
-              panStart.current.y - gesture.dy / currentZoom,
-              currentZoom,
-            ),
-          );
-        },
-      }),
-    [],
-  );
-  const panStart = useRef(camera);
-
   const handleLayout = ({ nativeEvent: { layout } }: LayoutChangeEvent) => {
     if (layout.width > 0 && layout.height > 0) {
-      setSize({ width: layout.width, height: layout.height });
+      const nextSize = { width: layout.width, height: layout.height };
+      sizeRef.current = nextSize;
+      setSize(nextSize);
+      if (!centeredRef.current) {
+        centeredRef.current = true;
+        const nextZoom = zoomRef.current;
+        setCamera(
+          clampCamera(
+            farm.playerPosition.x * FARM_TILE_SIZE - nextSize.width / nextZoom / 2,
+            farm.playerPosition.y * FARM_TILE_SIZE - nextSize.height / nextZoom / 2,
+            nextZoom,
+          ),
+        );
+      }
     }
   };
 
-  const findObject = (x: number, y: number): FarmObjectRef | null => {
+  const findObject = useCallback((x: number, y: number): FarmObjectRef | null => {
     if (farm.houseBuilt && farm.housePosition?.x === x && farm.housePosition.y === y) {
       return { type: "house", id: "house" };
     }
@@ -248,156 +245,179 @@ export default function FarmScene({ farm, now, onTilePress }: FarmSceneProps) {
     const plot = farm.plots.find((item) => item.x === x && item.y === y);
     if (plot) return { type: "plot", id: plot.id };
     return null;
-  };
+  }, [farm]);
 
-  const handlePress = (locationX: number, locationY: number) => {
-    const worldX = camera.x + locationX / zoom;
-    const worldY = camera.y + locationY / zoom;
+  const handlePress = useCallback((locationX: number, locationY: number) => {
+    const currentCamera = cameraRef.current;
+    const currentZoom = zoomRef.current;
+    const worldX = currentCamera.x + locationX / currentZoom;
+    const worldY = currentCamera.y + locationY / currentZoom;
     const x = Math.floor(worldX / FARM_TILE_SIZE);
     const y = Math.floor(worldY / FARM_TILE_SIZE);
     if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) return;
     onTilePress({ x, y }, findObject(x, y));
-  };
+  }, [findObject, onTilePress]);
 
-  const mapCells = useMemo(
+  const panOrigin = useRef(camera);
+  const pinchOrigin = useRef({ camera, zoom, worldX: 0, worldY: 0 });
+  const panGesture = useMemo(
     () =>
-      Array.from({ length: FARM_MAP_COLUMNS * FARM_MAP_ROWS }, (_, index) => {
-        const x = index % FARM_MAP_COLUMNS;
-        const y = Math.floor(index / FARM_MAP_COLUMNS);
-        return { x, y, color: tileColor(x, y) };
+      Gesture.Pan()
+        .maxPointers(1)
+        .minDistance(7)
+        .runOnJS(true)
+        .onStart(() => {
+          panOrigin.current = cameraRef.current;
+        })
+        .onUpdate((event) => {
+          const currentZoom = zoomRef.current;
+          setCamera(
+            clampCamera(
+              panOrigin.current.x - event.translationX / currentZoom,
+              panOrigin.current.y - event.translationY / currentZoom,
+              currentZoom,
+            ),
+          );
+        }),
+    [],
+  );
+  const pinchGesture = useMemo(
+    () =>
+      Gesture.Pinch()
+        .runOnJS(true)
+        .onStart((event) => {
+          const currentZoom = zoomRef.current;
+          const currentCamera = cameraRef.current;
+          pinchOrigin.current = {
+            camera: currentCamera,
+            zoom: currentZoom,
+            worldX: currentCamera.x + event.focalX / currentZoom,
+            worldY: currentCamera.y + event.focalY / currentZoom,
+          };
+        })
+        .onUpdate((event) => {
+          const nextZoom = Math.max(0.55, Math.min(2.6, pinchOrigin.current.zoom * event.scale));
+          const nextCamera = clampCamera(
+            pinchOrigin.current.worldX - event.focalX / nextZoom,
+            pinchOrigin.current.worldY - event.focalY / nextZoom,
+            nextZoom,
+          );
+          zoomRef.current = nextZoom;
+          setZoom(nextZoom);
+          setCamera(nextCamera);
+        }),
+    [],
+  );
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(350)
+        .maxDistance(9)
+        .runOnJS(true)
+        .onEnd((event, success) => {
+          if (success) handlePress(event.x, event.y);
+        }),
+    [handlePress],
+  );
+  const worldGesture = useMemo(
+    () => Gesture.Race(pinchGesture, panGesture, tapGesture),
+    [panGesture, pinchGesture, tapGesture],
+  );
+
+  useImperativeHandle(ref, () => ({
+    resolveDropPosition: (screenX, screenY) =>
+      new Promise((resolve) => {
+        const shell = shellRef.current;
+        if (!shell) {
+          resolve(null);
+          return;
+        }
+        shell.measureInWindow((left, top, width, height) => {
+          if (screenX < left || screenX > left + width || screenY < top || screenY > top + height) {
+            resolve(null);
+            return;
+          }
+          const currentZoom = zoomRef.current;
+          const currentCamera = cameraRef.current;
+          const x = Math.floor((currentCamera.x + (screenX - left) / currentZoom) / FARM_TILE_SIZE);
+          const y = Math.floor((currentCamera.y + (screenY - top) / currentZoom) / FARM_TILE_SIZE);
+          if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) {
+            resolve(null);
+            return;
+          }
+          resolve({ position: { x, y }, object: findObject(x, y) });
+        });
       }),
+  }), [findObject]);
+
+  const grassPatches = useMemo(
+    () =>
+      Array.from({ length: 94 }, (_, index) => ({
+        x: (index * 197 + 41) % WORLD_WIDTH,
+        y: (index * 283 + 67) % WORLD_HEIGHT,
+        rx: 2 + (index % 4),
+        ry: 1 + (index % 3),
+        opacity: 0.05 + (index % 5) * 0.012,
+        fill: index % 2 === 0 ? "#E5F0B1" : "#5B934C",
+      })),
     [],
   );
 
   return (
-    <View style={styles.shell} onLayout={handleLayout} {...panResponder.panHandlers}>
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox={`${camera.x} ${camera.y} ${size.width / zoom} ${size.height / zoom}`}
-        preserveAspectRatio="none"
-        pointerEvents="none"
+    <GestureDetector gesture={worldGesture}>
+      <View
+        ref={shellRef}
+        style={[styles.shell, style]}
+        onLayout={handleLayout}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel="أرض مزرعة مفتوحة. اسحب للتحرك، واستخدم إصبعين للتكبير والتصغير، واضغط للتفاعل."
       >
-        <Rect x={0} y={0} width={WORLD_WIDTH} height={WORLD_HEIGHT} fill="#A9CE7E" />
-        {mapCells.map((cell) => (
-          <Rect
-            key={`tile-${cell.x}-${cell.y}`}
-            x={cell.x * FARM_TILE_SIZE}
-            y={cell.y * FARM_TILE_SIZE}
-            width={FARM_TILE_SIZE}
-            height={FARM_TILE_SIZE}
-            fill={cell.color}
-            stroke="rgba(79,122,61,0.22)"
-            strokeWidth={0.8}
-          />
-        ))}
-        <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#E7D09B" strokeWidth={12} opacity={0.65} />
-        <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#F4E6BF" strokeWidth={4} opacity={0.9} />
-        {farm.plots.map((plot) => <Field key={`plot-${plot.id}`} plot={plot} now={now} />)}
-        {farm.trees.map((tree) => <FruitTree key={tree.id} tree={tree} now={now} />)}
-        {farm.decorations.map((item) => <Decoration key={item.id} decoration={item} />)}
-        {farm.houseBuilt && farm.housePosition ? (
-          <G transform={`translate(${farm.housePosition.x * FARM_TILE_SIZE} ${farm.housePosition.y * FARM_TILE_SIZE})`}>
-            <FarmHouse level={farm.houseLevel} />
-          </G>
-        ) : null}
-        <Player position={farm.playerPosition} />
-        <SvgText
-          x={WORLD_WIDTH / 2}
-          y={WORLD_HEIGHT - 9}
-          fontSize={9}
-          fill="#527344"
-          textAnchor="middle"
+        <Svg
+          width="100%"
+          height="100%"
+          viewBox={`${camera.x} ${camera.y} ${size.width / zoom} ${size.height / zoom}`}
+          preserveAspectRatio="none"
+          pointerEvents="none"
         >
-          أرض المزرعة
-        </SvgText>
-      </Svg>
-
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={(event) => handlePress(event.nativeEvent.locationX, event.nativeEvent.locationY)}
-        accessibilityRole="button"
-        accessibilityLabel="أرض مزرعة مفتوحة. اسحب لاستكشافها واضغط لاختيار خانة."
-      />
-      <View style={styles.zoomControls}>
-        <Pressable
-          style={styles.zoomButton}
-          accessibilityRole="button"
-          accessibilityLabel="تكبير الخريطة"
-          onPress={() => {
-            const nextZoom = Math.min(1.8, Number((zoom + 0.2).toFixed(1)));
-            const centerX = camera.x + size.width / zoom / 2;
-            const centerY = camera.y + size.height / zoom / 2;
-            setZoom(nextZoom);
-            setCamera(clampCamera(centerX - size.width / nextZoom / 2, centerY - size.height / nextZoom / 2, nextZoom));
-          }}
-        >
-          <Svg width={19} height={19} viewBox="0 0 24 24">
-            <Line x1={12} y1={5} x2={12} y2={19} stroke="#355F3B" strokeWidth={2} />
-            <Line x1={5} y1={12} x2={19} y2={12} stroke="#355F3B" strokeWidth={2} />
-          </Svg>
-        </Pressable>
-        <Pressable
-          style={styles.zoomButton}
-          accessibilityRole="button"
-          accessibilityLabel="تصغير الخريطة"
-          onPress={() => {
-            const nextZoom = Math.max(0.75, Number((zoom - 0.2).toFixed(1)));
-            const centerX = camera.x + size.width / zoom / 2;
-            const centerY = camera.y + size.height / zoom / 2;
-            setZoom(nextZoom);
-            setCamera(clampCamera(centerX - size.width / nextZoom / 2, centerY - size.height / nextZoom / 2, nextZoom));
-          }}
-        >
-          <Svg width={19} height={19} viewBox="0 0 24 24">
-            <Line x1={5} y1={12} x2={19} y2={12} stroke="#355F3B" strokeWidth={2} />
-          </Svg>
-        </Pressable>
-        <Pressable
-          style={styles.zoomButton}
-          accessibilityRole="button"
-          accessibilityLabel="العودة إلى المزارع"
-          onPress={() => {
-            const centerX = farm.playerPosition.x * FARM_TILE_SIZE;
-            const centerY = farm.playerPosition.y * FARM_TILE_SIZE;
-            setCamera(clampCamera(centerX - size.width / zoom / 2, centerY - size.height / zoom / 2));
-          }}
-        >
-          <Svg width={18} height={18} viewBox="0 0 24 24">
-            <Circle cx={12} cy={12} r={7} fill="none" stroke="#355F3B" strokeWidth={2} />
-            <Circle cx={12} cy={12} r={2} fill="#355F3B" />
-          </Svg>
-        </Pressable>
+          <Rect x={-1200} y={-1000} width={WORLD_WIDTH + 2400} height={WORLD_HEIGHT + 2000} fill="#A9CE7E" />
+          {grassPatches.map((patch, index) => (
+            <Ellipse
+              key={`grass-${index}`}
+              cx={patch.x}
+              cy={patch.y}
+              rx={patch.rx}
+              ry={patch.ry}
+              fill={patch.fill}
+              opacity={patch.opacity}
+            />
+          ))}
+          <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#E7D09B" strokeWidth={12} opacity={0.65} />
+          <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#F4E6BF" strokeWidth={4} opacity={0.9} />
+          {farm.plots.map((plot) => <Field key={`plot-${plot.id}`} plot={plot} now={now} />)}
+          {farm.trees.map((tree) => <FruitTree key={tree.id} tree={tree} now={now} />)}
+          {farm.decorations.map((item) => <Decoration key={`decor-${item.id}`} decoration={item} />)}
+          {farm.houseBuilt && farm.housePosition ? (
+            <G transform={`translate(${farm.housePosition.x * FARM_TILE_SIZE} ${farm.housePosition.y * FARM_TILE_SIZE})`}>
+              <FarmHouse level={farm.houseLevel} />
+            </G>
+          ) : null}
+          <Player position={farm.playerPosition} />
+        </Svg>
       </View>
-    </View>
+    </GestureDetector>
   );
-}
+});
+
+export default FarmScene;
 
 const styles = StyleSheet.create({
   shell: {
+    flex: 1,
     width: "100%",
-    height: 330,
+    minHeight: 220,
     overflow: "hidden",
     borderRadius: 19,
     backgroundColor: "#A9CE7E",
-    borderWidth: 1,
-    borderColor: "#7EAC68",
-  },
-  zoomControls: {
-    position: "absolute",
-    right: 9,
-    top: 9,
-    gap: 6,
-  },
-  zoomButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: "#D9E8D0",
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 2,
   },
 });
