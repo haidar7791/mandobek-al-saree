@@ -108,7 +108,13 @@ export const FARM_MAP_COLUMNS = 24;
 export const FARM_MAP_ROWS = 18;
 export const FARM_TILE_SIZE = 40;
 export const FARM_PLOT_COST = 25;
+export const FARM_LAND_EXPANSION_COST = 120;
 export const FARM_HOUSE_COST = 180;
+export const FARM_PARCEL_COLUMNS = 4;
+export const FARM_PARCEL_ROWS = 3;
+export const FARM_PARCEL_WIDTH = FARM_MAP_COLUMNS / FARM_PARCEL_COLUMNS;
+export const FARM_PARCEL_HEIGHT = FARM_MAP_ROWS / FARM_PARCEL_ROWS;
+export const FARM_START_PARCEL = { column: 1, row: 1 };
 export const INITIAL_SEEDS: Record<CropId, number> = {
   wheat: 4,
   carrot: 2,
@@ -118,6 +124,11 @@ export const INITIAL_SEEDS: Record<CropId, number> = {
 export interface FarmPosition {
   x: number;
   y: number;
+}
+
+export interface FarmLandParcel {
+  column: number;
+  row: number;
 }
 
 export interface FarmPlot extends FarmPosition {
@@ -142,11 +153,12 @@ export interface FarmDecoration extends FarmPosition {
 }
 
 export interface FarmGameSave {
-  version: 4;
+  version: 5;
   coins: number;
   seeds: Record<CropId, number>;
   inventory: Record<CropId, number>;
   fruitInventory: Record<FruitTreeId, number>;
+  landParcels: FarmLandParcel[];
   plots: FarmPlot[];
   trees: FarmFruitTree[];
   decorations: FarmDecoration[];
@@ -164,10 +176,12 @@ export type FarmObjectRef =
   | { type: "plot"; id: number }
   | { type: "tree"; id: string }
   | { type: "decoration"; id: string }
-  | { type: "house"; id: "house" };
+  | { type: "house"; id: "house" }
+  | { type: "landParcel"; id: string };
 type OccupancyException = FarmObjectRef | { type: "player"; id: "player" };
 
 export type FarmAction =
+  | { type: "buyLandParcel"; column: number; row: number }
   | { type: "buyPlotAt"; x: number; y: number }
   | { type: "plantInPlot"; plotId: number; cropId: CropId }
   | { type: "plantAt"; x: number; y: number; cropId: CropId }
@@ -208,21 +222,60 @@ function clampPosition(x: unknown, y: unknown): FarmPosition {
   };
 }
 
+export function getFarmParcelAt(x: number, y: number): FarmLandParcel {
+  return {
+    column: Math.floor(x / FARM_PARCEL_WIDTH),
+    row: Math.floor(y / FARM_PARCEL_HEIGHT),
+  };
+}
+
+export function isFarmParcelOwned(
+  farm: Pick<FarmGameSave, "landParcels">,
+  column: number,
+  row: number,
+): boolean {
+  return farm.landParcels.some((parcel) => parcel.column === column && parcel.row === row);
+}
+
+export function isFarmParcelAdjacent(
+  farm: Pick<FarmGameSave, "landParcels">,
+  column: number,
+  row: number,
+): boolean {
+  return !isFarmParcelOwned(farm, column, row) && farm.landParcels.some(
+    (parcel) => Math.abs(parcel.column - column) + Math.abs(parcel.row - row) === 1,
+  );
+}
+
+export function isFarmPositionOwned(
+  farm: Pick<FarmGameSave, "landParcels">,
+  x: number,
+  y: number,
+): boolean {
+  const parcel = getFarmParcelAt(x, y);
+  return isFarmParcelOwned(farm, parcel.column, parcel.row);
+}
+
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 4,
+    version: 5,
     coins: 140,
     seeds: { ...INITIAL_SEEDS },
     inventory: { wheat: 0, carrot: 0, corn: 0 },
     fruitInventory: { apple: 0, orange: 0 },
-    plots: [],
+    landParcels: [{ ...FARM_START_PARCEL }],
+    plots: [
+      { id: 1, x: 8, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
+      { id: 2, x: 9, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
+      { id: 3, x: 10, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
+    ],
     trees: [],
     decorations: [],
-    houseBuilt: false,
-    houseLevel: 0,
-    housePosition: null,
-    playerPosition: { x: 4, y: 5 },
-    nextPlotId: 1,
+    houseBuilt: true,
+    houseLevel: 1,
+    housePosition: { x: 8, y: 7 },
+    playerPosition: { x: 7, y: 8 },
+    nextPlotId: 4,
     totalHarvests: 0,
     createdAt: now,
     updatedAt: now,
@@ -241,24 +294,23 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   farm.fruitInventory = { apple: 2, orange: 1 };
   farm.totalHarvests = 4;
   farm.plots = [
-    { id: 1, x: 7, y: 6, cropId: "wheat", plantedAt: now - 40_000, growthProgressMs: 30_000, lastGrowthAt: now },
-    { id: 2, x: 8, y: 6, cropId: "carrot", plantedAt: now - 25_000, growthProgressMs: 25_000, lastGrowthAt: now },
-    { id: 3, x: 7, y: 7, cropId: "corn", plantedAt: now - 50_000, growthProgressMs: 50_000, lastGrowthAt: now },
-    { id: 4, x: 9, y: 7, cropId: "wheat", plantedAt: now - 12_000, growthProgressMs: 12_000, lastGrowthAt: now },
+    { id: 1, x: 8, y: 9, cropId: "wheat", plantedAt: now - 40_000, growthProgressMs: 30_000, lastGrowthAt: now },
+    { id: 2, x: 9, y: 9, cropId: "carrot", plantedAt: now - 25_000, growthProgressMs: 25_000, lastGrowthAt: now },
+    { id: 3, x: 10, y: 9, cropId: "corn", plantedAt: now - 50_000, growthProgressMs: 50_000, lastGrowthAt: now },
   ];
   farm.trees = [
-    { id: "demo-apple", kind: "apple", x: 13, y: 6, plantedAt: now - 180_000, nextHarvestAt: now - 1_000 },
-    { id: "demo-orange", kind: "orange", x: 15, y: 9, plantedAt: now - 40_000, nextHarvestAt: now + 110_000 },
+    { id: "demo-apple", kind: "apple", x: 7, y: 7, plantedAt: now - 180_000, nextHarvestAt: now - 1_000 },
+    { id: "demo-orange", kind: "orange", x: 10, y: 7, plantedAt: now - 40_000, nextHarvestAt: now + 110_000 },
   ];
   farm.houseBuilt = true;
   farm.houseLevel = 1;
-  farm.housePosition = { x: 4, y: 4 };
+  farm.housePosition = { x: 8, y: 7 };
   farm.decorations = [
-    { id: "demo-flowers", kind: "flowerBed", x: 5, y: 7 },
-    { id: "demo-lamp", kind: "gardenLamp", x: 3, y: 6 },
+    { id: "demo-flowers", kind: "flowerBed", x: 7, y: 10 },
+    { id: "demo-lamp", kind: "gardenLamp", x: 11, y: 10 },
   ];
-  farm.playerPosition = { x: 6, y: 5 };
-  farm.nextPlotId = 5;
+  farm.playerPosition = { x: 7, y: 8 };
+  farm.nextPlotId = 4;
   return farm;
 }
 
@@ -289,6 +341,7 @@ export function getTreeGrowthState(tree: FarmFruitTree, now = Date.now()) {
 function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
   return {
     ...farm,
+    landParcels: farm.landParcels.map((parcel) => ({ ...parcel })),
     plots: farm.plots.map((plot) => {
       const growth = getPlotGrowthState(plot, now);
       return plot.cropId
@@ -317,8 +370,30 @@ export function isFarmPositionFree(
 }
 
 function assertFree(farm: FarmGameSave, x: number, y: number, except?: OccupancyException) {
+  if (!isFarmPositionOwned(farm, x, y)) {
+    throw new Error("هذه الأرض مقفلة. اشترِ القطعة المجاورة أولاً.");
+  }
   if (!Number.isInteger(x) || !Number.isInteger(y) || !isFarmPositionFree(farm, x, y, except)) {
     throw new Error("هذه الخانة مشغولة أو خارج حدود مزرعتك.");
+  }
+}
+
+function connectParcelToStart(owned: FarmLandParcel[], target: FarmLandParcel) {
+  let column = FARM_START_PARCEL.column;
+  let row = FARM_START_PARCEL.row;
+  const add = (nextColumn: number, nextRow: number) => {
+    if (!owned.some((parcel) => parcel.column === nextColumn && parcel.row === nextRow)) {
+      owned.push({ column: nextColumn, row: nextRow });
+    }
+  };
+  add(column, row);
+  while (column !== target.column) {
+    column += Math.sign(target.column - column);
+    add(column, row);
+  }
+  while (row !== target.row) {
+    row += Math.sign(target.row - row);
+    add(column, row);
   }
 }
 
@@ -384,18 +459,64 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
   }
   const houseBuilt = data.houseBuilt === true || nonNegativeInt(data.houseLevel) > 0;
   const housePositionRaw = data.housePosition as Record<string, unknown> | undefined;
-  const legacyHousePosition = houseBuilt ? clampPosition(3, 3) : null;
+  const playerPositionRaw = data.playerPosition as Record<string, unknown> | undefined;
+  const isBlankLegacySave = !Array.isArray(data.landParcels)
+    && plots.length === 0
+    && (!Array.isArray(data.trees) || data.trees.length === 0)
+    && (!Array.isArray(data.decorations) || data.decorations.length === 0)
+    && !houseBuilt;
+  const normalizedHouseBuilt = houseBuilt || isBlankLegacySave;
+  const legacyHousePosition = normalizedHouseBuilt ? clampPosition(8, 7) : null;
   const housePosition = houseBuilt
     ? housePositionRaw && typeof housePositionRaw.x === "number" && typeof housePositionRaw.y === "number"
       ? clampPosition(housePositionRaw.x, housePositionRaw.y)
       : legacyHousePosition
-    : null;
+    : isBlankLegacySave ? clampPosition(8, 7) : null;
+  if (isBlankLegacySave) {
+    plots.push(
+      { id: 1, x: 8, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null },
+      { id: 2, x: 9, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null },
+      { id: 3, x: 10, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null },
+    );
+  }
+  const landParcels: FarmLandParcel[] = [];
+  if (Array.isArray(data.landParcels)) {
+    for (const value of data.landParcels) {
+      const raw = value as Record<string, unknown>;
+      const column = nonNegativeInt(raw.column, -1);
+      const row = nonNegativeInt(raw.row, -1);
+      if (
+        column < FARM_PARCEL_COLUMNS
+        && row < FARM_PARCEL_ROWS
+        && !landParcels.some((parcel) => parcel.column === column && parcel.row === row)
+      ) {
+        landParcels.push({ column, row });
+      }
+    }
+    if (!isFarmParcelOwned({ landParcels }, FARM_START_PARCEL.column, FARM_START_PARCEL.row)) {
+      landParcels.unshift({ ...FARM_START_PARCEL });
+    }
+  } else {
+    connectParcelToStart(landParcels, { ...FARM_START_PARCEL });
+    const legacyPositions: FarmPosition[] = [
+      ...plots,
+      ...trees,
+      ...decorations,
+      ...(housePosition ? [housePosition] : []),
+      !isBlankLegacySave && playerPositionRaw
+        ? clampPosition(playerPositionRaw.x, playerPositionRaw.y)
+        : { x: 7, y: 8 },
+    ];
+    for (const position of legacyPositions) {
+      const parcel = getFarmParcelAt(position.x, position.y);
+      connectParcelToStart(landParcels, parcel);
+    }
+  }
   const seeds = (data.seeds ?? {}) as Record<string, unknown>;
   const inventory = (data.inventory ?? {}) as Record<string, unknown>;
   const fruitInventory = (data.fruitInventory ?? {}) as Record<string, unknown>;
-  const playerPositionRaw = data.playerPosition as Record<string, unknown> | undefined;
   const farm: FarmGameSave = {
-    version: 4,
+    version: 5,
     coins: nonNegativeInt(data.coins, initial.coins),
     seeds: {
       wheat: nonNegativeInt(seeds.wheat, initial.seeds.wheat),
@@ -411,13 +532,14 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       apple: nonNegativeInt(fruitInventory.apple),
       orange: nonNegativeInt(fruitInventory.orange),
     },
+    landParcels,
     plots,
     trees,
     decorations,
-    houseBuilt,
-    houseLevel: houseBuilt ? Math.max(1, Math.min(3, nonNegativeInt(data.houseLevel, 1))) : 0,
+    houseBuilt: normalizedHouseBuilt,
+    houseLevel: normalizedHouseBuilt ? Math.max(1, Math.min(3, nonNegativeInt(data.houseLevel, 1))) : 0,
     housePosition,
-    playerPosition: playerPositionRaw
+    playerPosition: !isBlankLegacySave && playerPositionRaw
       ? clampPosition(playerPositionRaw.x, playerPositionRaw.y)
       : { ...initial.playerPosition },
     nextPlotId: Math.max(
@@ -470,6 +592,28 @@ export function applyFarmActionToState(
   const next = advanceFarmTime(farm, now);
 
   switch (action.type) {
+    case "buyLandParcel": {
+      const { column, row } = action;
+      if (
+        !Number.isInteger(column)
+        || !Number.isInteger(row)
+        || column < 0
+        || column >= FARM_PARCEL_COLUMNS
+        || row < 0
+        || row >= FARM_PARCEL_ROWS
+      ) {
+        throw new Error("قطعة الأرض غير متاحة.");
+      }
+      if (!isFarmParcelAdjacent(next, column, row)) {
+        throw new Error("يمكنك شراء قطعة ملاصقة لأرضك فقط.");
+      }
+      if (next.coins < FARM_LAND_EXPANSION_COST) {
+        throw new Error(`تحتاج إلى ${FARM_LAND_EXPANSION_COST} عملة لشراء التوسعة.`);
+      }
+      next.coins -= FARM_LAND_EXPANSION_COST;
+      next.landParcels.push({ column, row });
+      break;
+    }
     case "buySeed": {
       const crop = CROPS[action.cropId];
       if (next.coins < crop.seedPrice) throw new Error("لا توجد عملات كافية لشراء البذور.");
@@ -519,6 +663,9 @@ export function applyFarmActionToState(
     case "plantInPlot": {
       const plot = next.plots.find((item) => item.id === action.plotId);
       if (!plot) throw new Error("لم يتم العثور على الحقل.");
+      if (!isFarmPositionOwned(next, plot.x, plot.y)) {
+        throw new Error("هذا الحقل خارج أرضك الحالية.");
+      }
       if (plot.cropId) throw new Error("هذا الحقل مزروع بالفعل.");
       if (next.seeds[action.cropId] < 1) throw new Error("لا توجد بذور كافية؛ اشترِ بذوراً من المتجر.");
       next.seeds[action.cropId] -= 1;

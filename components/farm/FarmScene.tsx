@@ -26,12 +26,20 @@ import Svg, {
 } from "react-native-svg";
 import {
   CROPS,
+  FARM_LAND_EXPANSION_COST,
   FARM_MAP_COLUMNS,
   FARM_MAP_ROWS,
+  FARM_PARCEL_COLUMNS,
+  FARM_PARCEL_HEIGHT,
+  FARM_PARCEL_ROWS,
+  FARM_PARCEL_WIDTH,
   FARM_TILE_SIZE,
   FRUIT_TREES,
+  getFarmParcelAt,
   getPlotGrowthState,
   getTreeGrowthState,
+  isFarmParcelAdjacent,
+  isFarmParcelOwned,
   type FarmGameSave,
   type FarmObjectRef,
   type FarmPosition,
@@ -80,10 +88,10 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
   const stage = growth?.ready ? 3 : (growth?.progress ?? 0) > 0.66 ? 2 : (growth?.progress ?? 0) > 0.12 ? 1 : 0;
   return (
     <G transform={`translate(${plot.x * FARM_TILE_SIZE} ${plot.y * FARM_TILE_SIZE})`}>
-      <Rect x={2} y={8} width={36} height={28} rx={6} fill="#8A5938" stroke="#71462F" strokeWidth={1.5} />
-      <Line x1={7} y1={16} x2={33} y2={16} stroke="#B17B4D" strokeWidth={1.6} />
-      <Line x1={7} y1={23} x2={33} y2={23} stroke="#B17B4D" strokeWidth={1.6} />
-      <Line x1={7} y1={30} x2={33} y2={30} stroke="#B17B4D" strokeWidth={1.6} />
+      <Rect x={0} y={4} width={40} height={32} rx={6} fill="#8A5938" stroke="#71462F" strokeWidth={1.5} />
+      <Line x1={5} y1={12} x2={35} y2={12} stroke="#B17B4D" strokeWidth={1.7} />
+      <Line x1={5} y1={20} x2={35} y2={20} stroke="#B17B4D" strokeWidth={1.7} />
+      <Line x1={5} y1={28} x2={35} y2={28} stroke="#B17B4D" strokeWidth={1.7} />
       {crop ? (
         <>
           {[12, 20, 28].map((offset, index) => (
@@ -105,6 +113,156 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
           {growth?.ready && <Circle cx={33} cy={7} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />}
         </>
       ) : null}
+    </G>
+  );
+}
+
+function LandParcel({
+  farm,
+  column,
+  row,
+}: {
+  farm: FarmGameSave;
+  column: number;
+  row: number;
+}) {
+  if (isFarmParcelOwned(farm, column, row)) return null;
+  const x = column * FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
+  const y = row * FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const width = FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
+  const height = FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const adjacent = isFarmParcelAdjacent(farm, column, row);
+  return (
+    <G>
+      <Rect
+        x={x + 5}
+        y={y + 5}
+        width={width - 10}
+        height={height - 10}
+        rx={14}
+        fill="#53634B"
+        fillOpacity={0.3}
+        stroke="#42563D"
+        strokeOpacity={0.75}
+        strokeWidth={2}
+        strokeDasharray="8 6"
+      />
+      <SvgText x={x + width / 2} y={y + height / 2 - 10} fontSize={23} textAnchor="middle" fill="#F7F5DA">
+        🔒
+      </SvgText>
+      <SvgText
+        x={x + width / 2}
+        y={y + height / 2 + 17}
+        fontSize={11}
+        textAnchor="middle"
+        fill="#F7F5DA"
+        fontWeight="800"
+      >
+        {adjacent ? `${FARM_LAND_EXPANSION_COST} 🪙` : "مقفلة"}
+      </SvgText>
+      {adjacent ? (
+        <SvgText
+          x={x + width / 2}
+          y={y + height / 2 + 34}
+          fontSize={8}
+          textAnchor="middle"
+          fill="#F7F5DA"
+        >
+          اضغط للتوسعة
+        </SvgText>
+      ) : null}
+    </G>
+  );
+}
+
+function ParcelFence({
+  farm,
+  column,
+  row,
+}: {
+  farm: FarmGameSave;
+  column: number;
+  row: number;
+}) {
+  if (!isFarmParcelOwned(farm, column, row)) return null;
+  const x = column * FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
+  const y = row * FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const width = FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
+  const height = FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const edges = [
+    {
+      key: "top",
+      exposed: !isFarmParcelOwned(farm, column, row - 1),
+      x1: x,
+      y1: y + 3,
+      x2: x + width,
+      y2: y + 3,
+      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + index * width / 6, y: y - 5, width: 3, height: 18 })),
+    },
+    {
+      key: "bottom",
+      exposed: !isFarmParcelOwned(farm, column, row + 1),
+      x1: x,
+      y1: y + height - 3,
+      x2: x + width,
+      y2: y + height - 3,
+      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + index * width / 6, y: y + height - 13, width: 3, height: 18 })),
+    },
+    {
+      key: "left",
+      exposed: !isFarmParcelOwned(farm, column - 1, row),
+      x1: x + 3,
+      y1: y,
+      x2: x + 3,
+      y2: y + height,
+      posts: Array.from({ length: 7 }, (_, index) => ({ x: x - 5, y: y + index * height / 6, width: 18, height: 3 })),
+    },
+    {
+      key: "right",
+      exposed: !isFarmParcelOwned(farm, column + 1, row),
+      x1: x + width - 3,
+      y1: y,
+      x2: x + width - 3,
+      y2: y + height,
+      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + width - 13, y: y + index * height / 6, width: 18, height: 3 })),
+    },
+  ];
+  return (
+    <G>
+      {edges.filter((edge) => edge.exposed).map((edge) => (
+        <G key={edge.key}>
+          <Line
+            x1={edge.x1}
+            y1={edge.y1}
+            x2={edge.x2}
+            y2={edge.y2}
+            stroke="#754A2B"
+            strokeWidth={4}
+            strokeLinecap="round"
+          />
+          <Line
+            x1={edge.key === "top" || edge.key === "bottom" ? edge.x1 : edge.x1 + 7}
+            y1={edge.key === "top" || edge.key === "bottom" ? edge.y1 + (edge.key === "top" ? 8 : -8) : edge.y1}
+            x2={edge.key === "top" || edge.key === "bottom" ? edge.x2 : edge.x2 + (edge.key === "left" ? 8 : -8)}
+            y2={edge.key === "top" || edge.key === "bottom" ? edge.y2 + (edge.key === "top" ? 8 : -8) : edge.y2}
+            stroke="#A4774B"
+            strokeWidth={2.5}
+          />
+          {edge.posts.map((post, index) => (
+            <Rect
+              key={`${edge.key}-${index}`}
+              x={post.x}
+              y={post.y}
+              width={post.width}
+              height={post.height}
+              rx={1.5}
+              fill="#855832"
+              stroke="#684426"
+              strokeWidth={0.6}
+            />
+          ))}
+        </G>
+      ))}
     </G>
   );
 }
@@ -244,6 +402,10 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     if (decoration) return { type: "decoration", id: decoration.id };
     const plot = farm.plots.find((item) => item.x === x && item.y === y);
     if (plot) return { type: "plot", id: plot.id };
+    const parcel = getFarmParcelAt(x, y);
+    if (!isFarmParcelOwned(farm, parcel.column, parcel.row)) {
+      return { type: "landParcel", id: `${parcel.column}:${parcel.row}` };
+    }
     return null;
   }, [farm]);
 
@@ -394,6 +556,14 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
           ))}
           <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#E7D09B" strokeWidth={12} opacity={0.65} />
           <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#F4E6BF" strokeWidth={4} opacity={0.9} />
+          {Array.from({ length: FARM_PARCEL_COLUMNS * FARM_PARCEL_ROWS }, (_, index) => (
+            <LandParcel
+              key={`land-${index}`}
+              farm={farm}
+              column={index % FARM_PARCEL_COLUMNS}
+              row={Math.floor(index / FARM_PARCEL_COLUMNS)}
+            />
+          ))}
           {farm.plots.map((plot) => <Field key={`plot-${plot.id}`} plot={plot} now={now} />)}
           {farm.trees.map((tree) => <FruitTree key={tree.id} tree={tree} now={now} />)}
           {farm.decorations.map((item) => <Decoration key={`decor-${item.id}`} decoration={item} />)}
@@ -402,6 +572,14 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
               <FarmHouse level={farm.houseLevel} />
             </G>
           ) : null}
+          {Array.from({ length: FARM_PARCEL_COLUMNS * FARM_PARCEL_ROWS }, (_, index) => (
+            <ParcelFence
+              key={`fence-${index}`}
+              farm={farm}
+              column={index % FARM_PARCEL_COLUMNS}
+              row={Math.floor(index / FARM_PARCEL_COLUMNS)}
+            />
+          ))}
           <Player position={farm.playerPosition} />
         </Svg>
       </View>

@@ -24,6 +24,7 @@ import {
   DECORATIONS,
   DECORATION_ORDER,
   FARM_HOUSE_COST,
+  FARM_LAND_EXPANSION_COST,
   FARM_PLOT_COST,
   FRUIT_TREES,
   FRUIT_TREE_ORDER,
@@ -31,10 +32,12 @@ import {
   createDemoFarmGame,
   getPlotGrowthState,
   getTreeGrowthState,
+  isFarmParcelAdjacent,
   type CropId,
   type DecorationId,
   type FarmAction,
   type FarmGameSave,
+  type FarmLandParcel,
   type FarmObjectRef,
   type FarmPosition,
   type FarmTool,
@@ -92,6 +95,7 @@ function objectName(object: FarmObjectRef | null): string {
   if (object.type === "house") return "منزل المزرعة";
   if (object.type === "plot") return "الحقل";
   if (object.type === "tree") return "الشجرة";
+  if (object.type === "landParcel") return "قطعة أرض مقفلة";
   return "قطعة الديكور";
 }
 
@@ -198,6 +202,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const [tool, setTool] = useState<FarmTool | null>(null);
   const [selectedMoveObject, setSelectedMoveObject] = useState<FarmObjectRef | null>(null);
   const [cropPickerPlotId, setCropPickerPlotId] = useState<number | null>(null);
+  const [pendingLandParcel, setPendingLandParcel] = useState<FarmLandParcel | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTab, setMenuTab] = useState<MenuTab>("shop");
   const [playerName, setPlayerName] = useState("المزارع");
@@ -334,6 +339,17 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
   const handleTilePress = async (position: FarmPosition, object: FarmObjectRef | null) => {
     if (!farm || busy) return;
+
+    if (object?.type === "landParcel") {
+      const [columnText, rowText] = object.id.split(":");
+      const parcel = { column: Number(columnText), row: Number(rowText) };
+      if (isFarmParcelAdjacent(farm, parcel.column, parcel.row)) {
+        setPendingLandParcel(parcel);
+      } else {
+        setHint("اشترِ قطعة ملاصقة لأرضك أولاً لتتمكن من الوصول إلى هذه المنطقة.");
+      }
+      return;
+    }
 
     if (tool === "move") {
       if (!selectedMoveObject) {
@@ -512,7 +528,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <View style={styles.menuHeader}>
               <View>
                 <Text style={styles.menuTitle}>مستلزمات المزرعة</Text>
-                <Text style={styles.menuHint}>اسحب العناصر من المقبض إلى الأرض</Text>
+                <Text style={styles.menuHint}>ضع العناصر داخل أرضك الحالية</Text>
               </View>
               <Pressable onPress={() => setMenuOpen(false)} style={styles.closeMenuButton}>
                 <Ionicons name="chevron-down" size={18} color={C.greenDark} />
@@ -599,7 +615,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   <ShopCard
                     key={decorationId}
                     title={DECORATIONS[decorationId].name}
-                    subtitle="اسحبها إلى أي مكان فارغ"
+                     subtitle="ضعها في مكان فارغ داخل أرضك"
                     icon={
                       decorationId === "flowerBed"
                         ? "flower-outline"
@@ -777,6 +793,54 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={pendingLandParcel !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingLandParcel(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.cropModal}>
+            <View style={styles.modalHeading}>
+              <View>
+                <Text style={styles.modalTitle}>توسعة أرض المزرعة</Text>
+                <Text style={styles.modalSubtitle}>تُدمج القطعة فور الشراء ويتوسع السياج حول أرضك.</Text>
+              </View>
+              <Pressable onPress={() => setPendingLandParcel(null)} style={styles.closeMenuButton}>
+                <Ionicons name="close" size={18} color={C.greenDark} />
+              </Pressable>
+            </View>
+            <View style={styles.expansionPrice}>
+              <Ionicons name="cash-outline" size={19} color="#986D1F" />
+              <Text style={styles.expansionPriceText}>
+                السعر: {formatCoins(FARM_LAND_EXPANSION_COST)} عملة
+              </Text>
+            </View>
+            <Text style={styles.expansionBalance}>رصيدك: {formatCoins(farm.coins)} عملة</Text>
+            <Pressable
+              disabled={busy || farm.coins < FARM_LAND_EXPANSION_COST}
+              onPress={async () => {
+                if (!pendingLandParcel) return;
+                const bought = await act({
+                  type: "buyLandParcel",
+                  column: pendingLandParcel.column,
+                  row: pendingLandParcel.row,
+                });
+                if (bought) setPendingLandParcel(null);
+              }}
+              style={[
+                styles.expansionBuyButton,
+                (busy || farm.coins < FARM_LAND_EXPANSION_COST) && styles.disabled,
+              ]}
+            >
+              <Text style={styles.expansionBuyText}>
+                {farm.coins < FARM_LAND_EXPANSION_COST ? "عملات غير كافية" : "شراء ودمج الأرض"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -897,4 +961,9 @@ const styles = StyleSheet.create({
   cropChoiceButton: { minWidth: 56, minHeight: 31, paddingHorizontal: 8, borderRadius: 9, backgroundColor: C.green, alignItems: "center", justifyContent: "center" },
   cropChoiceBuy: { backgroundColor: "#D8A844" },
   cropChoiceButtonText: { color: "#FFFFFF", fontSize: 9, fontWeight: "900" },
+  expansionPrice: { minHeight: 46, borderRadius: 13, backgroundColor: "#FFF4D4", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 8 },
+  expansionPriceText: { color: "#805F1D", fontSize: 12, fontWeight: "900" },
+  expansionBalance: { color: C.muted, fontSize: 10, textAlign: "center" },
+  expansionBuyButton: { minHeight: 43, borderRadius: 13, backgroundColor: C.green, alignItems: "center", justifyContent: "center", marginTop: 3 },
+  expansionBuyText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
 });

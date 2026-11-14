@@ -19,7 +19,7 @@ export async function loadFarmGame(playerId: string): Promise<FarmGameSave> {
     }
     const data = snapshot.data();
     const farm = normalizeFarm(data);
-    if (data.version !== 4) transaction.set(farmRef, farm);
+    if (data.version !== 5) transaction.set(farmRef, farm);
     return farm;
   });
 }
