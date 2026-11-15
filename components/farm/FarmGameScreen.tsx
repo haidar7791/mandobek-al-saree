@@ -24,12 +24,14 @@ import {
   DECORATIONS,
   DECORATION_ORDER,
   FARM_HOUSE_COST,
-  FARM_LAND_EXPANSION_COST,
   FARM_PLOT_COST,
   FRUIT_TREES,
   FRUIT_TREE_ORDER,
   applyFarmActionToState,
+  advanceFarmGameTime,
   createDemoFarmGame,
+  getNextLandExpansionCost,
+  getNextWorkerCost,
   getPlotGrowthState,
   getTreeGrowthState,
   isFarmParcelAdjacent,
@@ -43,7 +45,7 @@ import {
   type FarmTool,
   type FruitTreeId,
 } from "@/lib/farm-game";
-import { loadFarmGame, performFarmAction } from "@/lib/farm-game-persistence";
+import { loadFarmGame, performFarmAction, syncFarmSimulation } from "@/lib/farm-game-persistence";
 
 const C = {
   ink: "#28432B",
@@ -95,6 +97,7 @@ function objectName(object: FarmObjectRef | null): string {
   if (object.type === "house") return "منزل المزرعة";
   if (object.type === "plot") return "الحقل";
   if (object.type === "tree") return "الشجرة";
+  if (object.type === "obstacle") return "العائق";
   if (object.type === "landParcel") return "قطعة أرض مقفلة";
   return "قطعة الديكور";
 }
@@ -212,6 +215,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const [hint, setHint] = useState("");
   const [dragPreview, setDragPreview] = useState<{ label: string; x: number; y: number } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const farmRef = useRef<FarmGameSave | null>(null);
+  const workerSyncingRef = useRef(false);
+  const workerSyncPendingRef = useRef(false);
+  const workerSyncRetryAtRef = useRef(0);
+  farmRef.current = farm;
   const playerId = player?.uid ?? "";
   const isWide = windowWidth >= 850;
 
@@ -224,6 +232,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     [farm, now],
   );
   const level = farm ? Math.floor(farm.totalHarvests / 5) + 1 : 1;
+  const nextLandExpansionCost = farm ? getNextLandExpansionCost(farm) : 0;
   const totalStored = farm
     ? Object.values(farm.inventory).reduce((sum, amount) => sum + amount, 0)
       + Object.values(farm.fruitInventory).reduce((sum, amount) => sum + amount, 0)
@@ -264,9 +273,42 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   }, [refreshFarm]);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => {
+      const tick = Date.now();
+      setNow(tick);
+      const current = farmRef.current;
+      if (!current) return;
+      const advanced = advanceFarmGameTime(current, tick);
+      farmRef.current = advanced;
+      setFarm(advanced);
+
+      const simulationChanged = advanced.totalHarvests > current.totalHarvests
+        || advanced.obstacles.length < current.obstacles.length;
+      if (simulationChanged) workerSyncPendingRef.current = true;
+      if (
+        !previewMode
+        && playerId
+        && workerSyncPendingRef.current
+        && tick >= workerSyncRetryAtRef.current
+        && !workerSyncingRef.current
+      ) {
+        workerSyncingRef.current = true;
+        void syncFarmSimulation(playerId, tick)
+          .then(() => {
+            workerSyncPendingRef.current = false;
+            workerSyncRetryAtRef.current = 0;
+          })
+          .catch((syncError) => {
+            workerSyncRetryAtRef.current = Date.now() + 5_000;
+            console.error("Could not save farm worker progress:", syncError);
+          })
+          .finally(() => {
+            workerSyncingRef.current = false;
+          });
+      }
+    }, 250);
     return () => clearInterval(timer);
-  }, []);
+  }, [playerId, previewMode]);
 
   const act = useCallback(
     async (action: FarmAction) => {
@@ -351,6 +393,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       return;
     }
 
+    if (object?.type === "obstacle") {
+      setHint("العامل يزيل هذه الشوائب تلقائياً قبل إتاحة المكان للبناء.");
+      return;
+    }
+
     if (tool === "move") {
       if (!selectedMoveObject) {
         if (!object) {
@@ -396,9 +443,14 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       if (!tree) return;
       const growth = getTreeGrowthState(tree, now);
       if (growth.ready) {
-        await act({ type: "harvestFruit", treeId: tree.id });
+        const assignedWorker = farm.workers.some((worker) => worker.targetTreeId === tree.id);
+        setHint(
+          assignedWorker
+            ? `العامل في طريقه لجمع ${FRUIT_TREES[tree.kind].fruitName}.`
+            : `سيجمع العامل ${FRUIT_TREES[tree.kind].fruitName} تلقائياً.`,
+        );
       } else {
-        setHint(`ثمار ${FRUIT_TREES[tree.kind].fruitName} تنمو. ستجهز خلال ${formatTime(growth.remaining)}.`);
+        setHint(`ثمار ${FRUIT_TREES[tree.kind].fruitName} تنمو؛ سيجمعها العامل بعد نضجها.`);
       }
       return;
     }
@@ -555,6 +607,16 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
             {menuTab === "shop" ? (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuContent}>
+                <SectionLabel>العمال والأرض</SectionLabel>
+                <ShopCard
+                  title="توظيف عامل مزرعة"
+                  subtitle="يتنقل ويجمع الثمار وينظف التوسعات"
+                  icon="person-add-outline"
+                  count={`العمال: ${farm.workers.length}`}
+                  actionLabel={`توظيف · ${formatCoins(getNextWorkerCost(farm))}`}
+                  disabled={busy || farm.coins < getNextWorkerCost(farm)}
+                  onAction={() => void act({ type: "buyWorker" })}
+                />
                 <SectionLabel>الأرض والمنزل</SectionLabel>
                 <ShopCard
                   title="حقل جديد"
@@ -814,12 +876,12 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <View style={styles.expansionPrice}>
               <Ionicons name="cash-outline" size={19} color="#986D1F" />
               <Text style={styles.expansionPriceText}>
-                السعر: {formatCoins(FARM_LAND_EXPANSION_COST)} عملة
+                السعر: {formatCoins(nextLandExpansionCost)} عملة
               </Text>
             </View>
             <Text style={styles.expansionBalance}>رصيدك: {formatCoins(farm.coins)} عملة</Text>
             <Pressable
-              disabled={busy || farm.coins < FARM_LAND_EXPANSION_COST}
+              disabled={busy || farm.coins < nextLandExpansionCost}
               onPress={async () => {
                 if (!pendingLandParcel) return;
                 const bought = await act({
@@ -831,11 +893,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
               }}
               style={[
                 styles.expansionBuyButton,
-                (busy || farm.coins < FARM_LAND_EXPANSION_COST) && styles.disabled,
+                (busy || farm.coins < nextLandExpansionCost) && styles.disabled,
               ]}
             >
               <Text style={styles.expansionBuyText}>
-                {farm.coins < FARM_LAND_EXPANSION_COST ? "عملات غير كافية" : "شراء ودمج الأرض"}
+                {farm.coins < nextLandExpansionCost ? "عملات غير كافية" : "شراء ودمج الأرض"}
               </Text>
             </Pressable>
           </View>

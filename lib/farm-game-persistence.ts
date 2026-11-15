@@ -19,7 +19,26 @@ export async function loadFarmGame(playerId: string): Promise<FarmGameSave> {
     }
     const data = snapshot.data();
     const farm = normalizeFarm(data);
-    if (data.version !== 5) transaction.set(farmRef, farm);
+    const simulationChanged = data.version !== 6
+      || JSON.stringify(farm.workers) !== JSON.stringify(data.workers)
+      || JSON.stringify(farm.obstacles) !== JSON.stringify(data.obstacles)
+      || JSON.stringify(farm.fruitInventory) !== JSON.stringify(data.fruitInventory);
+    if (simulationChanged) transaction.set(farmRef, farm);
+    return farm;
+  });
+}
+
+export async function syncFarmSimulation(
+  playerId: string,
+  now = Date.now(),
+): Promise<FarmGameSave> {
+  const farmRef = doc(db, "farms", playerId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(farmRef);
+    const farm = snapshot.exists()
+      ? normalizeFarm(snapshot.data(), now)
+      : createInitialFarmSave(now);
+    transaction.set(farmRef, farm);
     return farm;
   });
 }

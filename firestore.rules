@@ -561,8 +561,11 @@ service cloud.firestore {
           "inventory",
           "fruitInventory",
           "landParcels",
+          "expansionsPurchased",
           "plots",
           "trees",
+          "obstacles",
+          "workers",
           "decorations",
           "houseBuilt",
           "houseLevel",
@@ -573,7 +576,7 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.version == 5
+        && request.resource.data.version == 6
         && request.resource.data.coins is number
         && request.resource.data.coins >= 0
         && request.resource.data.seeds is map
@@ -581,10 +584,16 @@ service cloud.firestore {
         && request.resource.data.fruitInventory is map
         && request.resource.data.landParcels is list
         && request.resource.data.landParcels.size() <= 12
+        && request.resource.data.expansionsPurchased is number
+        && request.resource.data.expansionsPurchased >= 0
         && request.resource.data.plots is list
         && request.resource.data.plots.size() <= 432
         && request.resource.data.trees is list
         && request.resource.data.trees.size() <= 432
+        && request.resource.data.obstacles is list
+        && request.resource.data.obstacles.size() <= 432
+        && request.resource.data.workers is list
+        && request.resource.data.workers.size() <= 432
         && request.resource.data.decorations is list
         && request.resource.data.decorations.size() <= 432
         && request.resource.data.houseBuilt is bool

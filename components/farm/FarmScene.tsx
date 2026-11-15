@@ -26,7 +26,6 @@ import Svg, {
 } from "react-native-svg";
 import {
   CROPS,
-  FARM_LAND_EXPANSION_COST,
   FARM_MAP_COLUMNS,
   FARM_MAP_ROWS,
   FARM_PARCEL_COLUMNS,
@@ -36,13 +35,17 @@ import {
   FARM_TILE_SIZE,
   FRUIT_TREES,
   getFarmParcelAt,
+  getNextLandExpansionCost,
   getPlotGrowthState,
   getTreeGrowthState,
+  getWorkerPosition,
   isFarmParcelAdjacent,
   isFarmParcelOwned,
   type FarmGameSave,
+  type FarmObstacle,
   type FarmObjectRef,
   type FarmPosition,
+  type FarmWorker,
 } from "@/lib/farm-game";
 
 export interface FarmSceneProps {
@@ -88,31 +91,61 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
   const stage = growth?.ready ? 3 : (growth?.progress ?? 0) > 0.66 ? 2 : (growth?.progress ?? 0) > 0.12 ? 1 : 0;
   return (
     <G transform={`translate(${plot.x * FARM_TILE_SIZE} ${plot.y * FARM_TILE_SIZE})`}>
-      <Rect x={0} y={4} width={40} height={32} rx={6} fill="#8A5938" stroke="#71462F" strokeWidth={1.5} />
-      <Line x1={5} y1={12} x2={35} y2={12} stroke="#B17B4D" strokeWidth={1.7} />
-      <Line x1={5} y1={20} x2={35} y2={20} stroke="#B17B4D" strokeWidth={1.7} />
-      <Line x1={5} y1={28} x2={35} y2={28} stroke="#B17B4D" strokeWidth={1.7} />
+      <Ellipse cx={20} cy={35} rx={22} ry={4} fill="#456E42" opacity={0.2} />
+      <Rect x={-1} y={2} width={42} height={36} rx={7} fill="#815132" stroke="#65412E" strokeWidth={1.7} />
+      <Rect x={2} y={5} width={36} height={30} rx={5} fill="#96613D" />
+      <Line x1={3} y1={11} x2={37} y2={11} stroke="#B17B4D" strokeWidth={1.8} />
+      <Line x1={3} y1={19} x2={37} y2={19} stroke="#B17B4D" strokeWidth={1.8} />
+      <Line x1={3} y1={27} x2={37} y2={27} stroke="#B17B4D" strokeWidth={1.8} />
       {crop ? (
         <>
-          {[12, 20, 28].map((offset, index) => (
+          {[8, 16, 24, 32].map((offset, index) => (
             <G key={offset}>
               {stage === 0 ? (
-                <Circle cx={offset} cy={25 - index % 2} r={2.1} fill={crop.color} />
+                <Circle cx={offset} cy={25 - index % 2} r={2.5} fill={crop.color} />
               ) : (
                 <>
-                  <Line x1={offset} y1={29} x2={offset} y2={29 - stage * 5} stroke="#548346" strokeWidth={1.8} />
-                  <Ellipse cx={offset - 2.5} cy={26 - stage * 4} rx={3.2} ry={1.8} fill="#5F9B4A" transform={`rotate(-25 ${offset - 2.5} ${26 - stage * 4})`} />
-                  <Ellipse cx={offset + 2.5} cy={25 - stage * 4} rx={3} ry={1.8} fill="#78AA55" transform={`rotate(25 ${offset + 2.5} ${25 - stage * 4})`} />
+                  <Line x1={offset} y1={31} x2={offset} y2={31 - stage * 6} stroke="#47783C" strokeWidth={2.1} />
+                  <Ellipse cx={offset - 2.8} cy={27 - stage * 4} rx={3.6} ry={2} fill="#5F9B4A" transform={`rotate(-25 ${offset - 2.8} ${27 - stage * 4})`} />
+                  <Ellipse cx={offset + 2.8} cy={26 - stage * 4} rx={3.4} ry={2} fill="#78AA55" transform={`rotate(25 ${offset + 2.8} ${26 - stage * 4})`} />
+                  {stage >= 2 ? (
+                    <Ellipse cx={offset} cy={18 - stage} rx={2.5} ry={4} fill={crop.color} />
+                  ) : null}
                 </>
               )}
               {growth?.ready && (
-                <Circle cx={offset} cy={15} r={2.5} fill={crop.color} stroke="#FFE8A2" strokeWidth={0.7} />
+                <Circle cx={offset} cy={13} r={2.8} fill={crop.color} stroke="#FFE8A2" strokeWidth={0.8} />
               )}
             </G>
           ))}
-          {growth?.ready && <Circle cx={33} cy={7} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />}
+          {growth?.ready && <Circle cx={35} cy={5} r={5.5} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />}
         </>
       ) : null}
+    </G>
+  );
+}
+
+function FarmObstacleView({ obstacle }: { obstacle: FarmObstacle }) {
+  const x = obstacle.x * FARM_TILE_SIZE;
+  const y = obstacle.y * FARM_TILE_SIZE;
+  if (obstacle.kind === "rock") {
+    return (
+      <G>
+        <Ellipse cx={x + 20} cy={y + 33} rx={14} ry={4} fill="#405C3E" opacity={0.28} />
+        <Polygon points={`${x + 5},${y + 29} ${x + 8},${y + 17} ${x + 16},${y + 10} ${x + 26},${y + 12} ${x + 34},${y + 22} ${x + 32},${y + 31}`} fill="#858B80" stroke="#666D63" strokeWidth={1.5} />
+        <Polygon points={`${x + 8},${y + 18} ${x + 16},${y + 11} ${x + 23},${y + 13} ${x + 17},${y + 22}`} fill="#A8ADA2" opacity={0.9} />
+        <Path d={`M ${x + 17} ${y + 21} l 6 -4 M ${x + 23} ${y + 27} l 5 -4`} stroke="#687067" strokeWidth={1.1} />
+      </G>
+    );
+  }
+  return (
+    <G>
+      <Ellipse cx={x + 20} cy={y + 34} rx={11} ry={3} fill="#405C3E" opacity={0.25} />
+      <Path d={`M ${x + 19} ${y + 34} Q ${x + 17} ${y + 23} ${x + 22} ${y + 15}`} fill="none" stroke="#805233" strokeWidth={3} />
+      <Circle cx={x + 18} cy={y + 19} r={7} fill="#6C9F51" />
+      <Circle cx={x + 25} cy={y + 14} r={7} fill="#5C9148" />
+      <Circle cx={x + 27} cy={y + 23} r={6} fill="#78A95A" />
+      <Path d={`M ${x + 7} ${y + 35} q 4 -5 8 0 M ${x + 27} ${y + 35} q 4 -5 8 0`} fill="none" stroke="#6E9148" strokeWidth={2} />
     </G>
   );
 }
@@ -158,7 +191,7 @@ function LandParcel({
         fill="#F7F5DA"
         fontWeight="800"
       >
-        {adjacent ? `${FARM_LAND_EXPANSION_COST} 🪙` : "مقفلة"}
+        {adjacent ? `${getNextLandExpansionCost(farm)} 🪙` : "مقفلة"}
       </SvgText>
       {adjacent ? (
         <SvgText
@@ -281,9 +314,15 @@ function FruitTree({ tree, now }: { tree: FarmGameSave["trees"][number]; now: nu
       <Circle cx={x + 30} cy={y + 18} r={9} fill="#4F8C4A" />
       {state.ready ? (
         <>
-          <Circle cx={x + 13} cy={y + 12} r={3.3} fill={definition.fruitColor} stroke="#FFF1BA" strokeWidth={0.7} />
-          <Circle cx={x + 26} cy={y + 15} r={3.5} fill={definition.fruitColor} stroke="#FFF1BA" strokeWidth={0.7} />
-          <Circle cx={x + 20} cy={y + 24} r={3.4} fill={definition.fruitColor} stroke="#FFF1BA" strokeWidth={0.7} />
+          <SvgText x={x + 13} y={y + 17} fontSize={12} textAnchor="middle">
+            {tree.kind === "apple" ? "🍎" : "🍊"}
+          </SvgText>
+          <SvgText x={x + 27} y={y + 15} fontSize={12} textAnchor="middle">
+            {tree.kind === "apple" ? "🍎" : "🍊"}
+          </SvgText>
+          <SvgText x={x + 20} y={y + 28} fontSize={12} textAnchor="middle">
+            {tree.kind === "apple" ? "🍎" : "🍊"}
+          </SvgText>
           <Circle cx={x + 34} cy={y + 5} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />
         </>
       ) : (
@@ -349,6 +388,25 @@ function Player({ position }: { position: FarmPosition }) {
   );
 }
 
+function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) {
+  const position = getWorkerPosition(worker, now);
+  const x = position.x * FARM_TILE_SIZE;
+  const y = position.y * FARM_TILE_SIZE;
+  return (
+    <G>
+      <Ellipse cx={x + 20} cy={y + 35} rx={9} ry={3} fill="#35563B" opacity={0.3} />
+      <Circle cx={x + 20} cy={y + 14} r={6} fill="#EFC49A" stroke="#80583C" strokeWidth={1} />
+      <Path d={`M ${x + 12} ${y + 32} Q ${x + 12} ${y + 21} ${x + 20} ${y + 20} Q ${x + 28} ${y + 21} ${x + 28} ${y + 32} Z`} fill="#C2763C" stroke="#87502F" strokeWidth={1} />
+      <Path d={`M ${x + 12} ${y + 12} Q ${x + 20} ${y + 3} ${x + 28} ${y + 12} Z`} fill="#E7B84B" stroke="#9B7534" strokeWidth={1} />
+      <Rect x={x + 26} y={y + 24} width={7} height={7} rx={2} fill="#A87843" stroke="#795333" strokeWidth={0.8} />
+      <Line x1={x + 14} y1={y + 25} x2={x + 9} y2={y + 30} stroke="#EFC49A" strokeWidth={2.3} strokeLinecap="round" />
+      <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
+        عامل
+      </SvgText>
+    </G>
+  );
+}
+
 const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene(
   { farm, now, onTilePress, style },
   ref,
@@ -398,6 +456,8 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     }
     const tree = farm.trees.find((item) => item.x === x && item.y === y);
     if (tree) return { type: "tree", id: tree.id };
+    const obstacle = farm.obstacles.find((item) => item.x === x && item.y === y);
+    if (obstacle) return { type: "obstacle", id: obstacle.id };
     const decoration = farm.decorations.find((item) => item.x === x && item.y === y);
     if (decoration) return { type: "decoration", id: decoration.id };
     const plot = farm.plots.find((item) => item.x === x && item.y === y);
@@ -564,6 +624,9 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
               row={Math.floor(index / FARM_PARCEL_COLUMNS)}
             />
           ))}
+          {farm.obstacles.map((obstacle) => (
+            <FarmObstacleView key={obstacle.id} obstacle={obstacle} />
+          ))}
           {farm.plots.map((plot) => <Field key={`plot-${plot.id}`} plot={plot} now={now} />)}
           {farm.trees.map((tree) => <FruitTree key={tree.id} tree={tree} now={now} />)}
           {farm.decorations.map((item) => <Decoration key={`decor-${item.id}`} decoration={item} />)}
@@ -581,6 +644,9 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
             />
           ))}
           <Player position={farm.playerPosition} />
+          {farm.workers.map((worker) => (
+            <FarmWorkerSprite key={worker.id} worker={worker} now={now} />
+          ))}
         </Svg>
       </View>
     </GestureDetector>

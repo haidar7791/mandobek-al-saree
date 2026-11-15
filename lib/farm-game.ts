@@ -109,6 +109,7 @@ export const FARM_MAP_ROWS = 18;
 export const FARM_TILE_SIZE = 40;
 export const FARM_PLOT_COST = 25;
 export const FARM_LAND_EXPANSION_COST = 120;
+export const FARM_WORKER_BASE_COST = 300;
 export const FARM_HOUSE_COST = 180;
 export const FARM_PARCEL_COLUMNS = 4;
 export const FARM_PARCEL_ROWS = 3;
@@ -152,15 +153,39 @@ export interface FarmDecoration extends FarmPosition {
   kind: DecorationId;
 }
 
+export type FarmObstacleKind = "rock" | "sapling";
+
+export interface FarmObstacle extends FarmPosition {
+  id: string;
+  kind: FarmObstacleKind;
+}
+
+export type FarmWorkerState = "idle" | "walking" | "waiting";
+
+export interface FarmWorker {
+  id: string;
+  from: FarmPosition;
+  to: FarmPosition | null;
+  targetTreeId: string | null;
+  targetObstacleId: string | null;
+  state: FarmWorkerState;
+  startedAt: number;
+  arrivesAt: number;
+  wakeAt: number | null;
+}
+
 export interface FarmGameSave {
-  version: 5;
+  version: 6;
   coins: number;
   seeds: Record<CropId, number>;
   inventory: Record<CropId, number>;
   fruitInventory: Record<FruitTreeId, number>;
   landParcels: FarmLandParcel[];
+  expansionsPurchased: number;
   plots: FarmPlot[];
   trees: FarmFruitTree[];
+  obstacles: FarmObstacle[];
+  workers: FarmWorker[];
   decorations: FarmDecoration[];
   houseBuilt: boolean;
   houseLevel: number;
@@ -175,6 +200,7 @@ export interface FarmGameSave {
 export type FarmObjectRef =
   | { type: "plot"; id: number }
   | { type: "tree"; id: string }
+  | { type: "obstacle"; id: string }
   | { type: "decoration"; id: string }
   | { type: "house"; id: "house" }
   | { type: "landParcel"; id: string };
@@ -182,6 +208,7 @@ type OccupancyException = FarmObjectRef | { type: "player"; id: "player" };
 
 export type FarmAction =
   | { type: "buyLandParcel"; column: number; row: number }
+  | { type: "buyWorker" }
   | { type: "buyPlotAt"; x: number; y: number }
   | { type: "plantInPlot"; plotId: number; cropId: CropId }
   | { type: "plantAt"; x: number; y: number; cropId: CropId }
@@ -189,7 +216,6 @@ export type FarmAction =
   | { type: "buySeed"; cropId: CropId }
   | { type: "sellCrop"; cropId: CropId }
   | { type: "buyTreeAt"; treeId: FruitTreeId; x: number; y: number }
-  | { type: "harvestFruit"; treeId: string }
   | { type: "sellFruit"; treeId: FruitTreeId }
   | { type: "buildHouseAt"; x: number; y: number }
   | { type: "moveHouseTo"; x: number; y: number }
@@ -213,6 +239,10 @@ function isFruitTreeId(value: unknown): value is FruitTreeId {
 
 function isDecorationId(value: unknown): value is DecorationId {
   return value === "flowerBed" || value === "gardenLamp" || value === "fence";
+}
+
+function isFarmObstacleKind(value: unknown): value is FarmObstacleKind {
+  return value === "rock" || value === "sapling";
 }
 
 function clampPosition(x: unknown, y: unknown): FarmPosition {
@@ -256,20 +286,89 @@ export function isFarmPositionOwned(
   return isFarmParcelOwned(farm, parcel.column, parcel.row);
 }
 
+export function getNextLandExpansionCost(farm: Pick<FarmGameSave, "expansionsPurchased">): number {
+  return FARM_LAND_EXPANSION_COST * 2 ** farm.expansionsPurchased;
+}
+
+export function getNextWorkerCost(farm: Pick<FarmGameSave, "workers">): number {
+  return FARM_WORKER_BASE_COST * 2 ** Math.max(0, farm.workers.length - 1);
+}
+
+function createIdleWorker(id: string, position: FarmPosition, now: number): FarmWorker {
+  return {
+    id,
+    from: { ...position },
+    to: null,
+    targetTreeId: null,
+    targetObstacleId: null,
+    state: "idle",
+    startedAt: now,
+    arrivesAt: now,
+    wakeAt: null,
+  };
+}
+
+function normalizeWorker(
+  value: unknown,
+  index: number,
+  position: FarmPosition,
+  now: number,
+): FarmWorker {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const fromRaw = raw.from && typeof raw.from === "object"
+    ? raw.from as Record<string, unknown>
+    : position;
+  const toRaw = raw.to && typeof raw.to === "object"
+    ? raw.to as Record<string, unknown>
+    : null;
+  const state = raw.state === "walking" || raw.state === "waiting" ? raw.state : "idle";
+  const to = toRaw && typeof toRaw.x === "number" && typeof toRaw.y === "number"
+    ? clampPosition(toRaw.x, toRaw.y)
+    : null;
+  const safeState = state === "walking" && !to ? "idle" : state;
+  return {
+    id: typeof raw.id === "string" ? raw.id : `worker-${index + 1}`,
+    from: clampPosition(fromRaw.x, fromRaw.y),
+    to: safeState === "walking" ? to : null,
+    targetTreeId: typeof raw.targetTreeId === "string" ? raw.targetTreeId : null,
+    targetObstacleId: typeof raw.targetObstacleId === "string" ? raw.targetObstacleId : null,
+    state: safeState,
+    startedAt: nonNegativeInt(raw.startedAt, now),
+    arrivesAt: nonNegativeInt(raw.arrivesAt, now),
+    wakeAt: typeof raw.wakeAt === "number" && Number.isFinite(raw.wakeAt)
+      ? Math.max(0, raw.wakeAt)
+      : null,
+  };
+}
+
+export function getWorkerPosition(worker: FarmWorker, now = Date.now()): FarmPosition {
+  if (!worker.to || worker.state !== "walking" || worker.arrivesAt <= worker.startedAt) {
+    return { ...worker.from };
+  }
+  const progress = Math.max(0, Math.min(1, (now - worker.startedAt) / (worker.arrivesAt - worker.startedAt)));
+  return {
+    x: worker.from.x + (worker.to.x - worker.from.x) * progress,
+    y: worker.from.y + (worker.to.y - worker.from.y) * progress,
+  };
+}
+
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 5,
+    version: 6,
     coins: 140,
     seeds: { ...INITIAL_SEEDS },
     inventory: { wheat: 0, carrot: 0, corn: 0 },
     fruitInventory: { apple: 0, orange: 0 },
     landParcels: [{ ...FARM_START_PARCEL }],
+    expansionsPurchased: 0,
     plots: [
       { id: 1, x: 8, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
       { id: 2, x: 9, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
       { id: 3, x: 10, y: 9, cropId: null, plantedAt: null, growthProgressMs: 0, lastGrowthAt: null, unlocked: true },
     ],
     trees: [],
+    obstacles: [],
+    workers: [createIdleWorker("worker-1", { x: 8, y: 8 }, now)],
     decorations: [],
     houseBuilt: true,
     houseLevel: 1,
@@ -311,7 +410,7 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   ];
   farm.playerPosition = { x: 7, y: 8 };
   farm.nextPlotId = 4;
-  return farm;
+  return assignIdleWorkers(farm, now);
 }
 
 export function getPlotGrowthState(plot: FarmPlot, now = Date.now()) {
@@ -338,10 +437,177 @@ export function getTreeGrowthState(tree: FarmFruitTree, now = Date.now()) {
   return { ageProgress: firstCycle, ready, remaining };
 }
 
-function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
+function workerTravelDuration(from: FarmPosition, to: FarmPosition): number {
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  return Math.max(1_200, Math.ceil(distance * 900));
+}
+
+function getTreeWorkPosition(farm: FarmGameSave, tree: FarmFruitTree, from: FarmPosition): FarmPosition {
+  const adjacent = [
+    { x: tree.x, y: tree.y + 1 },
+    { x: tree.x - 1, y: tree.y },
+    { x: tree.x + 1, y: tree.y },
+    { x: tree.x, y: tree.y - 1 },
+  ];
+  const available = adjacent.filter(
+    (position) => isFarmPositionOwned(farm, position.x, position.y)
+      && isFarmPositionFree(farm, position.x, position.y),
+  );
+  const candidates = available.length > 0
+    ? available
+    : adjacent.filter((position) => isFarmPositionOwned(farm, position.x, position.y));
+  candidates.sort(
+    (a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y),
+  );
+  return candidates[0] ?? { x: tree.x, y: tree.y };
+}
+
+function startWorkerRoute(farm: FarmGameSave, worker: FarmWorker, now: number): FarmWorker {
+  const from = getWorkerPosition(worker, now);
+  const otherWorkers = farm.workers.filter((item) => item.id !== worker.id);
+  const assignedObstacleIds = new Set(
+    otherWorkers
+      .filter((item) => item.state === "walking" && item.targetObstacleId)
+      .map((item) => item.targetObstacleId),
+  );
+  const obstacles = farm.obstacles
+    .filter((item) => !assignedObstacleIds.has(item.id))
+    .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y));
+  const obstacle = obstacles[0];
+  if (obstacle) {
+    return {
+      ...worker,
+      from,
+      to: { x: obstacle.x, y: obstacle.y },
+      targetTreeId: null,
+      targetObstacleId: obstacle.id,
+      state: "walking",
+      startedAt: now,
+      arrivesAt: now + workerTravelDuration(from, obstacle),
+      wakeAt: null,
+    };
+  }
+
+  const assignedTreeIds = new Set(
+    otherWorkers
+      .filter((item) => (item.state === "walking" || item.state === "waiting") && item.targetTreeId)
+      .map((item) => item.targetTreeId),
+  );
+  const trees = farm.trees.filter((tree) => !assignedTreeIds.has(tree.id));
+  const alternatives = trees.filter((tree) => tree.id !== worker.targetTreeId);
+  const candidates = alternatives.length > 0 ? alternatives : trees;
+  candidates.sort((a, b) => {
+    const aReady = a.nextHarvestAt <= now ? 0 : 1;
+    const bReady = b.nextHarvestAt <= now ? 0 : 1;
+    return aReady - bReady
+      || Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y)
+      || a.nextHarvestAt - b.nextHarvestAt;
+  });
+  const tree = candidates[0];
+  if (!tree) return createIdleWorker(worker.id, from, now);
+  const workPosition = getTreeWorkPosition(farm, tree, from);
   return {
+    ...worker,
+    from,
+    to: workPosition,
+    targetTreeId: tree.id,
+    targetObstacleId: null,
+    state: "walking",
+    startedAt: now,
+    arrivesAt: now + workerTravelDuration(from, workPosition),
+    wakeAt: null,
+  };
+}
+
+function assignIdleWorkers(farm: FarmGameSave, now: number): FarmGameSave {
+  for (let index = 0; index < farm.workers.length; index += 1) {
+    const worker = farm.workers[index];
+    if (worker.state === "idle") {
+      farm.workers[index] = startWorkerRoute(farm, worker, now);
+    }
+  }
+  return farm;
+}
+
+function advanceWorkerTasks(farm: FarmGameSave, now: number): FarmGameSave {
+  assignIdleWorkers(farm, now);
+  let events = 0;
+  while (events < 4_096) {
+    const dueWorkers = farm.workers
+      .filter((worker) => (
+        (worker.state === "walking" && worker.arrivesAt <= now)
+        || (worker.state === "waiting" && worker.wakeAt !== null && worker.wakeAt <= now)
+      ))
+      .sort((a, b) => {
+        const aAt = a.state === "walking" ? a.arrivesAt : a.wakeAt ?? Number.MAX_SAFE_INTEGER;
+        const bAt = b.state === "walking" ? b.arrivesAt : b.wakeAt ?? Number.MAX_SAFE_INTEGER;
+        return aAt - bAt;
+      });
+    const worker = dueWorkers[0];
+    if (!worker) break;
+    const eventAt = worker.state === "walking" ? worker.arrivesAt : worker.wakeAt ?? now;
+
+    if (worker.state === "walking") {
+      const arrival = worker.to ? { ...worker.to } : { ...worker.from };
+      const targetObstacleId = worker.targetObstacleId;
+      const targetTreeId = worker.targetTreeId;
+      worker.from = arrival;
+      worker.to = null;
+      worker.state = "idle";
+      worker.arrivesAt = eventAt;
+      worker.wakeAt = null;
+      if (targetObstacleId) {
+        farm.obstacles = farm.obstacles.filter((obstacle) => obstacle.id !== targetObstacleId);
+        worker.targetObstacleId = null;
+      } else if (targetTreeId) {
+        const tree = farm.trees.find((item) => item.id === targetTreeId);
+        if (tree && tree.nextHarvestAt <= eventAt) {
+          farm.fruitInventory[tree.kind] += FRUIT_TREES[tree.kind].harvestAmount;
+          farm.totalHarvests += 1;
+          tree.nextHarvestAt = eventAt + FRUIT_TREES[tree.kind].growMs;
+          worker.targetTreeId = null;
+        } else if (tree && farm.trees.length === 1) {
+          worker.state = "waiting";
+          worker.wakeAt = tree.nextHarvestAt;
+        }
+      }
+    } else if (worker.targetTreeId) {
+      const tree = farm.trees.find((item) => item.id === worker.targetTreeId);
+      if (tree && tree.nextHarvestAt > eventAt) {
+        worker.wakeAt = tree.nextHarvestAt;
+      } else if (tree) {
+        farm.fruitInventory[tree.kind] += FRUIT_TREES[tree.kind].harvestAmount;
+        farm.totalHarvests += 1;
+        tree.nextHarvestAt = eventAt + FRUIT_TREES[tree.kind].growMs;
+        worker.targetTreeId = null;
+        worker.state = "idle";
+        worker.wakeAt = null;
+      } else {
+        worker.state = "idle";
+        worker.targetTreeId = null;
+        worker.wakeAt = null;
+      }
+    } else {
+      worker.state = "idle";
+      worker.wakeAt = null;
+    }
+
+    assignIdleWorkers(farm, eventAt);
+    events += 1;
+  }
+  assignIdleWorkers(farm, now);
+  return farm;
+}
+
+function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
+  const next: FarmGameSave = {
     ...farm,
     landParcels: farm.landParcels.map((parcel) => ({ ...parcel })),
+    workers: farm.workers.map((worker) => ({
+      ...worker,
+      from: { ...worker.from },
+      to: worker.to ? { ...worker.to } : null,
+    })),
     plots: farm.plots.map((plot) => {
       const growth = getPlotGrowthState(plot, now);
       return plot.cropId
@@ -349,9 +615,16 @@ function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
         : { ...plot };
     }),
     trees: farm.trees.map((tree) => ({ ...tree })),
+    obstacles: farm.obstacles.map((obstacle) => ({ ...obstacle })),
+    fruitInventory: { ...farm.fruitInventory },
     decorations: farm.decorations.map((item) => ({ ...item })),
     updatedAt: now,
   };
+  return advanceWorkerTasks(next, now);
+}
+
+export function advanceFarmGameTime(farm: FarmGameSave, now = Date.now()): FarmGameSave {
+  return advanceFarmTime(farm, now);
 }
 
 export function isFarmPositionFree(
@@ -363,6 +636,7 @@ export function isFarmPositionFree(
   const same = (position: FarmPosition) => position.x === x && position.y === y;
   if (farm.plots.some((item) => same(item) && !(except?.type === "plot" && except.id === item.id))) return false;
   if (farm.trees.some((item) => same(item) && !(except?.type === "tree" && except.id === item.id))) return false;
+  if (farm.obstacles.some((item) => same(item))) return false;
   if (farm.decorations.some((item) => same(item) && !(except?.type === "decoration" && except.id === item.id))) return false;
   if (farm.houseBuilt && farm.housePosition && same(farm.housePosition) && except?.type !== "house") return false;
   if (same(farm.playerPosition) && except?.type !== "player") return false;
@@ -395,6 +669,22 @@ function connectParcelToStart(owned: FarmLandParcel[], target: FarmLandParcel) {
     row += Math.sign(target.row - row);
     add(column, row);
   }
+}
+
+function createParcelObstacles(column: number, row: number): FarmObstacle[] {
+  const positions: [number, number, FarmObstacleKind][] = [
+    [1, 1, "rock"],
+    [4, 1, "sapling"],
+    [2, 3, "rock"],
+    [4, 4, "rock"],
+    [1, 4, "sapling"],
+  ];
+  return positions.map(([offsetX, offsetY, kind], index) => ({
+    id: `obstacle-${column}-${row}-${index + 1}`,
+    kind,
+    x: column * FARM_PARCEL_WIDTH + offsetX,
+    y: row * FARM_PARCEL_HEIGHT + offsetY,
+  }));
 }
 
 export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): FarmGameSave {
@@ -457,6 +747,14 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       decorations.push({ id: raw.id, kind: raw.kind, ...clampPosition(raw.x, raw.y) });
     }
   }
+  const obstacles: FarmObstacle[] = [];
+  if (Array.isArray(data.obstacles)) {
+    for (const value of data.obstacles) {
+      const raw = value as Record<string, unknown>;
+      if (!isFarmObstacleKind(raw.kind) || typeof raw.id !== "string") continue;
+      obstacles.push({ id: raw.id, kind: raw.kind, ...clampPosition(raw.x, raw.y) });
+    }
+  }
   const houseBuilt = data.houseBuilt === true || nonNegativeInt(data.houseLevel) > 0;
   const housePositionRaw = data.housePosition as Record<string, unknown> | undefined;
   const playerPositionRaw = data.playerPosition as Record<string, unknown> | undefined;
@@ -512,11 +810,24 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       connectParcelToStart(landParcels, parcel);
     }
   }
+  const normalizedPlayerPosition = !isBlankLegacySave && playerPositionRaw
+    ? clampPosition(playerPositionRaw.x, playerPositionRaw.y)
+    : { ...initial.playerPosition };
+  const rawWorkers = Array.isArray(data.workers) ? data.workers : [];
+  const workers = rawWorkers
+    .slice(0, 432)
+    .map((worker, index) => normalizeWorker(worker, index, { x: 8, y: 8 }, now));
+  if (workers.length === 0) {
+    workers.push(createIdleWorker("worker-1", { x: 8, y: 8 }, now));
+  }
+  const legacyExpansionCount = Array.isArray(data.landParcels)
+    ? Math.max(0, landParcels.length - 1)
+    : 0;
   const seeds = (data.seeds ?? {}) as Record<string, unknown>;
   const inventory = (data.inventory ?? {}) as Record<string, unknown>;
   const fruitInventory = (data.fruitInventory ?? {}) as Record<string, unknown>;
   const farm: FarmGameSave = {
-    version: 5,
+    version: 6,
     coins: nonNegativeInt(data.coins, initial.coins),
     seeds: {
       wheat: nonNegativeInt(seeds.wheat, initial.seeds.wheat),
@@ -533,15 +844,16 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       orange: nonNegativeInt(fruitInventory.orange),
     },
     landParcels,
+    expansionsPurchased: nonNegativeInt(data.expansionsPurchased, legacyExpansionCount),
     plots,
     trees,
+    obstacles,
+    workers,
     decorations,
     houseBuilt: normalizedHouseBuilt,
     houseLevel: normalizedHouseBuilt ? Math.max(1, Math.min(3, nonNegativeInt(data.houseLevel, 1))) : 0,
     housePosition,
-    playerPosition: !isBlankLegacySave && playerPositionRaw
-      ? clampPosition(playerPositionRaw.x, playerPositionRaw.y)
-      : { ...initial.playerPosition },
+    playerPosition: normalizedPlayerPosition,
     nextPlotId: Math.max(
       nonNegativeInt(data.nextPlotId, 1),
       ...plots.map((plot) => plot.id + 1),
@@ -607,11 +919,29 @@ export function applyFarmActionToState(
       if (!isFarmParcelAdjacent(next, column, row)) {
         throw new Error("يمكنك شراء قطعة ملاصقة لأرضك فقط.");
       }
-      if (next.coins < FARM_LAND_EXPANSION_COST) {
-        throw new Error(`تحتاج إلى ${FARM_LAND_EXPANSION_COST} عملة لشراء التوسعة.`);
+      const expansionCost = getNextLandExpansionCost(next);
+      if (next.coins < expansionCost) {
+        throw new Error(`تحتاج إلى ${expansionCost} عملة لشراء التوسعة.`);
       }
-      next.coins -= FARM_LAND_EXPANSION_COST;
+      next.coins -= expansionCost;
       next.landParcels.push({ column, row });
+      next.expansionsPurchased += 1;
+      next.obstacles.push(...createParcelObstacles(column, row));
+      break;
+    }
+    case "buyWorker": {
+      const workerCost = getNextWorkerCost(next);
+      if (next.coins < workerCost) {
+        throw new Error(`تحتاج إلى ${workerCost} عملة لتوظيف العامل التالي.`);
+      }
+      next.coins -= workerCost;
+      next.workers.push(
+        createIdleWorker(
+          `worker-${now}-${next.workers.length + 1}`,
+          next.housePosition ?? next.playerPosition,
+          now,
+        ),
+      );
       break;
     }
     case "buySeed": {
@@ -706,16 +1036,6 @@ export function applyFarmActionToState(
       });
       break;
     }
-    case "harvestFruit": {
-      const tree = next.trees.find((item) => item.id === action.treeId);
-      if (!tree) throw new Error("لم يتم العثور على الشجرة.");
-      if (now < tree.nextHarvestAt) throw new Error("ثمار الشجرة لم تنضج بعد.");
-      const definition = FRUIT_TREES[tree.kind];
-      next.fruitInventory[tree.kind] += definition.harvestAmount;
-      next.totalHarvests += 1;
-      tree.nextHarvestAt = now + definition.growMs;
-      break;
-    }
     case "sellFruit": {
       const amount = next.fruitInventory[action.treeId];
       if (amount < 1) throw new Error("لا توجد ثمار للبيع.");
@@ -769,9 +1089,11 @@ export function applyFarmActionToState(
         if (!item) throw new Error("تعذّر العثور على الديكور.");
         item.x = action.x;
         item.y = action.y;
-      } else {
+      } else if (action.object.type === "house") {
         if (!next.houseBuilt) throw new Error("ابنِ المنزل أولاً.");
         next.housePosition = { x: action.x, y: action.y };
+      } else {
+        throw new Error("لا يمكن نقل العوائق؛ سيزيلها العامل تلقائياً.");
       }
       break;
     }
@@ -781,6 +1103,7 @@ export function applyFarmActionToState(
       break;
     }
   }
+  assignIdleWorkers(next, now);
   next.updatedAt = now;
   return next;
 }
