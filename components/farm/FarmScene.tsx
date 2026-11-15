@@ -38,6 +38,7 @@ import {
   getNextLandExpansionCost,
   getPlotGrowthState,
   getTreeGrowthState,
+  getWorkerHarvestProgress,
   getWorkerPosition,
   isFarmParcelAdjacent,
   isFarmParcelOwned,
@@ -391,9 +392,17 @@ function Player({ position }: { position: FarmPosition }) {
 function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) {
   const position = getWorkerPosition(worker, now);
   const x = position.x * FARM_TILE_SIZE;
-  const y = position.y * FARM_TILE_SIZE;
+  const harvesting = worker.state === "harvesting";
+  const y = position.y * FARM_TILE_SIZE + (harvesting ? 4 : 0);
+  const harvestProgress = getWorkerHarvestProgress(worker, now);
   return (
     <G>
+      {harvesting ? (
+        <>
+          <Rect x={x + 3} y={y - 2} width={34} height={6} rx={3} fill="#36583B" stroke="#FFFFFF" strokeWidth={1} />
+          <Rect x={x + 4} y={y - 1} width={32 * harvestProgress} height={4} rx={2} fill="#F4D35E" />
+        </>
+      ) : null}
       <Ellipse cx={x + 20} cy={y + 35} rx={9} ry={3} fill="#35563B" opacity={0.3} />
       <Circle cx={x + 20} cy={y + 14} r={6} fill="#EFC49A" stroke="#80583C" strokeWidth={1} />
       <Path d={`M ${x + 12} ${y + 32} Q ${x + 12} ${y + 21} ${x + 20} ${y + 20} Q ${x + 28} ${y + 21} ${x + 28} ${y + 32} Z`} fill="#C2763C" stroke="#87502F" strokeWidth={1} />
@@ -401,7 +410,7 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
       <Rect x={x + 26} y={y + 24} width={7} height={7} rx={2} fill="#A87843" stroke="#795333" strokeWidth={0.8} />
       <Line x1={x + 14} y1={y + 25} x2={x + 9} y2={y + 30} stroke="#EFC49A" strokeWidth={2.3} strokeLinecap="round" />
       <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
-        عامل
+        {harvesting ? "يجمع" : "عامل"}
       </SvgText>
     </G>
   );

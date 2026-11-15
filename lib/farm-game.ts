@@ -73,7 +73,7 @@ export const FRUIT_TREES: Record<FruitTreeId, {
     id: "apple",
     name: "شجرة تفاح",
     fruitName: "تفاح",
-    price: 85,
+    price: 500,
     growMs: 120_000,
     harvestAmount: 3,
     sellPrice: 16,
@@ -84,7 +84,7 @@ export const FRUIT_TREES: Record<FruitTreeId, {
     id: "orange",
     name: "شجرة برتقال",
     fruitName: "برتقال",
-    price: 100,
+    price: 1_000,
     growMs: 150_000,
     harvestAmount: 3,
     sellPrice: 19,
@@ -108,8 +108,9 @@ export const FARM_MAP_COLUMNS = 24;
 export const FARM_MAP_ROWS = 18;
 export const FARM_TILE_SIZE = 40;
 export const FARM_PLOT_COST = 25;
-export const FARM_LAND_EXPANSION_COST = 120;
-export const FARM_WORKER_BASE_COST = 300;
+export const FARM_LAND_EXPANSION_COST = 1_000;
+export const FARM_WORKER_BASE_COST = 2_000;
+export const FARM_WORKER_HARVEST_DURATION_MS = 5_000;
 export const FARM_HOUSE_COST = 180;
 export const FARM_PARCEL_COLUMNS = 4;
 export const FARM_PARCEL_ROWS = 3;
@@ -160,7 +161,7 @@ export interface FarmObstacle extends FarmPosition {
   kind: FarmObstacleKind;
 }
 
-export type FarmWorkerState = "idle" | "walking" | "waiting";
+export type FarmWorkerState = "idle" | "walking" | "waiting" | "harvesting";
 
 export interface FarmWorker {
   id: string;
@@ -321,7 +322,9 @@ function normalizeWorker(
   const toRaw = raw.to && typeof raw.to === "object"
     ? raw.to as Record<string, unknown>
     : null;
-  const state = raw.state === "walking" || raw.state === "waiting" ? raw.state : "idle";
+  const state = raw.state === "walking" || raw.state === "waiting" || raw.state === "harvesting"
+    ? raw.state
+    : "idle";
   const to = toRaw && typeof toRaw.x === "number" && typeof toRaw.y === "number"
     ? clampPosition(toRaw.x, toRaw.y)
     : null;
@@ -350,6 +353,11 @@ export function getWorkerPosition(worker: FarmWorker, now = Date.now()): FarmPos
     x: worker.from.x + (worker.to.x - worker.from.x) * progress,
     y: worker.from.y + (worker.to.y - worker.from.y) * progress,
   };
+}
+
+export function getWorkerHarvestProgress(worker: FarmWorker, now = Date.now()): number {
+  if (worker.state !== "harvesting" || worker.arrivesAt <= worker.startedAt) return 0;
+  return Math.max(0, Math.min(1, (now - worker.startedAt) / (worker.arrivesAt - worker.startedAt)));
 }
 
 function createInitialFarm(now = Date.now()): FarmGameSave {
@@ -490,7 +498,10 @@ function startWorkerRoute(farm: FarmGameSave, worker: FarmWorker, now: number): 
 
   const assignedTreeIds = new Set(
     otherWorkers
-      .filter((item) => (item.state === "walking" || item.state === "waiting") && item.targetTreeId)
+      .filter((item) => (
+        (item.state === "walking" || item.state === "waiting" || item.state === "harvesting")
+        && item.targetTreeId
+      ))
       .map((item) => item.targetTreeId),
   );
   const trees = farm.trees.filter((tree) => !assignedTreeIds.has(tree.id));
@@ -537,15 +548,16 @@ function advanceWorkerTasks(farm: FarmGameSave, now: number): FarmGameSave {
       .filter((worker) => (
         (worker.state === "walking" && worker.arrivesAt <= now)
         || (worker.state === "waiting" && worker.wakeAt !== null && worker.wakeAt <= now)
+        || (worker.state === "harvesting" && worker.arrivesAt <= now)
       ))
       .sort((a, b) => {
-        const aAt = a.state === "walking" ? a.arrivesAt : a.wakeAt ?? Number.MAX_SAFE_INTEGER;
-        const bAt = b.state === "walking" ? b.arrivesAt : b.wakeAt ?? Number.MAX_SAFE_INTEGER;
+        const aAt = a.state === "waiting" ? a.wakeAt ?? Number.MAX_SAFE_INTEGER : a.arrivesAt;
+        const bAt = b.state === "waiting" ? b.wakeAt ?? Number.MAX_SAFE_INTEGER : b.arrivesAt;
         return aAt - bAt;
       });
     const worker = dueWorkers[0];
     if (!worker) break;
-    const eventAt = worker.state === "walking" ? worker.arrivesAt : worker.wakeAt ?? now;
+    const eventAt = worker.state === "waiting" ? worker.wakeAt ?? now : worker.arrivesAt;
 
     if (worker.state === "walking") {
       const arrival = worker.to ? { ...worker.to } : { ...worker.from };
@@ -562,20 +574,31 @@ function advanceWorkerTasks(farm: FarmGameSave, now: number): FarmGameSave {
       } else if (targetTreeId) {
         const tree = farm.trees.find((item) => item.id === targetTreeId);
         if (tree && tree.nextHarvestAt <= eventAt) {
-          farm.fruitInventory[tree.kind] += FRUIT_TREES[tree.kind].harvestAmount;
-          farm.totalHarvests += 1;
-          tree.nextHarvestAt = eventAt + FRUIT_TREES[tree.kind].growMs;
-          worker.targetTreeId = null;
+          worker.state = "harvesting";
+          worker.startedAt = eventAt;
+          worker.arrivesAt = eventAt + FARM_WORKER_HARVEST_DURATION_MS;
         } else if (tree && farm.trees.length === 1) {
           worker.state = "waiting";
           worker.wakeAt = tree.nextHarvestAt;
         }
       }
-    } else if (worker.targetTreeId) {
+    } else if (worker.state === "waiting" && worker.targetTreeId) {
       const tree = farm.trees.find((item) => item.id === worker.targetTreeId);
       if (tree && tree.nextHarvestAt > eventAt) {
         worker.wakeAt = tree.nextHarvestAt;
       } else if (tree) {
+        worker.state = "harvesting";
+        worker.startedAt = eventAt;
+        worker.arrivesAt = eventAt + FARM_WORKER_HARVEST_DURATION_MS;
+        worker.wakeAt = null;
+      } else {
+        worker.state = "idle";
+        worker.targetTreeId = null;
+        worker.wakeAt = null;
+      }
+    } else if (worker.state === "harvesting" && worker.targetTreeId) {
+      const tree = farm.trees.find((item) => item.id === worker.targetTreeId);
+      if (tree) {
         farm.fruitInventory[tree.kind] += FRUIT_TREES[tree.kind].harvestAmount;
         farm.totalHarvests += 1;
         tree.nextHarvestAt = eventAt + FRUIT_TREES[tree.kind].growMs;

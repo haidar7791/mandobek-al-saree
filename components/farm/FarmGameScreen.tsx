@@ -283,7 +283,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       setFarm(advanced);
 
       const simulationChanged = advanced.totalHarvests > current.totalHarvests
-        || advanced.obstacles.length < current.obstacles.length;
+        || advanced.obstacles.length < current.obstacles.length
+        || advanced.workers.some((worker) => (
+          worker.state === "harvesting"
+          && current.workers.find((previous) => previous.id === worker.id)?.state !== "harvesting"
+        ));
       if (simulationChanged) workerSyncPendingRef.current = true;
       if (
         !previewMode
@@ -443,9 +447,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       if (!tree) return;
       const growth = getTreeGrowthState(tree, now);
       if (growth.ready) {
-        const assignedWorker = farm.workers.some((worker) => worker.targetTreeId === tree.id);
+        const assignedWorker = farm.workers.find((worker) => worker.targetTreeId === tree.id);
         setHint(
-          assignedWorker
+          assignedWorker?.state === "harvesting"
+            ? `العامل يجمع ${FRUIT_TREES[tree.kind].fruitName} الآن؛ سيكتمل خلال ${formatTime(Math.max(0, assignedWorker.arrivesAt - now))}.`
+            : assignedWorker
             ? `العامل في طريقه لجمع ${FRUIT_TREES[tree.kind].fruitName}.`
             : `سيجمع العامل ${FRUIT_TREES[tree.kind].fruitName} تلقائياً.`,
         );
