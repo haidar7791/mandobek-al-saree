@@ -35,7 +35,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "قمح",
     emoji: "🌾",
     growMs: 30_000,
-    harvestAmount: 3,
+    harvestAmount: 6,
     sellPrice: 4,
     color: "#DDA93F",
     lightColor: "#F7E9B7",
@@ -45,7 +45,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "جزر",
     emoji: "🥕",
     growMs: 60_000,
-    harvestAmount: 2,
+    harvestAmount: 6,
     sellPrice: 9,
     color: "#EF8446",
     lightColor: "#FBE0CC",
@@ -55,7 +55,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "ذرة",
     emoji: "🌽",
     growMs: 90_000,
-    harvestAmount: 2,
+    harvestAmount: 6,
     sellPrice: 13,
     color: "#E4C24E",
     lightColor: "#F8F0C8",
@@ -65,7 +65,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "طماطم",
     emoji: "🍅",
     growMs: 120_000,
-    harvestAmount: 3,
+    harvestAmount: 6,
     sellPrice: 25,
     color: "#D95445",
     lightColor: "#F9DEDA",
@@ -75,7 +75,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "خيار",
     emoji: "🥒",
     growMs: 150_000,
-    harvestAmount: 3,
+    harvestAmount: 6,
     sellPrice: 30,
     color: "#5D9E4E",
     lightColor: "#E4F1DC",
@@ -85,7 +85,7 @@ export const CROPS: Record<CropId, CropDefinition> = {
     name: "بطاطس",
     emoji: "🥔",
     growMs: 180_000,
-    harvestAmount: 3,
+    harvestAmount: 6,
     sellPrice: 35,
     color: "#B68A56",
     lightColor: "#F0E5D3",
@@ -321,8 +321,10 @@ export type FarmAction =
   | { type: "clearObstacle"; obstacleId: string }
   | { type: "buyWorker" }
   | { type: "buyPlotAt"; cropId: CropId; x: number; y: number }
+  | { type: "harvestPlot"; plotId: number }
   | { type: "sellCrop"; cropId: CropId }
   | { type: "buyTreeAt"; treeId: FruitTreeId; x: number; y: number }
+  | { type: "harvestTree"; treeId: string }
   | { type: "sellFruit"; treeId: FruitTreeId }
   | { type: "buildHouseAt"; x: number; y: number }
   | { type: "moveHouseTo"; x: number; y: number }
@@ -1194,6 +1196,24 @@ export function applyFarmActionToState(
       next.inventory[action.cropId] = 0;
       break;
     }
+    case "harvestPlot": {
+      const plot = next.plots.find((item) => item.id === action.plotId);
+      if (!plot) throw new Error("لم يتم العثور على الحقل.");
+      if (!getPlotGrowthState(plot, now).ready) throw new Error("المحصول لم ينضج بعد.");
+      const cropId = plot.cropId;
+      next.inventory[cropId] += CROPS[cropId].harvestAmount;
+      next.totalHarvests += 1;
+      plot.plantedAt = now;
+      plot.growthProgressMs = 0;
+      plot.lastGrowthAt = now;
+      recordQuestProgress(next, `harvest_${cropId}` as FarmQuestId);
+      next.workers = next.workers.map((worker) => (
+        worker.targetPlotId === plot.id
+          ? createIdleWorker(worker.id, getWorkerPosition(worker, now), now)
+          : worker
+      ));
+      break;
+    }
     case "buyPlotAt": {
       assertFree(next, action.x, action.y);
       if (next.coins < FARM_PLOT_COST) throw new Error("لا توجد عملات كافية لشراء حقل جديد.");
@@ -1224,6 +1244,20 @@ export function applyFarmActionToState(
         nextHarvestAt: now + tree.growMs,
       });
       recordQuestProgress(next, `plant_${action.treeId}` as FarmQuestId);
+      break;
+    }
+    case "harvestTree": {
+      const tree = next.trees.find((item) => item.id === action.treeId);
+      if (!tree) throw new Error("لم يتم العثور على الشجرة.");
+      if (!getTreeGrowthState(tree, now).ready) throw new Error("الثمار لم تنضج بعد.");
+      next.fruitInventory[tree.kind] += FRUIT_TREES[tree.kind].harvestAmount;
+      next.totalHarvests += 1;
+      tree.nextHarvestAt = now + FRUIT_TREES[tree.kind].growMs;
+      next.workers = next.workers.map((worker) => (
+        worker.targetTreeId === tree.id
+          ? createIdleWorker(worker.id, getWorkerPosition(worker, now), now)
+          : worker
+      ));
       break;
     }
     case "sellFruit": {

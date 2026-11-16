@@ -384,15 +384,12 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       : FRUIT_TREE_ORDER.includes(nextTool as FruitTreeId)
         ? FRUIT_TREES[nextTool as FruitTreeId].price
         : null;
-    if (placementCost !== null && (farm?.coins ?? 0) < placementCost) {
-      setTool(null);
-      setHint(nextTool === "buyPlot"
-        ? "لا توجد عملات كافية لشراء حقل جديد."
-        : `اجمع المزيد من العملات لشراء ${FRUIT_TREES[nextTool as FruitTreeId].name}.`);
-      return;
-    }
     setTool(nextTool);
-    setHint(toolDescription(nextTool));
+    setHint(
+      placementCost !== null && (farm?.coins ?? 0) < placementCost
+        ? "وضع الشراء فعال. لا توجد عملات كافية حالياً؛ اضغط × للإغلاق."
+        : toolDescription(nextTool),
+    );
     setMenuOpen(false);
   };
 
@@ -417,18 +414,17 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       : FRUIT_TREES[placementTool as FruitTreeId].price;
     if (!placed) {
       if ((farmRef.current?.coins ?? 0) < cost) {
-        setTool(null);
-        setHint("نفدت العملات الكافية لهذا الشراء.");
+        setTool(placementTool);
+        setHint("لا توجد عملات كافية حالياً؛ وضع الشراء ما زال فعالاً. اضغط × للإغلاق.");
       }
       return;
     }
     const remainingCoins = Math.max(0, coinsBeforePurchase - cost);
+    setTool(placementTool);
     if (remainingCoins < cost) {
-      setTool(null);
-      setHint("نفدت العملات الكافية لمتابعة الشراء.");
+      setHint("نفدت العملات الكافية لمتابعة الشراء؛ وضع الشراء ما زال فعالاً. اضغط × للإغلاق.");
       return;
     }
-    setTool(placementTool);
     setHint(toolDescription(placementTool));
   };
 
@@ -488,14 +484,9 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       if (!plot) return;
       const growth = getPlotGrowthState(plot, now);
       if (growth.ready) {
-        const assignedWorker = farm.workers.find((worker) => worker.targetPlotId === plot.id);
-        setHint(
-          assignedWorker?.state === "harvesting"
-            ? `العامل يحصد ${CROPS[plot.cropId].name} الآن؛ سيكتمل خلال ${formatTime(Math.max(0, assignedWorker.arrivesAt - now))}.`
-            : assignedWorker
-              ? `العامل في طريقه لحصاد ${CROPS[plot.cropId].name}.`
-              : `سيحصد العامل ${CROPS[plot.cropId].name} تلقائياً.`,
-        );
+        if (await act({ type: "harvestPlot", plotId: plot.id })) {
+          setHint(`حُصد ${CROPS[plot.cropId].name} يدوياً فوراً · +${CROPS[plot.cropId].harvestAmount}.`);
+        }
       } else {
         setHint(`${CROPS[plot.cropId].name} ينمو تلقائياً. سيصبح جاهزاً خلال ${formatTime(growth.remaining)}.`);
       }
@@ -507,14 +498,9 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       if (!tree) return;
       const growth = getTreeGrowthState(tree, now);
       if (growth.ready) {
-        const assignedWorker = farm.workers.find((worker) => worker.targetTreeId === tree.id);
-        setHint(
-          assignedWorker?.state === "harvesting"
-            ? `العامل يجمع ${FRUIT_TREES[tree.kind].fruitName} الآن؛ سيكتمل خلال ${formatTime(Math.max(0, assignedWorker.arrivesAt - now))}.`
-            : assignedWorker
-            ? `العامل في طريقه لجمع ${FRUIT_TREES[tree.kind].fruitName}.`
-            : `سيجمع العامل ${FRUIT_TREES[tree.kind].fruitName} تلقائياً.`,
-        );
+        if (await act({ type: "harvestTree", treeId: tree.id })) {
+          setHint(`جُمعت ${FRUIT_TREES[tree.kind].fruitName} يدوياً فوراً · +${FRUIT_TREES[tree.kind].harvestAmount}.`);
+        }
       } else {
         setHint(`ثمار ${FRUIT_TREES[tree.kind].fruitName} تنمو؛ سيجمعها العامل بعد نضجها.`);
       }
