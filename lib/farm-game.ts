@@ -11,18 +11,9 @@ export type FarmQuestId =
   | "harvest_corn"
   | "buy_land";
 export type FarmTool =
-  | "walk"
-  | "plant"
-  | "move"
   | "buyPlot"
   | "buildHouse"
-  | "apple"
-  | "orange"
-  | "peach"
-  | "lemon"
-  | "flowerBed"
-  | "gardenLamp"
-  | "fence";
+  | FruitTreeId;
 
 export interface CropDefinition {
   id: CropId;
@@ -145,10 +136,10 @@ export const DECORATION_ORDER: DecorationId[] = ["flowerBed", "gardenLamp", "fen
 export const FARM_MAP_COLUMNS = 24;
 export const FARM_MAP_ROWS = 18;
 export const FARM_TILE_SIZE = 40;
-export const FARM_PLOT_COST = 25;
-export const FARM_LAND_EXPANSION_COST = 1_000;
+export const FARM_PLOT_COST = 1_000;
+export const FARM_LAND_EXPANSION_COST = 5_000;
 export const FARM_WORKER_BASE_COST = 2_000;
-export const FARM_WORKER_HARVEST_DURATION_MS = 5_000;
+export const FARM_WORKER_HARVEST_DURATION_MS = 15_000;
 export const FARM_OBSTACLE_CLEAR_COST = 1;
 export const FARM_HOUSE_COST = 180;
 export const FARM_PARCEL_COLUMNS = 4;
@@ -761,7 +752,6 @@ export function isFarmPositionFree(
   if (farm.obstacles.some((item) => same(item))) return false;
   if (farm.decorations.some((item) => same(item) && !(except?.type === "decoration" && except.id === item.id))) return false;
   if (farm.houseBuilt && farm.housePosition && same(farm.housePosition) && except?.type !== "house") return false;
-  if (same(farm.playerPosition) && except?.type !== "player") return false;
   return x >= 0 && x < FARM_MAP_COLUMNS && y >= 0 && y < FARM_MAP_ROWS;
 }
 
@@ -1225,6 +1215,11 @@ export function applyFarmActionToState(
         if (!item) throw new Error("تعذّر العثور على الشجرة.");
         item.x = action.x;
         item.y = action.y;
+        next.workers = next.workers.map((worker) => (
+          worker.targetTreeId === item.id
+            ? createIdleWorker(worker.id, getWorkerPosition(worker, now), now)
+            : worker
+        ));
       } else if (action.object.type === "decoration") {
         const item = next.decorations.find((decoration) => decoration.id === action.object.id);
         if (!item) throw new Error("تعذّر العثور على الديكور.");

@@ -8,21 +8,21 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signOut, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { getUserProfile } from "@/lib/db_logic";
 import FarmScene, { type FarmSceneHandle } from "./FarmScene";
 import {
   CROPS,
   CROP_ORDER,
-  DECORATIONS,
-  DECORATION_ORDER,
   FARM_HOUSE_COST,
   FARM_OBSTACLE_CLEAR_COST,
   FARM_PLOT_COST,
@@ -37,7 +37,6 @@ import {
   getTreeGrowthState,
   isFarmParcelAdjacent,
   type CropId,
-  type DecorationId,
   type FarmAction,
   type FarmGameSave,
   type FarmLandParcel,
@@ -63,11 +62,10 @@ const C = {
   red: "#C05A46",
 };
 
-type MenuTab = "shop" | "tools" | "storage" | "quests";
+type MenuTab = "shop" | "storage" | "quests";
 type FarmPlacement =
   | { kind: "plot" }
   | { kind: "tree"; treeId: FruitTreeId }
-  | { kind: "decoration"; decorationId: DecorationId }
   | { kind: "house" };
 
 function formatCoins(value: number): string {
@@ -83,15 +81,11 @@ function formatTime(ms: number): string {
 }
 
 function toolDescription(tool: FarmTool | null): string {
-  if (tool === "walk" || !tool) return "اسحب الأرض للتحرك، واضغط على العنصر للتفاعل معه.";
-  if (tool === "move") return "اختر مبنى أو حقلاً أو شجرة، ثم اضغط مكاناً فارغاً لنقله.";
+  if (!tool) return "اضغط على الحقول للتفاعل، واسحب مطولاً المنزل أو الحقل أو الشجرة لنقلها.";
   if (tool === "buyPlot") return "اضغط الأرض لوضع الحقل، أو اسحبه من القائمة مباشرة.";
   if (tool === "buildHouse") return "اختر مكاناً فارغاً لبناء منزل المزرعة.";
   if (tool && FRUIT_TREE_ORDER.includes(tool as FruitTreeId)) {
     return `اختر مكاناً فارغاً لوضع ${FRUIT_TREES[tool as FruitTreeId].name}.`;
-  }
-  if (tool === "flowerBed" || tool === "gardenLamp" || tool === "fence") {
-    return `اختر مكاناً فارغاً لوضع ${DECORATIONS[tool].name}.`;
   }
   return "المحاصيل تنمو بمرور الوقت من دون ري.";
 }
@@ -238,11 +232,14 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const sceneRef = useRef<FarmSceneHandle>(null);
   const [farm, setFarm] = useState<FarmGameSave | null>(null);
   const [tool, setTool] = useState<FarmTool | null>(null);
-  const [selectedMoveObject, setSelectedMoveObject] = useState<FarmObjectRef | null>(null);
   const [cropPickerPlotId, setCropPickerPlotId] = useState<number | null>(null);
   const [pendingLandParcel, setPendingLandParcel] = useState<FarmLandParcel | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTab, setMenuTab] = useState<MenuTab>("shop");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingPlayerName, setEditingPlayerName] = useState(false);
+  const [playerNameDraft, setPlayerNameDraft] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
   const [playerName, setPlayerName] = useState("المزارع");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -381,37 +378,22 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   );
 
   const selectTool = (nextTool: FarmTool) => {
-    if (nextTool === "buildHouse" && farm?.houseBuilt) {
-      setTool("move");
-      setSelectedMoveObject({ type: "house", id: "house" });
-      setHint("المنزل مبني بالفعل. اختر مكاناً فارغاً لنقله.");
-      setMenuOpen(false);
-      return;
-    }
+    if (nextTool === "buildHouse" && farm?.houseBuilt) return;
     setTool(nextTool);
-    setSelectedMoveObject(null);
     setHint(toolDescription(nextTool));
     setMenuOpen(false);
   };
 
   const placeShopItem = async (placement: FarmPlacement, position: FarmPosition) => {
+    let placed = false;
     if (placement.kind === "plot") {
-      await act({ type: "buyPlotAt", x: position.x, y: position.y });
+      placed = await act({ type: "buyPlotAt", x: position.x, y: position.y });
     } else if (placement.kind === "tree") {
-      await act({ type: "buyTreeAt", treeId: placement.treeId, x: position.x, y: position.y });
-    } else if (placement.kind === "decoration") {
-      await act({ type: "buyDecorationAt", decorationId: placement.decorationId, x: position.x, y: position.y });
-    } else if (farm?.houseBuilt) {
-      await act({
-        type: "moveObjectTo",
-        object: { type: "house", id: "house" },
-        x: position.x,
-        y: position.y,
-      });
+      placed = await act({ type: "buyTreeAt", treeId: placement.treeId, x: position.x, y: position.y });
     } else {
-      await act({ type: "buildHouseAt", x: position.x, y: position.y });
+      placed = await act({ type: "buildHouseAt", x: position.x, y: position.y });
     }
-    setTool(null);
+    if (placed) setTool(null);
   };
 
   const handleShopDrop = async (placement: FarmPlacement, screenX: number, screenY: number) => {
@@ -443,30 +425,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
     if (object?.type === "obstacle") {
       await act({ type: "clearObstacle", obstacleId: object.id });
-      return;
-    }
-
-    if (tool === "move") {
-      if (!selectedMoveObject) {
-        if (!object) {
-          setHint("اضغط أولاً على المنزل أو الحقل أو الشجرة أو الزينة التي تريد نقلها.");
-        } else {
-          setSelectedMoveObject(object);
-          setHint(`تم اختيار ${objectName(object)}. اختر مكاناً فارغاً لنقله.`);
-        }
-        return;
-      }
-      const moving = selectedMoveObject;
-      const moved = await act({
-        type: "moveObjectTo",
-        object: moving,
-        x: position.x,
-        y: position.y,
-      });
-      if (moved) {
-        setSelectedMoveObject(null);
-        setHint(`${objectName(moving)} انتقل إلى المكان الجديد.`);
-      }
       return;
     }
 
@@ -510,32 +468,73 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
       return;
     }
 
-    if (!tool || tool === "walk") {
-      await act({ type: "movePlayerTo", x: position.x, y: position.y });
-      return;
-    }
+    if (!tool) return;
 
+    let placed = false;
     switch (tool) {
-      case "plant":
-        setHint("المحاصيل تزرع في الحقول. اضغط على حقل فارغ لاختيار المحصول.");
-        break;
       case "buyPlot":
-        await act({ type: "buyPlotAt", x: position.x, y: position.y });
+        placed = await act({ type: "buyPlotAt", x: position.x, y: position.y });
         break;
       case "buildHouse":
-        await act({ type: "buildHouseAt", x: position.x, y: position.y });
+        placed = await act({ type: "buildHouseAt", x: position.x, y: position.y });
         break;
       case "apple":
       case "orange":
       case "peach":
       case "lemon":
-        await act({ type: "buyTreeAt", treeId: tool, x: position.x, y: position.y });
+        placed = await act({ type: "buyTreeAt", treeId: tool, x: position.x, y: position.y });
         break;
-      case "flowerBed":
-      case "gardenLamp":
-      case "fence":
-        await act({ type: "buyDecorationAt", decorationId: tool, x: position.x, y: position.y });
-        break;
+    }
+    if (placed) setTool(null);
+  };
+
+  const handleObjectDragEnd = async (
+    object: FarmObjectRef,
+    position: FarmPosition,
+    targetObject: FarmObjectRef | null,
+  ) => {
+    if (targetObject && !(targetObject.type === object.type && targetObject.id === object.id)) {
+      setHint(targetObject.type === "landParcel"
+        ? "لا يمكن وضع العناصر على أرض مقفلة."
+        : "هذا المكان مشغول. اسحب العنصر إلى خانة فارغة داخل أرضك.");
+      return;
+    }
+    const moved = await act({
+      type: "moveObjectTo",
+      object,
+      x: position.x,
+      y: position.y,
+    });
+    if (moved) setHint(`تم نقل ${objectName(object)} إلى المكان الجديد.`);
+  };
+
+  const savePlayerName = async () => {
+    const nextName = playerNameDraft.trim();
+    if (!nextName || nextName.length > 32) {
+      setError("اكتب اسماً من حرف واحد إلى 32 حرفاً.");
+      return;
+    }
+    if (!player || previewMode) {
+      setPlayerName(nextName);
+      setEditingPlayerName(false);
+      setHint("تم تحديث اسم اللاعب في العرض التجريبي.");
+      return;
+    }
+    setNameSaving(true);
+    setError("");
+    try {
+      await setDoc(doc(db, "users", player.uid), { name: nextName }, { merge: true });
+      setPlayerName(nextName);
+      setEditingPlayerName(false);
+      setHint("تم تحديث اسم اللاعب.");
+      await updateProfile(player, { displayName: nextName }).catch((profileError) => {
+        console.warn("Farm name saved, but Firebase Auth profile sync failed:", profileError);
+      });
+    } catch (saveError) {
+      console.error("Could not update farm player name:", saveError);
+      setError("تعذّر حفظ الاسم. تحقق من الاتصال ثم حاول مجدداً.");
+    } finally {
+      setNameSaving(false);
     }
   };
 
@@ -576,25 +575,23 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
           <Ionicons name="refresh-outline" size={17} color="#FFFFFF" />
           <Text style={styles.retryText}>إعادة المحاولة</Text>
         </Pressable>
+        {!playerId ? (
+          <Pressable
+            onPress={() => router.replace("/?showLogin=1" as any)}
+            style={styles.retryButton}
+          >
+            <Ionicons name="log-in-outline" size={17} color="#FFFFFF" />
+            <Text style={styles.retryText}>تسجيل الدخول بالبريد الإلكتروني</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 3, paddingBottom: insets.bottom + 3 }]}>
+    <View style={[styles.screen, { paddingTop: insets.top + 3 }]}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.topBar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={previewMode ? "العودة إلى تسجيل الدخول" : "تسجيل الخروج"}
-          onPress={() => {
-            if (previewMode) router.replace("/?showLogin=1" as any);
-            else void signOut(auth);
-          }}
-          style={styles.headerIconButton}
-        >
-          <Ionicons name={previewMode ? "close-outline" : "log-out-outline"} size={19} color={C.greenDark} />
-        </Pressable>
         <View style={styles.greeting}>
           <Text style={styles.title} numberOfLines={1}>أهلاً، {playerName}</Text>
           <Text style={styles.subtitle}>المستوى {level} · {readyFields + readyTrees} جاهز للجمع</Text>
@@ -612,14 +609,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <Text style={styles.gemText}>{formatCoins(farm.gems)}</Text>
           </View>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={menuOpen ? "إغلاق قائمة المزرعة" : "فتح قائمة المزرعة"}
-          onPress={() => setMenuOpen((value) => !value)}
-          style={[styles.menuToggle, menuOpen && styles.menuToggleActive]}
-        >
-          <Ionicons name={menuOpen ? "close" : "grid-outline"} size={19} color={menuOpen ? "#FFFFFF" : C.greenDark} />
-        </Pressable>
       </View>
 
       <View style={[styles.workspace, isWide ? styles.workspaceWide : styles.workspaceNarrow]}>
@@ -630,38 +619,41 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             now={now}
             style={styles.scene}
             onTilePress={(position, object) => void handleTilePress(position, object)}
+            onObjectDragEnd={(object, position, targetObject) => {
+              void handleObjectDragEnd(object, position, targetObject);
+            }}
           />
+          {tool ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق وضع الشراء"
+              onPress={() => {
+                setTool(null);
+                setHint("تم إغلاق وضع الشراء.");
+              }}
+              style={styles.placementClose}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={18} color="#FFFFFF" />
+              <Text style={styles.placementCloseText}>إغلاق</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {menuOpen ? (
           <View style={[styles.menuPanel, isWide ? styles.menuPanelWide : { height: panelHeight }]}>
             <View style={styles.menuHeader}>
               <View>
-                <Text style={styles.menuTitle}>مستلزمات المزرعة</Text>
-                <Text style={styles.menuHint}>ضع العناصر داخل أرضك الحالية</Text>
+                <Text style={styles.menuTitle}>
+                  {menuTab === "shop" ? "متجر المزرعة" : menuTab === "storage" ? "مخزن المزرعة" : "مهام المزرعة"}
+                </Text>
+                <Text style={styles.menuHint}>
+                  {menuTab === "shop" ? "اختر ما تحتاجه لمزرعتك" : menuTab === "storage" ? "محاصيلك وثمارك المتاحة" : "أنجز المهام واكسب الجواهر"}
+                </Text>
               </View>
               <Pressable onPress={() => setMenuOpen(false)} style={styles.closeMenuButton}>
-                <Ionicons name="chevron-down" size={18} color={C.greenDark} />
+                <Ionicons name="close" size={18} color={C.greenDark} />
               </Pressable>
-            </View>
-            <View style={styles.tabs}>
-              {([
-                ["shop", "المتجر", "basket-outline"],
-                ["tools", "الأدوات", "construct-outline"],
-                ["storage", "المخزن", "cube-outline"],
-                ["quests", "المهام", "flag-outline"],
-              ] as const).map(([key, label, icon]) => (
-                <Pressable
-                  key={key}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: menuTab === key }}
-                  onPress={() => setMenuTab(key)}
-                  style={[styles.tab, menuTab === key && styles.tabActive]}
-                >
-                  <Ionicons name={icon} size={15} color={menuTab === key ? "#FFFFFF" : C.greenDark} />
-                  <Text style={[styles.tabText, menuTab === key && styles.tabTextActive]}>{label}</Text>
-                </Pressable>
-              ))}
             </View>
 
             {menuTab === "shop" ? (
@@ -687,16 +679,18 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   onDrop={(x, y) => void handleShopDrop({ kind: "plot" }, x, y)}
                   onDragChange={(active, x, y) => beginDrag("حقل جديد", active, x, y)}
                 />
-                <ShopCard
-                  title={farm.houseBuilt ? "نقل منزل المزرعة" : "بناء منزل المزرعة"}
-                  subtitle={farm.houseBuilt ? "اسحب المنزل إلى مكان جديد" : "اسحب المنزل إلى أرض فارغة"}
-                  icon="home-outline"
-                  price={farm.houseBuilt ? undefined : FARM_HOUSE_COST}
-                  selected={tool === "buildHouse" || (tool === "move" && selectedMoveObject?.type === "house")}
-                  onPress={() => selectTool("buildHouse")}
-                  onDrop={(x, y) => void handleShopDrop({ kind: "house" }, x, y)}
-                  onDragChange={(active, x, y) => beginDrag("منزل المزرعة", active, x, y)}
-                />
+                {!farm.houseBuilt ? (
+                  <ShopCard
+                    title="بناء منزل المزرعة"
+                    subtitle="اسحب المنزل إلى أرض فارغة"
+                    icon="home-outline"
+                    price={FARM_HOUSE_COST}
+                    selected={tool === "buildHouse"}
+                    onPress={() => selectTool("buildHouse")}
+                    onDrop={(x, y) => void handleShopDrop({ kind: "house" }, x, y)}
+                    onDragChange={(active, x, y) => beginDrag("منزل المزرعة", active, x, y)}
+                  />
+                ) : null}
 
                 <SectionLabel>البذور والمحاصيل</SectionLabel>
                 {CROP_ORDER.map((cropId) => (
@@ -731,70 +725,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   );
                 })}
 
-                <SectionLabel>الزينة</SectionLabel>
-                {DECORATION_ORDER.map((decorationId) => (
-                  <ShopCard
-                    key={decorationId}
-                    title={DECORATIONS[decorationId].name}
-                     subtitle="ضعها في مكان فارغ داخل أرضك"
-                    icon={
-                      decorationId === "flowerBed"
-                        ? "flower-outline"
-                        : decorationId === "gardenLamp"
-                          ? "bulb-outline"
-                          : "grid-outline"
-                    }
-                    price={DECORATIONS[decorationId].price}
-                    selected={tool === decorationId}
-                    onPress={() => selectTool(decorationId)}
-                    onDrop={(x, y) => void handleShopDrop({ kind: "decoration", decorationId }, x, y)}
-                    onDragChange={(active, x, y) => beginDrag(DECORATIONS[decorationId].name, active, x, y)}
-                  />
-                ))}
-              </ScrollView>
-            ) : null}
-
-            {menuTab === "tools" ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuContent}>
-                <SectionLabel>طريقة اللعب</SectionLabel>
-                <ShopCard
-                  title="تحريك المزارع"
-                  subtitle="اسحب الأرض للتنقل، أو اضغط وجهة على العشب"
-                  icon="walk-outline"
-                  selected={!tool || tool === "walk"}
-                  onPress={() => {
-                    setTool("walk");
-                    setSelectedMoveObject(null);
-                    setHint(toolDescription("walk"));
-                    setMenuOpen(false);
-                  }}
-                />
-                <ShopCard
-                  title="نقل عنصر"
-                  subtitle="اختر منزلاً أو حقلاً أو شجرة ثم مكاناً فارغاً"
-                  icon="move-outline"
-                  selected={tool === "move"}
-                  onPress={() => selectTool("move")}
-                />
-                {tool || selectedMoveObject ? (
-                  <Pressable
-                    onPress={() => {
-                      setTool(null);
-                      setSelectedMoveObject(null);
-                      setHint("تم إلغاء وضع البناء أو النقل.");
-                    }}
-                    style={styles.cancelTool}
-                  >
-                    <Ionicons name="close-circle-outline" size={17} color={C.red} />
-                    <Text style={styles.cancelToolText}>إلغاء الاختيار الحالي</Text>
-                  </Pressable>
-                ) : null}
-                <View style={styles.helpCard}>
-                  <Ionicons name="hand-left-outline" size={19} color={C.greenDark} />
-                  <Text style={styles.helpText}>
-                    اسحب بإصبع واحد للتحرك، وقرّب أو باعد إصبعين لتغيير حجم العرض. لا يوجد نظام ري.
-                  </Text>
-                </View>
               </ScrollView>
             ) : null}
 
@@ -848,11 +778,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
       <View style={styles.bottomBar}>
         <View style={styles.hintIcon}><Ionicons name="leaf-outline" size={15} color={C.greenDark} /></View>
-        <Text style={styles.hintText} numberOfLines={2}>
-          {hint || (selectedMoveObject
-            ? `اختر مكاناً جديداً لـ ${objectName(selectedMoveObject)}.`
-            : toolDescription(tool))}
-        </Text>
+        <Text style={styles.hintText} numberOfLines={2}>{hint || toolDescription(tool)}</Text>
         {busy ? <ActivityIndicator size="small" color={C.green} /> : null}
         <Pressable
           accessibilityRole="button"
@@ -862,6 +788,47 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         >
           <Ionicons name="refresh-outline" size={17} color={C.greenDark} />
         </Pressable>
+      </View>
+
+      <View style={[styles.bottomNavigation, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        {([
+          ["shop", "المتجر", "basket-outline"],
+          ["storage", "المخزن", "cube-outline"],
+          ["quests", "المهام", "flag-outline"],
+          ["settings", "الإعدادات", "settings-outline"],
+        ] as const).map(([key, label, icon]) => {
+          const selected = key === "settings" ? settingsOpen : menuOpen && menuTab === key;
+          return (
+            <Pressable
+              key={key}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => {
+                if (key === "settings") {
+                  setMenuOpen(false);
+                  setSettingsOpen(true);
+                  setPlayerNameDraft(playerName);
+                  setEditingPlayerName(false);
+                  return;
+                }
+                setSettingsOpen(false);
+                if (menuOpen && menuTab === key) {
+                  setMenuOpen(false);
+                } else {
+                  setMenuTab(key);
+                  setMenuOpen(true);
+                }
+              }}
+              style={[styles.bottomNavButton, selected && styles.bottomNavButtonActive]}
+            >
+              <Ionicons name={icon} size={20} color={selected ? "#FFFFFF" : C.greenDark} />
+              <Text style={[styles.bottomNavLabel, selected && styles.bottomNavLabelActive]}>{label}</Text>
+              {key === "storage" && totalStored > 0 ? (
+                <View style={styles.navBadge}><Text style={styles.navBadgeText}>{Math.min(totalStored, 99)}</Text></View>
+              ) : null}
+            </Pressable>
+          );
+        })}
       </View>
 
       {previewMode ? (
@@ -884,6 +851,111 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
           <Pressable onPress={() => void refreshFarm()}><Ionicons name="refresh-outline" size={17} color={C.red} /></Pressable>
         </View>
       ) : null}
+
+      <Modal
+        visible={settingsOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSettingsOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.settingsModal}>
+            <View style={styles.modalHeading}>
+              <View>
+                <Text style={styles.modalTitle}>إعدادات اللاعب</Text>
+                <Text style={styles.modalSubtitle}>الاسم وحساب حفظ المزرعة</Text>
+              </View>
+              <Pressable onPress={() => setSettingsOpen(false)} style={styles.closeMenuButton}>
+                <Ionicons name="close" size={18} color={C.greenDark} />
+              </Pressable>
+            </View>
+
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsLabel}>اسم اللاعب</Text>
+              {editingPlayerName ? (
+                <View style={styles.nameEditRow}>
+                  <TextInput
+                    value={playerNameDraft}
+                    onChangeText={setPlayerNameDraft}
+                    placeholder="اكتب اسم اللاعب"
+                    placeholderTextColor={C.muted}
+                    maxLength={32}
+                    autoFocus
+                    textAlign="right"
+                    style={styles.nameInput}
+                  />
+                  <Pressable disabled={nameSaving} onPress={() => void savePlayerName()} style={styles.nameSaveButton}>
+                    {nameSaving
+                      ? <ActivityIndicator size="small" color="#FFFFFF" />
+                      : <Ionicons name="checkmark" size={18} color="#FFFFFF" />}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setEditingPlayerName(false);
+                      setPlayerNameDraft(playerName);
+                    }}
+                    style={styles.nameCancelButton}
+                  >
+                    <Ionicons name="close" size={18} color={C.greenDark} />
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.settingsNameRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="تعديل اسم اللاعب"
+                    onPress={() => {
+                      setPlayerNameDraft(playerName);
+                      setEditingPlayerName(true);
+                    }}
+                    style={styles.editNameButton}
+                  >
+                    <Text style={styles.editNameLabel}>تعديل</Text>
+                    <Text style={styles.editNameIcon}>✏️</Text>
+                  </Pressable>
+                  <Text style={styles.settingsPlayerName}>{playerName}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsLabel}>حساب حفظ اللعبة</Text>
+              <Text style={styles.accountEmail}>
+                {previewMode ? "وضع التجربة — لا يرتبط بحساب" : player?.email || "لا يوجد بريد إلكتروني"}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  if (player && !previewMode) {
+                    void signOut(auth)
+                      .then(() => router.replace("/?showLogin=1" as any))
+                      .catch((signOutError) => {
+                        console.error("Could not sign out from farm settings:", signOutError);
+                        setError("تعذّر تسجيل الخروج. حاول مجدداً.");
+                      });
+                  } else {
+                    router.replace("/?showLogin=1" as any);
+                  }
+                }}
+                style={styles.authActionButton}
+              >
+                <Ionicons
+                  name={player && !previewMode ? "log-out-outline" : "log-in-outline"}
+                  size={18}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.authActionText}>
+                  {player && !previewMode ? "تسجيل الخروج" : "تسجيل الدخول بالبريد الإلكتروني"}
+                </Text>
+              </Pressable>
+              <Text style={styles.settingsFootnote}>
+                {previewMode
+                  ? "التجربة لا تحفظ تغييراتها على الحساب."
+                  : "مزرعتك محفوظة في Firebase Firestore ضمن الحساب المسجّل."}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={cropPickerPlotId !== null}
@@ -1022,7 +1094,6 @@ const styles = StyleSheet.create({
   retryButton: { minHeight: 42, paddingHorizontal: 16, borderRadius: 14, backgroundColor: C.green, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
   retryText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
   topBar: { minHeight: 57, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F7F7E8", borderBottomWidth: 1, borderBottomColor: "rgba(70,104,50,0.14)" },
-  headerIconButton: { width: 38, height: 38, borderRadius: 13, backgroundColor: "#E8F0DB", alignItems: "center", justifyContent: "center" },
   greeting: { flex: 1, minWidth: 0 },
   title: { color: C.ink, fontSize: 14, fontWeight: "900", textAlign: "right" },
   subtitle: { color: C.muted, fontSize: 9, marginTop: 2, textAlign: "right" },
@@ -1034,24 +1105,19 @@ const styles = StyleSheet.create({
   gems: { minHeight: 35, paddingHorizontal: 8, borderRadius: 12, backgroundColor: "#EEE6FA", flexDirection: "row", alignItems: "center", gap: 4 },
   gemIcon: { fontSize: 14 },
   gemText: { color: "#6944A0", fontSize: 11, fontWeight: "900" },
-  menuToggle: { width: 38, height: 38, borderRadius: 13, backgroundColor: "#E8F0DB", alignItems: "center", justifyContent: "center" },
-  menuToggleActive: { backgroundColor: C.green },
   workspace: { flex: 1, minHeight: 0 },
   workspaceWide: { flexDirection: "row-reverse" },
   workspaceNarrow: { flexDirection: "column" },
-  worldPane: { flex: 1, minHeight: 220, overflow: "hidden", backgroundColor: C.canvas },
+  worldPane: { position: "relative", flex: 1, minHeight: 220, overflow: "hidden", backgroundColor: C.canvas },
   scene: { flex: 1 },
+  placementClose: { position: "absolute", top: 13, right: 13, minHeight: 38, paddingHorizontal: 12, borderRadius: 14, backgroundColor: "rgba(49,95,58,0.95)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, zIndex: 5, elevation: 8 },
+  placementCloseText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
   menuPanel: { backgroundColor: C.paper, borderColor: "rgba(54,94,48,0.18)", overflow: "hidden" },
   menuPanelWide: { width: 320, height: "100%", borderLeftWidth: 1 },
   menuHeader: { minHeight: 54, paddingHorizontal: 13, paddingVertical: 8, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#E8EDDF" },
   menuTitle: { color: C.ink, fontSize: 13, fontWeight: "900", textAlign: "right" },
   menuHint: { color: C.muted, fontSize: 9, marginTop: 3, textAlign: "right" },
   closeMenuButton: { width: 32, height: 32, borderRadius: 11, backgroundColor: "#EDF3E7", alignItems: "center", justifyContent: "center" },
-  tabs: { padding: 7, flexDirection: "row-reverse", gap: 5, borderBottomWidth: 1, borderBottomColor: "#E8EDDF" },
-  tab: { flex: 1, minHeight: 34, borderRadius: 10, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 4 },
-  tabActive: { backgroundColor: C.green },
-  tabText: { color: C.greenDark, fontSize: 10, fontWeight: "800" },
-  tabTextActive: { color: "#FFFFFF" },
   menuContent: { padding: 9, paddingBottom: 15, gap: 7 },
   sectionLabel: { color: C.greenDark, fontSize: 10, fontWeight: "900", textAlign: "right", marginTop: 6, marginBottom: 1 },
   shopCard: { minHeight: 60, paddingHorizontal: 7, paddingVertical: 7, borderRadius: 13, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, flexDirection: "row-reverse", alignItems: "center", gap: 6 },
@@ -1069,10 +1135,6 @@ const styles = StyleSheet.create({
   buyButton: { minHeight: 30, paddingHorizontal: 8, borderRadius: 9, backgroundColor: C.green, alignItems: "center", justifyContent: "center" },
   buyButtonText: { color: "#FFFFFF", fontSize: 8, fontWeight: "900" },
   disabled: { opacity: 0.42 },
-  cancelTool: { minHeight: 42, borderRadius: 12, backgroundColor: "#FCECE7", flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
-  cancelToolText: { color: C.red, fontSize: 10, fontWeight: "900" },
-  helpCard: { padding: 12, borderRadius: 13, backgroundColor: "#EAF3E3", flexDirection: "row-reverse", alignItems: "flex-start", gap: 8, marginTop: 4 },
-  helpText: { flex: 1, color: C.greenDark, fontSize: 10, lineHeight: 17, textAlign: "right" },
   storageRow: { minHeight: 50, paddingHorizontal: 6, flexDirection: "row-reverse", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: "#EFF3EC" },
   storageCopy: { flex: 1, alignItems: "flex-end" },
   storageName: { color: C.ink, fontSize: 10, fontWeight: "900" },
@@ -1098,6 +1160,13 @@ const styles = StyleSheet.create({
   hintIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: "#E7F0DC", alignItems: "center", justifyContent: "center" },
   hintText: { flex: 1, color: C.greenDark, fontSize: 9, fontWeight: "700", textAlign: "right" },
   refreshButton: { width: 30, height: 30, borderRadius: 9, backgroundColor: "#E8F0DB", alignItems: "center", justifyContent: "center" },
+  bottomNavigation: { minHeight: 61, paddingTop: 6, paddingHorizontal: 9, backgroundColor: "#FFFDF4", borderTopWidth: 1, borderTopColor: "rgba(70,104,50,0.18)", flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-around", gap: 5 },
+  bottomNavButton: { position: "relative", flex: 1, minHeight: 49, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 3 },
+  bottomNavButtonActive: { backgroundColor: C.green },
+  bottomNavLabel: { color: C.greenDark, fontSize: 9, fontWeight: "800" },
+  bottomNavLabelActive: { color: "#FFFFFF" },
+  navBadge: { position: "absolute", top: 2, right: "23%", minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, backgroundColor: C.gold, alignItems: "center", justifyContent: "center" },
+  navBadgeText: { color: "#5B4518", fontSize: 8, fontWeight: "900" },
   previewNotice: { position: "absolute", top: 64, alignSelf: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: "rgba(255,253,244,0.92)", flexDirection: "row", alignItems: "center", gap: 5 },
   previewNoticeText: { color: C.greenDark, fontSize: 9, fontWeight: "800" },
   dragGhost: { position: "absolute", minHeight: 38, paddingHorizontal: 10, borderRadius: 12, backgroundColor: "rgba(49,95,58,0.92)", flexDirection: "row-reverse", alignItems: "center", gap: 6, zIndex: 20, elevation: 8 },
@@ -1106,6 +1175,22 @@ const styles = StyleSheet.create({
   errorToastText: { flex: 1, color: C.red, fontSize: 10, textAlign: "right" },
   modalBackdrop: { flex: 1, padding: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(20,37,22,0.48)" },
   cropModal: { width: "100%", maxWidth: 390, padding: 14, borderRadius: 20, backgroundColor: C.paper, gap: 8, elevation: 10 },
+  settingsModal: { width: "100%", maxWidth: 430, padding: 16, borderRadius: 22, backgroundColor: C.paper, gap: 14, elevation: 12 },
+  settingsSection: { padding: 13, borderRadius: 15, backgroundColor: "#F5F7ED", gap: 9 },
+  settingsLabel: { color: C.greenDark, fontSize: 11, fontWeight: "900", textAlign: "right" },
+  settingsNameRow: { minHeight: 44, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  settingsPlayerName: { flex: 1, color: C.ink, fontSize: 13, fontWeight: "900", textAlign: "right" },
+  editNameButton: { minHeight: 34, paddingHorizontal: 10, borderRadius: 11, backgroundColor: "#E5EFDB", flexDirection: "row-reverse", alignItems: "center", gap: 5 },
+  editNameLabel: { color: C.greenDark, fontSize: 10, fontWeight: "800" },
+  editNameIcon: { fontSize: 14 },
+  nameEditRow: { flexDirection: "row-reverse", alignItems: "center", gap: 6 },
+  nameInput: { flex: 1, minHeight: 42, paddingHorizontal: 11, borderRadius: 11, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: C.border, color: C.ink, fontSize: 12 },
+  nameSaveButton: { width: 39, height: 39, borderRadius: 12, backgroundColor: C.green, alignItems: "center", justifyContent: "center" },
+  nameCancelButton: { width: 39, height: 39, borderRadius: 12, backgroundColor: "#E5EFDB", alignItems: "center", justifyContent: "center" },
+  accountEmail: { color: C.ink, fontSize: 11, fontWeight: "700", textAlign: "right", writingDirection: "ltr" },
+  authActionButton: { minHeight: 43, paddingHorizontal: 12, borderRadius: 13, backgroundColor: C.green, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
+  authActionText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
+  settingsFootnote: { color: C.muted, fontSize: 9, textAlign: "right", lineHeight: 14 },
   modalHeading: { marginBottom: 4, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   modalTitle: { color: C.ink, fontSize: 15, fontWeight: "900", textAlign: "right" },
   modalSubtitle: { color: C.muted, fontSize: 10, marginTop: 3, textAlign: "right" },

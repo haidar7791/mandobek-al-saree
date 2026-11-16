@@ -54,6 +54,11 @@ export interface FarmSceneProps {
   farm: FarmGameSave;
   now: number;
   onTilePress: (position: FarmPosition, object: FarmObjectRef | null) => void;
+  onObjectDragEnd?: (
+    object: FarmObjectRef,
+    position: FarmPosition,
+    targetObject: FarmObjectRef | null,
+  ) => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -385,19 +390,6 @@ function Decoration({
   );
 }
 
-function Player({ position }: { position: FarmPosition }) {
-  const x = position.x * FARM_TILE_SIZE;
-  const y = position.y * FARM_TILE_SIZE;
-  return (
-    <G>
-      <Ellipse cx={x + 20} cy={y + 34} rx={8} ry={3} fill="#426B41" opacity={0.3} />
-      <Circle cx={x + 20} cy={y + 14} r={6} fill="#F0C69A" stroke="#98694C" strokeWidth={1} />
-      <Path d={`M ${x + 11} ${y + 32} Q ${x + 12} ${y + 20} ${x + 20} ${y + 20} Q ${x + 28} ${y + 20} ${x + 29} ${y + 32} Z`} fill="#4C8F5A" stroke="#356C46" strokeWidth={1} />
-      <Path d={`M ${x + 15} ${y + 11} Q ${x + 20} ${y + 5} ${x + 26} ${y + 12}`} fill="none" stroke="#754E36" strokeWidth={3} />
-    </G>
-  );
-}
-
 function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) {
   const position = getWorkerPosition(worker, now);
   const x = position.x * FARM_TILE_SIZE;
@@ -426,13 +418,22 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
 }
 
 const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene(
-  { farm, now, onTilePress, style },
+  { farm, now, onTilePress, onObjectDragEnd, style },
   ref,
 ) {
   const [size, setSize] = useState({ width: 360, height: 330 });
   const [zoom, setZoom] = useState(1);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
+  const [draggedObject, setDraggedObject] = useState<FarmObjectRef | null>(null);
+  const [dragPosition, setDragPosition] = useState<FarmPosition | null>(null);
   const shellRef = useRef<View>(null);
+  const dragSessionRef = useRef<FarmObjectRef | null>(null);
+  const farmRef = useRef(farm);
+  const onTilePressRef = useRef(onTilePress);
+  const onObjectDragEndRef = useRef(onObjectDragEnd);
+  farmRef.current = farm;
+  onTilePressRef.current = onTilePress;
+  onObjectDragEndRef.current = onObjectDragEnd;
   const centeredRef = useRef(false);
   const cameraRef = useRef(camera);
   const zoomRef = useRef(zoom);
@@ -459,8 +460,8 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
         const nextZoom = zoomRef.current;
         setCamera(
           clampCamera(
-            farm.playerPosition.x * FARM_TILE_SIZE - nextSize.width / nextZoom / 2,
-            farm.playerPosition.y * FARM_TILE_SIZE - nextSize.height / nextZoom / 2,
+            (farm.housePosition?.x ?? 8) * FARM_TILE_SIZE - nextSize.width / nextZoom / 2,
+            (farm.housePosition?.y ?? 8) * FARM_TILE_SIZE - nextSize.height / nextZoom / 2,
             nextZoom,
           ),
         );
@@ -469,23 +470,24 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
   };
 
   const findObject = useCallback((x: number, y: number): FarmObjectRef | null => {
-    if (farm.houseBuilt && farm.housePosition?.x === x && farm.housePosition.y === y) {
+    const currentFarm = farmRef.current;
+    if (currentFarm.houseBuilt && currentFarm.housePosition?.x === x && currentFarm.housePosition.y === y) {
       return { type: "house", id: "house" };
     }
-    const tree = farm.trees.find((item) => item.x === x && item.y === y);
+    const tree = currentFarm.trees.find((item) => item.x === x && item.y === y);
     if (tree) return { type: "tree", id: tree.id };
-    const obstacle = farm.obstacles.find((item) => item.x === x && item.y === y);
+    const obstacle = currentFarm.obstacles.find((item) => item.x === x && item.y === y);
     if (obstacle) return { type: "obstacle", id: obstacle.id };
-    const decoration = farm.decorations.find((item) => item.x === x && item.y === y);
+    const decoration = currentFarm.decorations.find((item) => item.x === x && item.y === y);
     if (decoration) return { type: "decoration", id: decoration.id };
-    const plot = farm.plots.find((item) => item.x === x && item.y === y);
+    const plot = currentFarm.plots.find((item) => item.x === x && item.y === y);
     if (plot) return { type: "plot", id: plot.id };
     const parcel = getFarmParcelAt(x, y);
-    if (!isFarmParcelOwned(farm, parcel.column, parcel.row)) {
+    if (!isFarmParcelOwned(currentFarm, parcel.column, parcel.row)) {
       return { type: "landParcel", id: `${parcel.column}:${parcel.row}` };
     }
     return null;
-  }, [farm]);
+  }, []);
 
   const handlePress = useCallback((locationX: number, locationY: number) => {
     const currentCamera = cameraRef.current;
@@ -495,8 +497,46 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     const x = Math.floor(worldX / FARM_TILE_SIZE);
     const y = Math.floor(worldY / FARM_TILE_SIZE);
     if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) return;
-    onTilePress({ x, y }, findObject(x, y));
-  }, [findObject, onTilePress]);
+    onTilePressRef.current({ x, y }, findObject(x, y));
+  }, [findObject]);
+
+  const screenToWorld = useCallback((locationX: number, locationY: number) => {
+    const currentCamera = cameraRef.current;
+    const currentZoom = zoomRef.current;
+    return {
+      x: Math.floor((currentCamera.x + locationX / currentZoom) / FARM_TILE_SIZE),
+      y: Math.floor((currentCamera.y + locationY / currentZoom) / FARM_TILE_SIZE),
+    };
+  }, []);
+
+  const handleObjectDragStart = useCallback((locationX: number, locationY: number) => {
+    const position = screenToWorld(locationX, locationY);
+    const object = findObject(position.x, position.y);
+    if (!object || !["house", "plot", "tree"].includes(object.type)) return;
+    dragSessionRef.current = object;
+    setDraggedObject(object);
+    setDragPosition(position);
+  }, [findObject, screenToWorld]);
+
+  const handleObjectDragMove = useCallback((locationX: number, locationY: number) => {
+    if (!dragSessionRef.current) return;
+    setDragPosition(screenToWorld(locationX, locationY));
+  }, [screenToWorld]);
+
+  const handleObjectDragEnd = useCallback((locationX: number, locationY: number) => {
+    const object = dragSessionRef.current;
+    if (!object) return;
+    const position = screenToWorld(locationX, locationY);
+    const inBounds = position.x >= 0
+      && position.x < FARM_MAP_COLUMNS
+      && position.y >= 0
+      && position.y < FARM_MAP_ROWS;
+    const targetObject = inBounds ? findObject(position.x, position.y) : null;
+    dragSessionRef.current = null;
+    setDraggedObject(null);
+    setDragPosition(null);
+    if (inBounds) onObjectDragEndRef.current?.(object, position, targetObject);
+  }, [findObject, screenToWorld]);
 
   const panOrigin = useRef(camera);
   const pinchOrigin = useRef({ camera, zoom, worldX: 0, worldY: 0 });
@@ -520,6 +560,16 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
           );
         }),
     [],
+  );
+  const objectDragGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(450)
+        .runOnJS(true)
+        .onStart((event) => handleObjectDragStart(event.x, event.y))
+        .onUpdate((event) => handleObjectDragMove(event.x, event.y))
+        .onEnd((event) => handleObjectDragEnd(event.x, event.y)),
+    [handleObjectDragEnd, handleObjectDragMove, handleObjectDragStart],
   );
   const pinchGesture = useMemo(
     () =>
@@ -560,8 +610,8 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     [handlePress],
   );
   const worldGesture = useMemo(
-    () => Gesture.Race(pinchGesture, panGesture, tapGesture),
-    [panGesture, pinchGesture, tapGesture],
+    () => Gesture.Race(pinchGesture, objectDragGesture, panGesture, tapGesture),
+    [objectDragGesture, panGesture, pinchGesture, tapGesture],
   );
 
   useImperativeHandle(ref, () => ({
@@ -645,12 +695,55 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
           {farm.obstacles.map((obstacle) => (
             <FarmObstacleView key={obstacle.id} obstacle={obstacle} />
           ))}
-          {farm.plots.map((plot) => <Field key={`plot-${plot.id}`} plot={plot} now={now} />)}
-          {farm.trees.map((tree) => <FruitTree key={tree.id} tree={tree} now={now} />)}
+          {farm.plots.map((plot) => (
+            draggedObject?.type === "plot" && draggedObject.id === plot.id
+              ? null
+              : <Field key={`plot-${plot.id}`} plot={plot} now={now} />
+          ))}
+          {farm.trees.map((tree) => (
+            draggedObject?.type === "tree" && draggedObject.id === tree.id
+              ? null
+              : <FruitTree key={tree.id} tree={tree} now={now} />
+          ))}
           {farm.decorations.map((item) => <Decoration key={`decor-${item.id}`} decoration={item} />)}
-          {farm.houseBuilt && farm.housePosition ? (
+          {farm.houseBuilt && farm.housePosition && draggedObject?.type !== "house" ? (
             <G transform={`translate(${farm.housePosition.x * FARM_TILE_SIZE} ${farm.housePosition.y * FARM_TILE_SIZE})`}>
               <FarmHouse level={farm.houseLevel} />
+            </G>
+          ) : null}
+          {draggedObject && dragPosition ? (
+            <G opacity={0.82}>
+              <Ellipse
+                cx={dragPosition.x * FARM_TILE_SIZE + FARM_TILE_SIZE / 2}
+                cy={dragPosition.y * FARM_TILE_SIZE + FARM_TILE_SIZE / 2}
+                rx={25}
+                ry={21}
+                fill="#F8F4B3"
+                opacity={0.42}
+              />
+              {draggedObject.type === "plot" ? (
+                <Field
+                  plot={{
+                    ...farm.plots.find((item) => item.id === draggedObject.id)!,
+                    ...dragPosition,
+                  }}
+                  now={now}
+                />
+              ) : null}
+              {draggedObject.type === "tree" ? (
+                <FruitTree
+                  tree={{
+                    ...farm.trees.find((item) => item.id === draggedObject.id)!,
+                    ...dragPosition,
+                  }}
+                  now={now}
+                />
+              ) : null}
+              {draggedObject.type === "house" ? (
+                <G transform={`translate(${dragPosition.x * FARM_TILE_SIZE} ${dragPosition.y * FARM_TILE_SIZE})`}>
+                  <FarmHouse level={farm.houseLevel} />
+                </G>
+              ) : null}
             </G>
           ) : null}
           {Array.from({ length: FARM_PARCEL_COLUMNS * FARM_PARCEL_ROWS }, (_, index) => (
@@ -661,7 +754,6 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
               row={Math.floor(index / FARM_PARCEL_COLUMNS)}
             />
           ))}
-          <Player position={farm.playerPosition} />
           {farm.workers.map((worker) => (
             <FarmWorkerSprite key={worker.id} worker={worker} now={now} />
           ))}
