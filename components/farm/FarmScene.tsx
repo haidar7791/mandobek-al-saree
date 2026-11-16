@@ -73,19 +73,18 @@ const WORLD_WIDTH = FARM_MAP_COLUMNS * FARM_TILE_SIZE;
 const WORLD_HEIGHT = FARM_MAP_ROWS * FARM_TILE_SIZE;
 
 function FarmHouse({ level }: { level: number }) {
-  const x = 7;
   return (
     <G>
       <Ellipse cx={20} cy={34} rx={18} ry={4} fill="#456E42" opacity={0.25} />
-      <Polygon points="2,15 20,3 38,15 20,26" fill="#F6E4BE" stroke="#A8764C" strokeWidth={1.5} />
-      <Polygon points="3,15 20,26 20,38 3,28" fill="#F0D9AE" stroke="#A8764C" strokeWidth={1} />
-      <Polygon points="20,26 38,15 38,28 20,38" fill="#D6B985" stroke="#A8764C" strokeWidth={1} />
-      <Polygon points="0,15 20,1 41,14 38,18 20,7 3,19" fill={level > 1 ? "#B94F42" : "#B75F42"} />
-      <Rect x={24} y={27} width={6} height={11} fill="#855437" rx={1} />
-      <Circle cx={28} cy={33} r={0.8} fill="#F3D78D" />
-      <Rect x={7} y={20} width={6} height={5} fill="#99D1D0" stroke="#8B6646" strokeWidth={0.7} />
-      {level >= 2 ? <Rect x={29} y={7} width={4} height={8} fill="#8E5C45" /> : null}
-      <SvgText x={x} y={47} fontSize={8} fill="#4F5839" textAnchor="middle" fontWeight="700">
+      <SvgText
+        x={20}
+        y={41}
+        fontSize={level > 1 ? 52 : 48}
+        textAnchor="middle"
+      >
+        🏠
+      </SvgText>
+      <SvgText x={20} y={50} fontSize={7} fill="#4F5839" textAnchor="middle" fontWeight="700">
         منزل المزرعة
       </SvgText>
     </G>
@@ -105,6 +104,16 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
       <Line x1={3} y1={19} x2={37} y2={19} stroke="#B17B4D" strokeWidth={1.8} />
       <Line x1={3} y1={27} x2={37} y2={27} stroke="#B17B4D" strokeWidth={1.8} />
       {crop ? (
+        growth?.ready ? (
+          <SvgText
+            x={20}
+            y={31}
+            fontSize={25}
+            textAnchor="middle"
+          >
+            {crop.id === "wheat" ? "🌾" : crop.id === "carrot" ? "🥕" : "🌽"}
+          </SvgText>
+        ) : (
         <>
           {[8, 16, 24, 32].map((offset, index) => (
             <G key={offset}>
@@ -120,13 +129,10 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
                   ) : null}
                 </>
               )}
-              {growth?.ready && (
-                <Circle cx={offset} cy={13} r={2.8} fill={crop.color} stroke="#FFE8A2" strokeWidth={0.8} />
-              )}
             </G>
           ))}
-          {growth?.ready && <Circle cx={35} cy={5} r={5.5} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />}
         </>
+        )
       ) : null}
     </G>
   );
@@ -405,11 +411,9 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
         </>
       ) : null}
       <Ellipse cx={x + 20} cy={y + 35} rx={9} ry={3} fill="#35563B" opacity={0.3} />
-      <Circle cx={x + 20} cy={y + 14} r={6} fill="#EFC49A" stroke="#80583C" strokeWidth={1} />
-      <Path d={`M ${x + 12} ${y + 32} Q ${x + 12} ${y + 21} ${x + 20} ${y + 20} Q ${x + 28} ${y + 21} ${x + 28} ${y + 32} Z`} fill="#C2763C" stroke="#87502F" strokeWidth={1} />
-      <Path d={`M ${x + 12} ${y + 12} Q ${x + 20} ${y + 3} ${x + 28} ${y + 12} Z`} fill="#E7B84B" stroke="#9B7534" strokeWidth={1} />
-      <Rect x={x + 26} y={y + 24} width={7} height={7} rx={2} fill="#A87843" stroke="#795333" strokeWidth={0.8} />
-      <Line x1={x + 14} y1={y + 25} x2={x + 9} y2={y + 30} stroke="#EFC49A" strokeWidth={2.3} strokeLinecap="round" />
+      <SvgText x={x + 20} y={y + 32} fontSize={27} textAnchor="middle">
+        🚶
+      </SvgText>
       <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
         {harvesting ? "يجمع" : "عامل"}
       </SvgText>

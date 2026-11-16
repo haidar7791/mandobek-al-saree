@@ -379,21 +379,70 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
   const selectTool = (nextTool: FarmTool) => {
     if (nextTool === "buildHouse" && farm?.houseBuilt) return;
+    const placementCost = nextTool === "buyPlot"
+      ? FARM_PLOT_COST
+      : FRUIT_TREE_ORDER.includes(nextTool as FruitTreeId)
+        ? FRUIT_TREES[nextTool as FruitTreeId].price
+        : null;
+    if (placementCost !== null && (farm?.coins ?? 0) < placementCost) {
+      setTool(null);
+      setHint(nextTool === "buyPlot"
+        ? "لا توجد عملات كافية لشراء حقل جديد."
+        : `اجمع المزيد من العملات لشراء ${FRUIT_TREES[nextTool as FruitTreeId].name}.`);
+      return;
+    }
     setTool(nextTool);
     setHint(toolDescription(nextTool));
     setMenuOpen(false);
   };
 
+  const continuePlacementMode = (
+    placementTool: FarmTool,
+    placed: boolean,
+    coinsBeforePurchase: number,
+  ) => {
+    const isRepeatablePurchase = placementTool === "buyPlot"
+      || FRUIT_TREE_ORDER.includes(placementTool as FruitTreeId);
+    if (!isRepeatablePurchase) {
+      if (placed) setTool(null);
+      return;
+    }
+    const cost = placementTool === "buyPlot"
+      ? FARM_PLOT_COST
+      : FRUIT_TREES[placementTool as FruitTreeId].price;
+    if (!placed) {
+      if ((farmRef.current?.coins ?? 0) < cost) {
+        setTool(null);
+        setHint("نفدت العملات الكافية لهذا الشراء.");
+      }
+      return;
+    }
+    const remainingCoins = Math.max(0, coinsBeforePurchase - cost);
+    if (remainingCoins < cost) {
+      setTool(null);
+      setHint("نفدت العملات الكافية لمتابعة الشراء.");
+      return;
+    }
+    setTool(placementTool);
+    setHint(toolDescription(placementTool));
+  };
+
   const placeShopItem = async (placement: FarmPlacement, position: FarmPosition) => {
+    const coinsBeforePurchase = farmRef.current?.coins ?? 0;
     let placed = false;
+    let placementTool: FarmTool | null = null;
     if (placement.kind === "plot") {
+      placementTool = "buyPlot";
       placed = await act({ type: "buyPlotAt", x: position.x, y: position.y });
     } else if (placement.kind === "tree") {
+      placementTool = placement.treeId;
       placed = await act({ type: "buyTreeAt", treeId: placement.treeId, x: position.x, y: position.y });
     } else {
       placed = await act({ type: "buildHouseAt", x: position.x, y: position.y });
     }
-    if (placed) setTool(null);
+    if (placementTool) continuePlacementMode(placementTool, placed, coinsBeforePurchase);
+    else if (placed) setTool(null);
+    if (placed && placementTool) setMenuOpen(false);
   };
 
   const handleShopDrop = async (placement: FarmPlacement, screenX: number, screenY: number) => {
@@ -470,6 +519,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
 
     if (!tool) return;
 
+    const coinsBeforePurchase = farm.coins;
     let placed = false;
     switch (tool) {
       case "buyPlot":
@@ -485,7 +535,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         placed = await act({ type: "buyTreeAt", treeId: tool, x: position.x, y: position.y });
         break;
     }
-    if (placed) setTool(null);
+    continuePlacementMode(tool, placed, coinsBeforePurchase);
   };
 
   const handleObjectDragEnd = async (
