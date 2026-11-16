@@ -64,7 +64,7 @@ const C = {
 
 type MenuTab = "shop" | "storage" | "quests";
 type FarmPlacement =
-  | { kind: "plot" }
+  | { kind: "plot"; cropId: CropId }
   | { kind: "tree"; treeId: FruitTreeId }
   | { kind: "house" };
 
@@ -111,7 +111,7 @@ function getQuestTitle(quest: FarmQuest): string {
   }
   if (quest.id.startsWith("harvest_")) {
     const cropId = quest.id.slice("harvest_".length) as CropId;
-    return `ازرع واحصد ${quest.target} مرات من ${CROPS[cropId].name}`;
+    return `احصد ${quest.target} مرات من ${CROPS[cropId].name}`;
   }
   return `اشترِ ${quest.target} ${quest.target === 1 ? "قطعة أرض" : "قطع أراضٍ"}`;
 }
@@ -232,7 +232,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
   const sceneRef = useRef<FarmSceneHandle>(null);
   const [farm, setFarm] = useState<FarmGameSave | null>(null);
   const [tool, setTool] = useState<FarmTool | null>(null);
-  const [cropPickerPlotId, setCropPickerPlotId] = useState<number | null>(null);
+  const [selectedPlotCrop, setSelectedPlotCrop] = useState<CropId>("wheat");
   const [pendingLandParcel, setPendingLandParcel] = useState<FarmLandParcel | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTab, setMenuTab] = useState<MenuTab>("shop");
@@ -396,6 +396,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     setMenuOpen(false);
   };
 
+  const selectPlotTool = (cropId: CropId) => {
+    setSelectedPlotCrop(cropId);
+    selectTool("buyPlot");
+  };
+
   const continuePlacementMode = (
     placementTool: FarmTool,
     placed: boolean,
@@ -433,7 +438,8 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     let placementTool: FarmTool | null = null;
     if (placement.kind === "plot") {
       placementTool = "buyPlot";
-      placed = await act({ type: "buyPlotAt", x: position.x, y: position.y });
+      setSelectedPlotCrop(placement.cropId);
+      placed = await act({ type: "buyPlotAt", cropId: placement.cropId, x: position.x, y: position.y });
     } else if (placement.kind === "tree") {
       placementTool = placement.treeId;
       placed = await act({ type: "buyTreeAt", treeId: placement.treeId, x: position.x, y: position.y });
@@ -480,15 +486,18 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     if (object?.type === "plot") {
       const plot = farm.plots.find((item) => item.id === object.id);
       if (!plot) return;
-      if (!plot.cropId) {
-        setCropPickerPlotId(plot.id);
-        return;
-      }
       const growth = getPlotGrowthState(plot, now);
       if (growth.ready) {
-        await act({ type: "harvestPlot", plotId: plot.id });
+        const assignedWorker = farm.workers.find((worker) => worker.targetPlotId === plot.id);
+        setHint(
+          assignedWorker?.state === "harvesting"
+            ? `العامل يحصد ${CROPS[plot.cropId].name} الآن؛ سيكتمل خلال ${formatTime(Math.max(0, assignedWorker.arrivesAt - now))}.`
+            : assignedWorker
+              ? `العامل في طريقه لحصاد ${CROPS[plot.cropId].name}.`
+              : `سيحصد العامل ${CROPS[plot.cropId].name} تلقائياً.`,
+        );
       } else {
-        setHint(`ينمو ${CROPS[plot.cropId].name} الآن. سيصبح جاهزاً خلال ${formatTime(growth.remaining)}.`);
+        setHint(`${CROPS[plot.cropId].name} ينمو تلقائياً. سيصبح جاهزاً خلال ${formatTime(growth.remaining)}.`);
       }
       return;
     }
@@ -523,7 +532,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     let placed = false;
     switch (tool) {
       case "buyPlot":
-        placed = await act({ type: "buyPlotAt", x: position.x, y: position.y });
+        placed = await act({ type: "buyPlotAt", cropId: selectedPlotCrop, x: position.x, y: position.y });
         break;
       case "buildHouse":
         placed = await act({ type: "buildHouseAt", x: position.x, y: position.y });
@@ -586,17 +595,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     } finally {
       setNameSaving(false);
     }
-  };
-
-  const handleCropChoice = async (cropId: CropId) => {
-    if (!farm || cropPickerPlotId === null) return;
-    if (farm.seeds[cropId] < 1) {
-      const bought = await act({ type: "buySeed", cropId });
-      if (bought) setHint(`تم شراء بذرة ${CROPS[cropId].name}. اضغطها مجدداً لزراعتها.`);
-      return;
-    }
-    const planted = await act({ type: "plantInPlot", plotId: cropPickerPlotId, cropId });
-    if (planted) setCropPickerPlotId(null);
   };
 
   const beginDrag = (label: string, active: boolean, x: number, y: number) => {
@@ -719,16 +717,24 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   onAction={() => void act({ type: "buyWorker" })}
                 />
                 <SectionLabel>الأرض والمنزل</SectionLabel>
-                <ShopCard
-                  title="حقل جديد"
-                  subtitle="حقل فارغ يبقى بعد الحصاد"
-                  icon="grid-outline"
-                  price={FARM_PLOT_COST}
-                  selected={tool === "buyPlot"}
-                  onPress={() => selectTool("buyPlot")}
-                  onDrop={(x, y) => void handleShopDrop({ kind: "plot" }, x, y)}
-                  onDragChange={(active, x, y) => beginDrag("حقل جديد", active, x, y)}
-                />
+                {CROP_ORDER.map((cropId) => {
+                  const crop = CROPS[cropId];
+                  const count = farm.plots.filter((plot) => plot.cropId === cropId).length;
+                  return (
+                    <ShopCard
+                      key={cropId}
+                      title={`حقل ${crop.emoji} ${crop.name}`}
+                      subtitle={`ينضج خلال ${formatTime(crop.growMs)} · ${crop.harvestAmount} للحصاد`}
+                      icon="grid-outline"
+                      price={FARM_PLOT_COST}
+                      count={`في المزرعة: ${count}`}
+                      selected={tool === "buyPlot" && selectedPlotCrop === cropId}
+                      onPress={() => selectPlotTool(cropId)}
+                      onDrop={(x, y) => void handleShopDrop({ kind: "plot", cropId }, x, y)}
+                      onDragChange={(active, x, y) => beginDrag(`حقل ${crop.name}`, active, x, y)}
+                    />
+                  );
+                })}
                 {!farm.houseBuilt ? (
                   <ShopCard
                     title="بناء منزل المزرعة"
@@ -741,19 +747,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                     onDragChange={(active, x, y) => beginDrag("منزل المزرعة", active, x, y)}
                   />
                 ) : null}
-
-                <SectionLabel>البذور والمحاصيل</SectionLabel>
-                {CROP_ORDER.map((cropId) => (
-                  <ShopCard
-                    key={cropId}
-                    title={`بذور ${CROPS[cropId].name}`}
-                    subtitle={`تنمو خلال ${formatTime(CROPS[cropId].growMs)} · ${CROPS[cropId].harvestAmount} للحصاد`}
-                    icon="leaf-outline"
-                    count={`المتاح: ${farm.seeds[cropId]}`}
-                    actionLabel={`شراء ${formatCoins(CROPS[cropId].seedPrice)}`}
-                    onAction={() => void act({ type: "buySeed", cropId })}
-                  />
-                ))}
 
                 <SectionLabel>أشجار مثمرة</SectionLabel>
                 {FRUIT_TREE_ORDER.map((treeId) => {
@@ -1003,54 +996,6 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   : "مزرعتك محفوظة في Firebase Firestore ضمن الحساب المسجّل."}
               </Text>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={cropPickerPlotId !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCropPickerPlotId(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.cropModal}>
-            <View style={styles.modalHeading}>
-              <View>
-                <Text style={styles.modalTitle}>ماذا تريد أن تزرع؟</Text>
-                <Text style={styles.modalSubtitle}>اختر محصولاً ليبدأ نموه فوراً</Text>
-              </View>
-              <Pressable onPress={() => setCropPickerPlotId(null)} style={styles.closeMenuButton}>
-                <Ionicons name="close" size={18} color={C.greenDark} />
-              </Pressable>
-            </View>
-            {CROP_ORDER.map((cropId) => {
-              const crop = CROPS[cropId];
-              const hasSeed = farm.seeds[cropId] > 0;
-              return (
-                <Pressable
-                  key={cropId}
-                  disabled={busy}
-                  onPress={() => void handleCropChoice(cropId)}
-                  style={styles.cropChoice}
-                >
-                  <View style={[styles.cropChoiceIcon, { backgroundColor: crop.lightColor }]}>
-                    <Ionicons name="leaf" size={18} color={crop.color} />
-                  </View>
-                  <View style={styles.cropChoiceCopy}>
-                    <Text style={styles.cropChoiceTitle}>{crop.name}</Text>
-                    <Text style={styles.cropChoiceMeta}>
-                      {formatTime(crop.growMs)} · البذور: {farm.seeds[cropId]}
-                    </Text>
-                  </View>
-                  <View style={[styles.cropChoiceButton, !hasSeed && styles.cropChoiceBuy]}>
-                    <Text style={styles.cropChoiceButtonText}>
-                      {hasSeed ? "ازرع" : `شراء ${formatCoins(crop.seedPrice)}`}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
           </View>
         </View>
       </Modal>

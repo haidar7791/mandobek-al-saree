@@ -114,7 +114,7 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
                 fontSize={14}
                 textAnchor="middle"
               >
-                {crop.id === "wheat" ? "🌾" : crop.id === "carrot" ? "🥕" : "🌽"}
+                {crop.emoji}
               </SvgText>
             ))}
           </>
