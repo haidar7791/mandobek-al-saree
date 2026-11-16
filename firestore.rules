@@ -557,6 +557,9 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "version",
           "coins",
+          "gems",
+          "questCycle",
+          "quests",
           "seeds",
           "inventory",
           "fruitInventory",
@@ -576,9 +579,15 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.version == 6
+        && request.resource.data.version == 7
         && request.resource.data.coins is number
         && request.resource.data.coins >= 0
+        && request.resource.data.gems is number
+        && request.resource.data.gems >= 0
+        && request.resource.data.questCycle is number
+        && request.resource.data.questCycle >= 0
+        && request.resource.data.quests is list
+        && request.resource.data.quests.size() == 8
         && request.resource.data.seeds is map
         && request.resource.data.inventory is map
         && request.resource.data.fruitInventory is map

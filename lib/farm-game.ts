@@ -1,6 +1,15 @@
 export type CropId = "wheat" | "carrot" | "corn";
-export type FruitTreeId = "apple" | "orange";
+export type FruitTreeId = "apple" | "orange" | "peach" | "lemon";
 export type DecorationId = "flowerBed" | "gardenLamp" | "fence";
+export type FarmQuestId =
+  | "plant_apple"
+  | "plant_orange"
+  | "plant_peach"
+  | "plant_lemon"
+  | "harvest_wheat"
+  | "harvest_carrot"
+  | "harvest_corn"
+  | "buy_land";
 export type FarmTool =
   | "walk"
   | "plant"
@@ -9,6 +18,8 @@ export type FarmTool =
   | "buildHouse"
   | "apple"
   | "orange"
+  | "peach"
+  | "lemon"
   | "flowerBed"
   | "gardenLamp"
   | "fence";
@@ -62,6 +73,7 @@ export const FRUIT_TREES: Record<FruitTreeId, {
   id: FruitTreeId;
   name: string;
   fruitName: string;
+  emoji: string;
   price: number;
   growMs: number;
   harvestAmount: number;
@@ -73,6 +85,7 @@ export const FRUIT_TREES: Record<FruitTreeId, {
     id: "apple",
     name: "شجرة تفاح",
     fruitName: "تفاح",
+    emoji: "🍎",
     price: 500,
     growMs: 120_000,
     harvestAmount: 3,
@@ -84,6 +97,7 @@ export const FRUIT_TREES: Record<FruitTreeId, {
     id: "orange",
     name: "شجرة برتقال",
     fruitName: "برتقال",
+    emoji: "🍊",
     price: 1_000,
     growMs: 150_000,
     harvestAmount: 3,
@@ -91,8 +105,32 @@ export const FRUIT_TREES: Record<FruitTreeId, {
     color: "#518F4A",
     fruitColor: "#F39A36",
   },
+  peach: {
+    id: "peach",
+    name: "شجرة خوخ",
+    fruitName: "خوخ",
+    emoji: "🍑",
+    price: 1_500,
+    growMs: 180_000,
+    harvestAmount: 3,
+    sellPrice: 23,
+    color: "#6D9C4F",
+    fruitColor: "#F3A38F",
+  },
+  lemon: {
+    id: "lemon",
+    name: "شجرة ليمون",
+    fruitName: "ليمون",
+    emoji: "🍋",
+    price: 2_000,
+    growMs: 210_000,
+    harvestAmount: 3,
+    sellPrice: 26,
+    color: "#789C3C",
+    fruitColor: "#E8D64A",
+  },
 };
-export const FRUIT_TREE_ORDER: FruitTreeId[] = ["apple", "orange"];
+export const FRUIT_TREE_ORDER: FruitTreeId[] = ["apple", "orange", "peach", "lemon"];
 export const DECORATIONS: Record<DecorationId, {
   id: DecorationId;
   name: string;
@@ -111,6 +149,7 @@ export const FARM_PLOT_COST = 25;
 export const FARM_LAND_EXPANSION_COST = 1_000;
 export const FARM_WORKER_BASE_COST = 2_000;
 export const FARM_WORKER_HARVEST_DURATION_MS = 5_000;
+export const FARM_OBSTACLE_CLEAR_COST = 1;
 export const FARM_HOUSE_COST = 180;
 export const FARM_PARCEL_COLUMNS = 4;
 export const FARM_PARCEL_ROWS = 3;
@@ -122,6 +161,52 @@ export const INITIAL_SEEDS: Record<CropId, number> = {
   carrot: 2,
   corn: 1,
 };
+
+export interface FarmQuest {
+  id: FarmQuestId;
+  target: number;
+  progress: number;
+  rewardGems: number;
+}
+
+const FARM_QUEST_BASES: { id: FarmQuestId; target: number }[] = [
+  { id: "plant_apple", target: 3 },
+  { id: "plant_orange", target: 3 },
+  { id: "plant_peach", target: 3 },
+  { id: "plant_lemon", target: 3 },
+  { id: "harvest_wheat", target: 4 },
+  { id: "harvest_corn", target: 4 },
+  { id: "harvest_carrot", target: 4 },
+  { id: "buy_land", target: 1 },
+];
+
+function multiplyQuestValue(base: number, cycle: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, base * 2 ** Math.min(cycle, 52));
+}
+
+function createFarmQuestSet(cycle: number): FarmQuest[] {
+  return FARM_QUEST_BASES.map(({ id, target }) => ({
+    id,
+    target: multiplyQuestValue(target, cycle),
+    progress: 0,
+    rewardGems: multiplyQuestValue(2, cycle),
+  }));
+}
+
+function recordQuestProgress(farm: FarmGameSave, id: FarmQuestId): void {
+  const quest = farm.quests.find((item) => item.id === id);
+  if (!quest || quest.progress >= quest.target) return;
+
+  quest.progress = Math.min(quest.target, quest.progress + 1);
+  if (quest.progress === quest.target) {
+    farm.gems += quest.rewardGems;
+  }
+
+  if (farm.quests.length > 0 && farm.quests.every((item) => item.progress >= item.target)) {
+    farm.questCycle += 1;
+    farm.quests = createFarmQuestSet(farm.questCycle);
+  }
+}
 
 export interface FarmPosition {
   x: number;
@@ -176,8 +261,11 @@ export interface FarmWorker {
 }
 
 export interface FarmGameSave {
-  version: 6;
+  version: 7;
   coins: number;
+  gems: number;
+  questCycle: number;
+  quests: FarmQuest[];
   seeds: Record<CropId, number>;
   inventory: Record<CropId, number>;
   fruitInventory: Record<FruitTreeId, number>;
@@ -209,6 +297,7 @@ type OccupancyException = FarmObjectRef | { type: "player"; id: "player" };
 
 export type FarmAction =
   | { type: "buyLandParcel"; column: number; row: number }
+  | { type: "clearObstacle"; obstacleId: string }
   | { type: "buyWorker" }
   | { type: "buyPlotAt"; x: number; y: number }
   | { type: "plantInPlot"; plotId: number; cropId: CropId }
@@ -235,7 +324,11 @@ function isCropId(value: unknown): value is CropId {
 }
 
 function isFruitTreeId(value: unknown): value is FruitTreeId {
-  return value === "apple" || value === "orange";
+  return value === "apple" || value === "orange" || value === "peach" || value === "lemon";
+}
+
+function isFarmQuestId(value: unknown): value is FarmQuestId {
+  return FARM_QUEST_BASES.some((quest) => quest.id === value);
 }
 
 function isDecorationId(value: unknown): value is DecorationId {
@@ -325,20 +418,21 @@ function normalizeWorker(
   const state = raw.state === "walking" || raw.state === "waiting" || raw.state === "harvesting"
     ? raw.state
     : "idle";
+  const clearingLegacyObstacle = typeof raw.targetObstacleId === "string";
   const to = toRaw && typeof toRaw.x === "number" && typeof toRaw.y === "number"
     ? clampPosition(toRaw.x, toRaw.y)
     : null;
-  const safeState = state === "walking" && !to ? "idle" : state;
+  const safeState = clearingLegacyObstacle || (state === "walking" && !to) ? "idle" : state;
   return {
     id: typeof raw.id === "string" ? raw.id : `worker-${index + 1}`,
     from: clampPosition(fromRaw.x, fromRaw.y),
     to: safeState === "walking" ? to : null,
-    targetTreeId: typeof raw.targetTreeId === "string" ? raw.targetTreeId : null,
-    targetObstacleId: typeof raw.targetObstacleId === "string" ? raw.targetObstacleId : null,
+    targetTreeId: !clearingLegacyObstacle && typeof raw.targetTreeId === "string" ? raw.targetTreeId : null,
+    targetObstacleId: null,
     state: safeState,
     startedAt: nonNegativeInt(raw.startedAt, now),
     arrivesAt: nonNegativeInt(raw.arrivesAt, now),
-    wakeAt: typeof raw.wakeAt === "number" && Number.isFinite(raw.wakeAt)
+    wakeAt: !clearingLegacyObstacle && typeof raw.wakeAt === "number" && Number.isFinite(raw.wakeAt)
       ? Math.max(0, raw.wakeAt)
       : null,
   };
@@ -362,11 +456,14 @@ export function getWorkerHarvestProgress(worker: FarmWorker, now = Date.now()): 
 
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 6,
+    version: 7,
     coins: 140,
+    gems: 0,
+    questCycle: 0,
+    quests: createFarmQuestSet(0),
     seeds: { ...INITIAL_SEEDS },
     inventory: { wheat: 0, carrot: 0, corn: 0 },
-    fruitInventory: { apple: 0, orange: 0 },
+    fruitInventory: { apple: 0, orange: 0, peach: 0, lemon: 0 },
     landParcels: [{ ...FARM_START_PARCEL }],
     expansionsPurchased: 0,
     plots: [
@@ -396,9 +493,12 @@ export function createInitialFarmSave(now = Date.now()): FarmGameSave {
 export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   const farm = createInitialFarm(now);
   farm.coins = 345;
+  farm.gems = 8;
+  farm.quests.find((quest) => quest.id === "plant_apple")!.progress = 1;
+  farm.quests.find((quest) => quest.id === "harvest_wheat")!.progress = 2;
   farm.seeds = { wheat: 5, carrot: 3, corn: 2 };
   farm.inventory = { wheat: 4, carrot: 2, corn: 1 };
-  farm.fruitInventory = { apple: 2, orange: 1 };
+  farm.fruitInventory = { apple: 2, orange: 1, peach: 0, lemon: 0 };
   farm.totalHarvests = 4;
   farm.plots = [
     { id: 1, x: 8, y: 9, cropId: "wheat", plantedAt: now - 40_000, growthProgressMs: 30_000, lastGrowthAt: now },
@@ -408,6 +508,8 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   farm.trees = [
     { id: "demo-apple", kind: "apple", x: 7, y: 7, plantedAt: now - 180_000, nextHarvestAt: now - 1_000 },
     { id: "demo-orange", kind: "orange", x: 10, y: 7, plantedAt: now - 40_000, nextHarvestAt: now + 110_000 },
+    { id: "demo-peach", kind: "peach", x: 6, y: 8, plantedAt: now - 180_000, nextHarvestAt: now - 1_000 },
+    { id: "demo-lemon", kind: "lemon", x: 11, y: 8, plantedAt: now - 210_000, nextHarvestAt: now - 1_000 },
   ];
   farm.houseBuilt = true;
   farm.houseLevel = 1;
@@ -473,29 +575,6 @@ function getTreeWorkPosition(farm: FarmGameSave, tree: FarmFruitTree, from: Farm
 function startWorkerRoute(farm: FarmGameSave, worker: FarmWorker, now: number): FarmWorker {
   const from = getWorkerPosition(worker, now);
   const otherWorkers = farm.workers.filter((item) => item.id !== worker.id);
-  const assignedObstacleIds = new Set(
-    otherWorkers
-      .filter((item) => item.state === "walking" && item.targetObstacleId)
-      .map((item) => item.targetObstacleId),
-  );
-  const obstacles = farm.obstacles
-    .filter((item) => !assignedObstacleIds.has(item.id))
-    .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y));
-  const obstacle = obstacles[0];
-  if (obstacle) {
-    return {
-      ...worker,
-      from,
-      to: { x: obstacle.x, y: obstacle.y },
-      targetTreeId: null,
-      targetObstacleId: obstacle.id,
-      state: "walking",
-      startedAt: now,
-      arrivesAt: now + workerTravelDuration(from, obstacle),
-      wakeAt: null,
-    };
-  }
-
   const assignedTreeIds = new Set(
     otherWorkers
       .filter((item) => (
@@ -569,8 +648,8 @@ function advanceWorkerTasks(farm: FarmGameSave, now: number): FarmGameSave {
       worker.arrivesAt = eventAt;
       worker.wakeAt = null;
       if (targetObstacleId) {
-        farm.obstacles = farm.obstacles.filter((obstacle) => obstacle.id !== targetObstacleId);
         worker.targetObstacleId = null;
+        worker.targetTreeId = null;
       } else if (targetTreeId) {
         const tree = farm.trees.find((item) => item.id === targetTreeId);
         if (tree && tree.nextHarvestAt <= eventAt) {
@@ -631,6 +710,7 @@ function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
       from: { ...worker.from },
       to: worker.to ? { ...worker.to } : null,
     })),
+    quests: farm.quests.map((quest) => ({ ...quest })),
     plots: farm.plots.map((plot) => {
       const growth = getPlotGrowthState(plot, now);
       return plot.cropId
@@ -648,6 +728,25 @@ function advanceFarmTime(farm: FarmGameSave, now: number): FarmGameSave {
 
 export function advanceFarmGameTime(farm: FarmGameSave, now = Date.now()): FarmGameSave {
   return advanceFarmTime(farm, now);
+}
+
+function normalizeFarmQuests(value: unknown, cycle: number): FarmQuest[] {
+  const defaults = createFarmQuestSet(cycle);
+  const rawQuests = Array.isArray(value) ? value : [];
+  return defaults.map((defaultQuest) => {
+    const raw = rawQuests.find((item) => (
+      item && typeof item === "object"
+      && (item as Record<string, unknown>).id === defaultQuest.id
+    )) as Record<string, unknown> | undefined;
+    if (!raw || !isFarmQuestId(raw.id)) return defaultQuest;
+    const target = Math.max(1, nonNegativeInt(raw.target, defaultQuest.target));
+    return {
+      id: defaultQuest.id,
+      target,
+      progress: Math.min(target, nonNegativeInt(raw.progress)),
+      rewardGems: nonNegativeInt(raw.rewardGems, defaultQuest.rewardGems),
+    };
+  });
 }
 
 export function isFarmPositionFree(
@@ -849,9 +948,13 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
   const seeds = (data.seeds ?? {}) as Record<string, unknown>;
   const inventory = (data.inventory ?? {}) as Record<string, unknown>;
   const fruitInventory = (data.fruitInventory ?? {}) as Record<string, unknown>;
+  const questCycle = nonNegativeInt(data.questCycle);
   const farm: FarmGameSave = {
-    version: 6,
+    version: 7,
     coins: nonNegativeInt(data.coins, initial.coins),
+    gems: nonNegativeInt(data.gems),
+    questCycle,
+    quests: normalizeFarmQuests(data.quests, questCycle),
     seeds: {
       wheat: nonNegativeInt(seeds.wheat, initial.seeds.wheat),
       carrot: nonNegativeInt(seeds.carrot, initial.seeds.carrot),
@@ -865,6 +968,8 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
     fruitInventory: {
       apple: nonNegativeInt(fruitInventory.apple),
       orange: nonNegativeInt(fruitInventory.orange),
+      peach: nonNegativeInt(fruitInventory.peach),
+      lemon: nonNegativeInt(fruitInventory.lemon),
     },
     landParcels,
     expansionsPurchased: nonNegativeInt(data.expansionsPurchased, legacyExpansionCount),
@@ -950,6 +1055,17 @@ export function applyFarmActionToState(
       next.landParcels.push({ column, row });
       next.expansionsPurchased += 1;
       next.obstacles.push(...createParcelObstacles(column, row));
+      recordQuestProgress(next, "buy_land");
+      break;
+    }
+    case "clearObstacle": {
+      const obstacleIndex = next.obstacles.findIndex((item) => item.id === action.obstacleId);
+      if (obstacleIndex < 0) throw new Error("لم يتم العثور على هذا العائق.");
+      if (next.gems < FARM_OBSTACLE_CLEAR_COST) {
+        throw new Error(`تحتاج إلى ${FARM_OBSTACLE_CLEAR_COST} جوهرة لإزالة العائق.`);
+      }
+      next.gems -= FARM_OBSTACLE_CLEAR_COST;
+      next.obstacles.splice(obstacleIndex, 1);
       break;
     }
     case "buyWorker": {
@@ -1042,6 +1158,7 @@ export function applyFarmActionToState(
       plot.growthProgressMs = 0;
       plot.lastGrowthAt = null;
       plot.unlocked = true;
+      recordQuestProgress(next, `harvest_${cropId}` as FarmQuestId);
       break;
     }
     case "buyTreeAt": {
@@ -1057,6 +1174,7 @@ export function applyFarmActionToState(
         plantedAt: now,
         nextHarvestAt: now + tree.growMs,
       });
+      recordQuestProgress(next, `plant_${action.treeId}` as FarmQuestId);
       break;
     }
     case "sellFruit": {

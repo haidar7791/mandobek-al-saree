@@ -28,6 +28,7 @@ import {
   CROPS,
   FARM_MAP_COLUMNS,
   FARM_MAP_ROWS,
+  FARM_OBSTACLE_CLEAR_COST,
   FARM_PARCEL_COLUMNS,
   FARM_PARCEL_HEIGHT,
   FARM_PARCEL_ROWS,
@@ -136,6 +137,10 @@ function FarmObstacleView({ obstacle }: { obstacle: FarmObstacle }) {
         <Polygon points={`${x + 5},${y + 29} ${x + 8},${y + 17} ${x + 16},${y + 10} ${x + 26},${y + 12} ${x + 34},${y + 22} ${x + 32},${y + 31}`} fill="#858B80" stroke="#666D63" strokeWidth={1.5} />
         <Polygon points={`${x + 8},${y + 18} ${x + 16},${y + 11} ${x + 23},${y + 13} ${x + 17},${y + 22}`} fill="#A8ADA2" opacity={0.9} />
         <Path d={`M ${x + 17} ${y + 21} l 6 -4 M ${x + 23} ${y + 27} l 5 -4`} stroke="#687067" strokeWidth={1.1} />
+        <Rect x={x + 5} y={y + 34} width={30} height={12} rx={5} fill="#FFF8DD" stroke="#B99A52" strokeWidth={0.8} />
+        <SvgText x={x + 20} y={y + 43} fontSize={7} textAnchor="middle" fill="#6C5520" fontWeight="800">
+          {FARM_OBSTACLE_CLEAR_COST} 💎
+        </SvgText>
       </G>
     );
   }
@@ -147,6 +152,10 @@ function FarmObstacleView({ obstacle }: { obstacle: FarmObstacle }) {
       <Circle cx={x + 25} cy={y + 14} r={7} fill="#5C9148" />
       <Circle cx={x + 27} cy={y + 23} r={6} fill="#78A95A" />
       <Path d={`M ${x + 7} ${y + 35} q 4 -5 8 0 M ${x + 27} ${y + 35} q 4 -5 8 0`} fill="none" stroke="#6E9148" strokeWidth={2} />
+      <Rect x={x + 5} y={y + 34} width={30} height={12} rx={5} fill="#FFF8DD" stroke="#B99A52" strokeWidth={0.8} />
+      <SvgText x={x + 20} y={y + 43} fontSize={7} textAnchor="middle" fill="#6C5520" fontWeight="800">
+        {FARM_OBSTACLE_CLEAR_COST} 💎
+      </SvgText>
     </G>
   );
 }
@@ -316,13 +325,13 @@ function FruitTree({ tree, now }: { tree: FarmGameSave["trees"][number]; now: nu
       {state.ready ? (
         <>
           <SvgText x={x + 13} y={y + 17} fontSize={12} textAnchor="middle">
-            {tree.kind === "apple" ? "🍎" : "🍊"}
+            {definition.emoji}
           </SvgText>
           <SvgText x={x + 27} y={y + 15} fontSize={12} textAnchor="middle">
-            {tree.kind === "apple" ? "🍎" : "🍊"}
+            {definition.emoji}
           </SvgText>
           <SvgText x={x + 20} y={y + 28} fontSize={12} textAnchor="middle">
-            {tree.kind === "apple" ? "🍎" : "🍊"}
+            {definition.emoji}
           </SvgText>
           <Circle cx={x + 34} cy={y + 5} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />
         </>

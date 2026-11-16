@@ -19,10 +19,12 @@ export async function loadFarmGame(playerId: string): Promise<FarmGameSave> {
     }
     const data = snapshot.data();
     const farm = normalizeFarm(data);
-    const simulationChanged = data.version !== 6
+    const simulationChanged = data.version !== 7
       || JSON.stringify(farm.workers) !== JSON.stringify(data.workers)
       || JSON.stringify(farm.obstacles) !== JSON.stringify(data.obstacles)
-      || JSON.stringify(farm.fruitInventory) !== JSON.stringify(data.fruitInventory);
+      || JSON.stringify(farm.fruitInventory) !== JSON.stringify(data.fruitInventory)
+      || farm.gems !== data.gems
+      || JSON.stringify(farm.quests) !== JSON.stringify(data.quests);
     if (simulationChanged) transaction.set(farmRef, farm);
     return farm;
   });

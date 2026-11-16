@@ -24,6 +24,7 @@ import {
   DECORATIONS,
   DECORATION_ORDER,
   FARM_HOUSE_COST,
+  FARM_OBSTACLE_CLEAR_COST,
   FARM_PLOT_COST,
   FRUIT_TREES,
   FRUIT_TREE_ORDER,
@@ -42,6 +43,7 @@ import {
   type FarmLandParcel,
   type FarmObjectRef,
   type FarmPosition,
+  type FarmQuest,
   type FarmTool,
   type FruitTreeId,
 } from "@/lib/farm-game";
@@ -61,7 +63,7 @@ const C = {
   red: "#C05A46",
 };
 
-type MenuTab = "shop" | "tools" | "storage";
+type MenuTab = "shop" | "tools" | "storage" | "quests";
 type FarmPlacement =
   | { kind: "plot" }
   | { kind: "tree"; treeId: FruitTreeId }
@@ -85,7 +87,9 @@ function toolDescription(tool: FarmTool | null): string {
   if (tool === "move") return "اختر مبنى أو حقلاً أو شجرة، ثم اضغط مكاناً فارغاً لنقله.";
   if (tool === "buyPlot") return "اضغط الأرض لوضع الحقل، أو اسحبه من القائمة مباشرة.";
   if (tool === "buildHouse") return "اختر مكاناً فارغاً لبناء منزل المزرعة.";
-  if (tool === "apple" || tool === "orange") return `اختر مكاناً فارغاً لوضع ${FRUIT_TREES[tool].name}.`;
+  if (tool && FRUIT_TREE_ORDER.includes(tool as FruitTreeId)) {
+    return `اختر مكاناً فارغاً لوضع ${FRUIT_TREES[tool as FruitTreeId].name}.`;
+  }
   if (tool === "flowerBed" || tool === "gardenLamp" || tool === "fence") {
     return `اختر مكاناً فارغاً لوضع ${DECORATIONS[tool].name}.`;
   }
@@ -104,6 +108,37 @@ function objectName(object: FarmObjectRef | null): string {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
+}
+
+function getQuestTitle(quest: FarmQuest): string {
+  if (quest.id.startsWith("plant_")) {
+    const treeId = quest.id.slice("plant_".length) as FruitTreeId;
+    return `ضع ${quest.target} أشجار ${FRUIT_TREES[treeId].fruitName}`;
+  }
+  if (quest.id.startsWith("harvest_")) {
+    const cropId = quest.id.slice("harvest_".length) as CropId;
+    return `ازرع واحصد ${quest.target} مرات من ${CROPS[cropId].name}`;
+  }
+  return `اشترِ ${quest.target} ${quest.target === 1 ? "قطعة أرض" : "قطع أراضٍ"}`;
+}
+
+function FarmQuestCard({ quest }: { quest: FarmQuest }) {
+  const completed = quest.progress >= quest.target;
+  const progress = Math.min(1, quest.progress / quest.target);
+  return (
+    <View style={[styles.questCard, completed && styles.questCardCompleted]}>
+      <View style={styles.questCardHeader}>
+        <Text style={styles.questReward}>+{formatCoins(quest.rewardGems)} 💎</Text>
+        <Text style={styles.questTitle}>{getQuestTitle(quest)}</Text>
+      </View>
+      <View style={styles.questProgressTrack}>
+        <View style={[styles.questProgressFill, { width: `${progress * 100}%` }]} />
+      </View>
+      <Text style={styles.questStatus}>
+        {completed ? "مكتملة" : `${formatCoins(quest.progress)} / ${formatCoins(quest.target)}`}
+      </Text>
+    </View>
+  );
 }
 
 function ShopCard({
@@ -324,7 +359,16 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
           ? applyFarmActionToState(farm, action)
           : await performFarmAction(playerId, action);
         setFarm(updated);
-        setHint("");
+        const gemsEarned = updated.gems - farm.gems;
+        if (updated.questCycle > farm.questCycle) {
+          setHint(`اكتملت مجموعة المهام! بدأت مجموعة جديدة بأهداف ومكافآت مضاعفة · +${formatCoins(gemsEarned)} 💎`);
+        } else if (gemsEarned > 0) {
+          setHint(`أُنجزت مهمة وربحت ${formatCoins(gemsEarned)} 💎.`);
+        } else if (action.type === "clearObstacle") {
+          setHint(`أزلت العائق مقابل ${formatCoins(FARM_OBSTACLE_CLEAR_COST)} 💎.`);
+        } else {
+          setHint("");
+        }
         return true;
       } catch (actionError) {
         setHint(actionError instanceof Error ? actionError.message : "تعذّر تنفيذ الحركة. حاول مرة أخرى.");
@@ -398,7 +442,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     }
 
     if (object?.type === "obstacle") {
-      setHint("العامل يزيل هذه الشوائب تلقائياً قبل إتاحة المكان للبناء.");
+      await act({ type: "clearObstacle", obstacleId: object.id });
       return;
     }
 
@@ -483,6 +527,8 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         break;
       case "apple":
       case "orange":
+      case "peach":
+      case "lemon":
         await act({ type: "buyTreeAt", treeId: tool, x: position.x, y: position.y });
         break;
       case "flowerBed":
@@ -556,9 +602,15 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
         {previewMode ? (
           <View style={styles.previewTag}><Ionicons name="eye-outline" size={13} color={C.greenDark} /><Text style={styles.previewText}>تجربة</Text></View>
         ) : null}
-        <View style={styles.coins}>
-          <Ionicons name="cash" size={17} color="#986D1F" />
-          <Text style={styles.coinText}>{formatCoins(farm.coins)}</Text>
+        <View style={styles.balanceGroup}>
+          <View style={styles.coins}>
+            <Ionicons name="cash" size={17} color="#986D1F" />
+            <Text style={styles.coinText}>{formatCoins(farm.coins)}</Text>
+          </View>
+          <View style={styles.gems}>
+            <Text style={styles.gemIcon}>💎</Text>
+            <Text style={styles.gemText}>{formatCoins(farm.gems)}</Text>
+          </View>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -597,6 +649,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                 ["shop", "المتجر", "basket-outline"],
                 ["tools", "الأدوات", "construct-outline"],
                 ["storage", "المخزن", "cube-outline"],
+                ["quests", "المهام", "flag-outline"],
               ] as const).map(([key, label, icon]) => (
                 <Pressable
                   key={key}
@@ -616,7 +669,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                 <SectionLabel>العمال والأرض</SectionLabel>
                 <ShopCard
                   title="توظيف عامل مزرعة"
-                  subtitle="يتنقل ويجمع الثمار وينظف التوسعات"
+                  subtitle="يتنقل ويجمع ثمار الأشجار الناضجة"
                   icon="person-add-outline"
                   count={`العمال: ${farm.workers.length}`}
                   actionLabel={`توظيف · ${formatCoins(getNextWorkerCost(farm))}`}
@@ -665,7 +718,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   return (
                     <ShopCard
                       key={treeId}
-                      title={tree.name}
+                      title={`${tree.emoji} ${tree.name}`}
                       subtitle={`أول ثمار بعد ${formatTime(tree.growMs)} · ${tree.harvestAmount} ${tree.fruitName}`}
                       icon="nutrition-outline"
                       price={tree.price}
@@ -761,7 +814,7 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                 {FRUIT_TREE_ORDER.map((treeId) => (
                   <StorageRow
                     key={treeId}
-                    title={FRUIT_TREES[treeId].fruitName}
+                    title={`${FRUIT_TREES[treeId].emoji} ${FRUIT_TREES[treeId].fruitName}`}
                     count={farm.fruitInventory[treeId]}
                     unitPrice={FRUIT_TREES[treeId].sellPrice}
                     disabled={busy || farm.fruitInventory[treeId] < 1}
@@ -769,6 +822,24 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
                   />
                 ))}
                 {totalStored === 0 ? <Text style={styles.emptyStorage}>سيظهر ما تجمعه من محاصيل وثمار هنا.</Text> : null}
+              </ScrollView>
+            ) : null}
+
+            {menuTab === "quests" ? (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuContent}>
+                <View style={styles.questIntro}>
+                  <View style={styles.questIntroTop}>
+                    <Text style={styles.questGemBalance}>{formatCoins(farm.gems)} 💎</Text>
+                    <Text style={styles.questCycle}>المجموعة {formatCoins(farm.questCycle + 1)}</Text>
+                  </View>
+                  <Text style={styles.questIntroText}>
+                    تُضاف الجواهر عند إنجاز كل مهمة. أكمل المجموعة لتتضاعف أهداف ومكافآت المجموعة التالية.
+                  </Text>
+                </View>
+                <SectionLabel>المهام الحالية</SectionLabel>
+                {farm.quests.map((quest) => (
+                  <FarmQuestCard key={quest.id} quest={quest} />
+                ))}
               </ScrollView>
             ) : null}
           </View>
@@ -957,8 +1028,12 @@ const styles = StyleSheet.create({
   subtitle: { color: C.muted, fontSize: 9, marginTop: 2, textAlign: "right" },
   previewTag: { paddingHorizontal: 7, paddingVertical: 6, borderRadius: 10, backgroundColor: "#E7F2DF", flexDirection: "row", alignItems: "center", gap: 4 },
   previewText: { color: C.greenDark, fontSize: 9, fontWeight: "800" },
+  balanceGroup: { flexDirection: "row-reverse", alignItems: "center", gap: 5 },
   coins: { minHeight: 35, paddingHorizontal: 9, borderRadius: 12, backgroundColor: "#FFF3D0", flexDirection: "row", alignItems: "center", gap: 4 },
   coinText: { color: "#775517", fontSize: 11, fontWeight: "900" },
+  gems: { minHeight: 35, paddingHorizontal: 8, borderRadius: 12, backgroundColor: "#EEE6FA", flexDirection: "row", alignItems: "center", gap: 4 },
+  gemIcon: { fontSize: 14 },
+  gemText: { color: "#6944A0", fontSize: 11, fontWeight: "900" },
   menuToggle: { width: 38, height: 38, borderRadius: 13, backgroundColor: "#E8F0DB", alignItems: "center", justifyContent: "center" },
   menuToggleActive: { backgroundColor: C.green },
   workspace: { flex: 1, minHeight: 0 },
@@ -1006,6 +1081,19 @@ const styles = StyleSheet.create({
   sellButton: { minWidth: 44, minHeight: 29, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#E8F3E3" },
   sellText: { color: C.greenDark, fontSize: 9, fontWeight: "900" },
   emptyStorage: { color: C.muted, fontSize: 10, textAlign: "center", paddingVertical: 18 },
+  questIntro: { padding: 11, borderRadius: 13, backgroundColor: "#F1EAFB", gap: 6 },
+  questIntroTop: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  questCycle: { color: "#51387C", fontSize: 11, fontWeight: "900" },
+  questGemBalance: { color: "#6944A0", fontSize: 10, fontWeight: "900" },
+  questIntroText: { color: "#695783", fontSize: 9, lineHeight: 15, textAlign: "right" },
+  questCard: { padding: 10, borderRadius: 12, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E6DEEF", gap: 7 },
+  questCardCompleted: { backgroundColor: "#F0F7E9", borderColor: "#9FBE87" },
+  questCardHeader: { flexDirection: "row-reverse", alignItems: "flex-start", justifyContent: "space-between", gap: 6 },
+  questTitle: { flex: 1, color: C.ink, fontSize: 10, lineHeight: 15, fontWeight: "800", textAlign: "right" },
+  questReward: { color: "#6944A0", fontSize: 9, fontWeight: "900" },
+  questProgressTrack: { height: 6, overflow: "hidden", borderRadius: 4, backgroundColor: "#E9E7E2" },
+  questProgressFill: { height: "100%", borderRadius: 4, backgroundColor: C.green },
+  questStatus: { color: C.muted, fontSize: 8, textAlign: "right" },
   bottomBar: { minHeight: 42, paddingHorizontal: 10, paddingVertical: 4, flexDirection: "row-reverse", alignItems: "center", gap: 8, backgroundColor: "#F7F7E8", borderTopWidth: 1, borderTopColor: "rgba(70,104,50,0.14)" },
   hintIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: "#E7F0DC", alignItems: "center", justifyContent: "center" },
   hintText: { flex: 1, color: C.greenDark, fontSize: 9, fontWeight: "700", textAlign: "right" },
