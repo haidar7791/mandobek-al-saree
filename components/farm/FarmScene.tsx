@@ -105,14 +105,19 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
       <Line x1={3} y1={27} x2={37} y2={27} stroke="#B17B4D" strokeWidth={1.8} />
       {crop ? (
         growth?.ready ? (
-          <SvgText
-            x={20}
-            y={31}
-            fontSize={25}
-            textAnchor="middle"
-          >
-            {crop.id === "wheat" ? "🌾" : crop.id === "carrot" ? "🥕" : "🌽"}
-          </SvgText>
+          <>
+            {[0, 1, 2, 3, 4, 5].map((index) => (
+              <SvgText
+                key={index}
+                x={9 + (index % 3) * 11}
+                y={19 + Math.floor(index / 3) * 13}
+                fontSize={14}
+                textAnchor="middle"
+              >
+                {crop.id === "wheat" ? "🌾" : crop.id === "carrot" ? "🥕" : "🌽"}
+              </SvgText>
+            ))}
+          </>
         ) : (
         <>
           {[8, 16, 24, 32].map((offset, index) => (
@@ -402,6 +407,14 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
   const harvesting = worker.state === "harvesting";
   const y = position.y * FARM_TILE_SIZE + (harvesting ? 4 : 0);
   const harvestProgress = getWorkerHarvestProgress(worker, now);
+  const dx = worker.to ? worker.to.x - worker.from.x : 0;
+  const dy = worker.to ? worker.to.y - worker.from.y : 0;
+  const direction = worker.state !== "walking" || !worker.to
+    ? "stationary"
+    : Math.abs(dx) >= Math.abs(dy)
+      ? (dx < 0 ? "left" : "right")
+      : (dy < 0 ? "up" : "down");
+  const mirrored = direction === "right";
   return (
     <G>
       {harvesting ? (
@@ -411,9 +424,34 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
         </>
       ) : null}
       <Ellipse cx={x + 20} cy={y + 35} rx={9} ry={3} fill="#35563B" opacity={0.3} />
-      <SvgText x={x + 20} y={y + 32} fontSize={27} textAnchor="middle">
-        🚶
-      </SvgText>
+      {direction === "up" ? (
+        <G>
+          <Circle cx={x + 20} cy={y + 14} r={6} fill="#D9AF86" stroke="#80583C" strokeWidth={1} />
+          <Path
+            d={`M ${x + 11} ${y + 31} Q ${x + 11} ${y + 21} ${x + 20} ${y + 20} Q ${x + 29} ${y + 21} ${x + 29} ${y + 31} Z`}
+            fill="#A85F39"
+            stroke="#75442F"
+            strokeWidth={1}
+          />
+          <Path d={`M ${x + 14} ${y + 24} Q ${x + 20} ${y + 27} ${x + 26} ${y + 24}`} fill="none" stroke="#D89162" strokeWidth={1.1} />
+          <Line x1={x + 15} y1={y + 30} x2={x + 13} y2={y + 35} stroke="#4C4239" strokeWidth={2.6} strokeLinecap="round" />
+          <Line x1={x + 25} y1={y + 30} x2={x + 27} y2={y + 35} stroke="#4C4239" strokeWidth={2.6} strokeLinecap="round" />
+        </G>
+      ) : direction === "down" ? (
+        <SvgText x={x + 20} y={y + 32} fontSize={27} textAnchor="middle">
+          🧍
+        </SvgText>
+      ) : (
+        <SvgText
+          x={x + 20}
+          y={y + 32}
+          fontSize={27}
+          textAnchor="middle"
+          transform={mirrored ? `translate(${(x + 20) * 2} 0) scale(-1 1)` : undefined}
+        >
+          🚶
+        </SvgText>
+      )}
       <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
         {harvesting ? "يجمع" : "عامل"}
       </SvgText>
