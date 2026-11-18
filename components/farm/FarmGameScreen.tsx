@@ -31,7 +31,7 @@ import {
   applyFarmActionToState,
   advanceFarmGameTime,
   createDemoFarmGame,
-  getNextLandExpansionCost,
+  getFarmParcelExpansionCost,
   getNextWorkerCost,
   getPlotGrowthState,
   getTreeGrowthState,
@@ -264,7 +264,9 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
     [farm, now],
   );
   const level = farm ? Math.floor(farm.totalHarvests / 5) + 1 : 1;
-  const nextLandExpansionCost = farm ? getNextLandExpansionCost(farm) : 0;
+  const pendingLandExpansionCost = farm && pendingLandParcel
+    ? getFarmParcelExpansionCost(farm, pendingLandParcel.column, pendingLandParcel.row)
+    : 0;
   const totalStored = farm
     ? Object.values(farm.inventory).reduce((sum, amount) => sum + amount, 0)
       + Object.values(farm.fruitInventory).reduce((sum, amount) => sum + amount, 0)
@@ -1006,12 +1008,12 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
             <View style={styles.expansionPrice}>
               <Ionicons name="cash-outline" size={19} color="#986D1F" />
               <Text style={styles.expansionPriceText}>
-                السعر: {formatCoins(nextLandExpansionCost)} عملة
+                السعر: {formatCoins(pendingLandExpansionCost)} عملة
               </Text>
             </View>
             <Text style={styles.expansionBalance}>رصيدك: {formatCoins(farm.coins)} عملة</Text>
             <Pressable
-              disabled={busy || farm.coins < nextLandExpansionCost}
+              disabled={busy || farm.coins < pendingLandExpansionCost}
               onPress={async () => {
                 if (!pendingLandParcel) return;
                 const bought = await act({
@@ -1023,11 +1025,11 @@ export default function FarmGameScreen({ previewMode = false }: { previewMode?: 
               }}
               style={[
                 styles.expansionBuyButton,
-                (busy || farm.coins < nextLandExpansionCost) && styles.disabled,
+                (busy || farm.coins < pendingLandExpansionCost) && styles.disabled,
               ]}
             >
               <Text style={styles.expansionBuyText}>
-                {farm.coins < nextLandExpansionCost ? "عملات غير كافية" : "شراء ودمج الأرض"}
+                {farm.coins < pendingLandExpansionCost ? "عملات غير كافية" : "شراء ودمج الأرض"}
               </Text>
             </Pressable>
           </View>

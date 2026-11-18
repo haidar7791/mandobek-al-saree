@@ -36,8 +36,8 @@ import {
   FARM_PARCEL_WIDTH,
   FARM_TILE_SIZE,
   FRUIT_TREES,
+  getFarmParcelExpansionCost,
   getFarmParcelAt,
-  getNextLandExpansionCost,
   getPlotGrowthState,
   getTreeGrowthState,
   getWorkerHarvestProgress,
@@ -73,19 +73,72 @@ export interface FarmSceneHandle {
 const WORLD_WIDTH = FARM_MAP_COLUMNS * FARM_TILE_SIZE;
 const WORLD_HEIGHT = FARM_MAP_ROWS * FARM_TILE_SIZE;
 
+type WorldPoint = { x: number; y: number };
+
+function parcelCorner(column: number, row: number): WorldPoint {
+  const x = column * FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
+  const y = row * FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const interior = column > 0
+    && column < FARM_PARCEL_COLUMNS
+    && row > 0
+    && row < FARM_PARCEL_ROWS;
+  if (!interior) return { x, y };
+  const xNudge = ((column * 17 + row * 11) % 39) - 19;
+  const yNudge = ((column * 7 + row * 13) % 33) - 16;
+  return { x: x + xNudge, y: y + yNudge };
+}
+
+function parcelPath(column: number, row: number): string {
+  const topLeft = parcelCorner(column, row);
+  const topRight = parcelCorner(column + 1, row);
+  const bottomRight = parcelCorner(column + 1, row + 1);
+  const bottomLeft = parcelCorner(column, row + 1);
+  return `M ${topLeft.x} ${topLeft.y} L ${topRight.x} ${topRight.y} L ${bottomRight.x} ${bottomRight.y} L ${bottomLeft.x} ${bottomLeft.y} Z`;
+}
+
+function parcelAtWorldPoint(worldX: number, worldY: number): { column: number; row: number } {
+  for (let row = 0; row < FARM_PARCEL_ROWS; row += 1) {
+    for (let column = 0; column < FARM_PARCEL_COLUMNS; column += 1) {
+      const points = [
+        parcelCorner(column, row),
+        parcelCorner(column + 1, row),
+        parcelCorner(column + 1, row + 1),
+        parcelCorner(column, row + 1),
+      ];
+      let inside = false;
+      for (let index = 0, previous = points.length - 1; index < points.length; previous = index, index += 1) {
+        const current = points[index];
+        const prior = points[previous];
+        const intersects = (current.y > worldY) !== (prior.y > worldY)
+          && worldX < ((prior.x - current.x) * (worldY - current.y)) / (prior.y - current.y) + current.x;
+        if (intersects) inside = !inside;
+      }
+      if (inside) return { column, row };
+    }
+  }
+  return getFarmParcelAt(
+    Math.floor(worldX / FARM_TILE_SIZE),
+    Math.floor(worldY / FARM_TILE_SIZE),
+  );
+}
+
 function FarmHouse({ level }: { level: number }) {
   return (
     <G>
-      <Ellipse cx={20} cy={34} rx={18} ry={4} fill="#456E42" opacity={0.25} />
-      <SvgText
-        x={20}
-        y={41}
-        fontSize={level > 1 ? 52 : 48}
-        textAnchor="middle"
-      >
-        🏠
-      </SvgText>
-      <SvgText x={20} y={50} fontSize={7} fill="#4F5839" textAnchor="middle" fontWeight="700">
+      <Ellipse cx={20} cy={67} rx={42} ry={9} fill="#263E28" opacity={0.3} />
+      <Polygon points="-19,48 20,29 59,47 20,67" fill="#6D573C" />
+      <Polygon points="-8,30 20,45 20,66 -8,51" fill="#C7A77C" stroke="#79583B" strokeWidth={1.5} />
+      <Polygon points="20,45 49,29 49,51 20,66" fill="#9B7958" stroke="#79583B" strokeWidth={1.5} />
+      <Polygon points="-20,29 17,4 23,8 -12,35" fill="#7B4936" stroke="#573527" strokeWidth={1.5} />
+      <Polygon points="17,4 60,27 51,34 23,17" fill={level > 1 ? "#B96D48" : "#A75D3D"} stroke="#573527" strokeWidth={1.5} />
+      <Path d="M -13 32 L 19 11 L 53 29" fill="none" stroke="#D5915A" strokeWidth={3} />
+      <Polygon points="10,39 20,44 20,66 10,60" fill="#644634" />
+      <Rect x={31} y={45} width={10} height={10} rx={1} fill="#C9E5DD" stroke="#694B34" strokeWidth={1.4} />
+      <Line x1={36} y1={45} x2={36} y2={55} stroke="#694B34" strokeWidth={1} />
+      <Line x1={31} y1={50} x2={41} y2={50} stroke="#694B34" strokeWidth={1} />
+      <Rect x={23} y={2} width={7} height={15} fill="#755039" stroke="#573527" strokeWidth={1} />
+      <Path d="M 20 81 Q 20 75 20 72" stroke="#543F31" strokeWidth={1.5} />
+      <SvgText x={20} y={75} fontSize={8} fill="#FFF8DB" stroke="#3B432D" strokeWidth={1.5} textAnchor="middle" fontWeight="800">
         منزل المزرعة
       </SvgText>
     </G>
@@ -97,22 +150,20 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
   const growth = crop ? getPlotGrowthState(plot, now) : null;
   const stage = growth?.ready ? 3 : (growth?.progress ?? 0) > 0.66 ? 2 : (growth?.progress ?? 0) > 0.12 ? 1 : 0;
   return (
-    <G transform={`translate(${plot.x * FARM_TILE_SIZE} ${plot.y * FARM_TILE_SIZE})`}>
-      <Ellipse cx={20} cy={35} rx={22} ry={4} fill="#456E42" opacity={0.2} />
-      <Rect x={-1} y={2} width={42} height={36} rx={7} fill="#815132" stroke="#65412E" strokeWidth={1.7} />
-      <Rect x={2} y={5} width={36} height={30} rx={5} fill="#96613D" />
-      <Line x1={3} y1={11} x2={37} y2={11} stroke="#B17B4D" strokeWidth={1.8} />
-      <Line x1={3} y1={19} x2={37} y2={19} stroke="#B17B4D" strokeWidth={1.8} />
-      <Line x1={3} y1={27} x2={37} y2={27} stroke="#B17B4D" strokeWidth={1.8} />
+    <G transform={`translate(${plot.x * FARM_TILE_SIZE + 16} ${plot.y * FARM_TILE_SIZE}) scale(1.2 1.1)`}>
+      <Ellipse cx={20} cy={50} rx={35} ry={6} fill="#263E28" opacity={0.28} />
+      <Polygon points="-13,13 18,1 53,11 53,41 20,52 -13,41" fill="#815132" stroke="#65412E" strokeWidth={2} />
+      <Polygon points="-7,14 19,5 47,13 47,38 20,47 -7,38" fill="#96613D" />
+      <Path d="M -8 21 L 47 19 M -8 29 L 47 27 M -8 37 L 47 35 M 3 9 L 3 43 M 22 5 L 22 46 M 39 10 L 39 41" stroke="#B17B4D" strokeWidth={1.7} opacity={0.9} />
       {crop ? (
         growth?.ready ? (
           <>
             {[0, 1, 2, 3, 4, 5].map((index) => (
               <SvgText
                 key={index}
-                x={9 + (index % 3) * 11}
-                y={19 + Math.floor(index / 3) * 13}
-                fontSize={14}
+                x={1 + (index % 3) * 19}
+                y={24 + Math.floor(index / 3) * 15}
+                fontSize={15}
                 textAnchor="middle"
               >
                 {crop.emoji}
@@ -121,17 +172,17 @@ function Field({ plot, now }: { plot: FarmGameSave["plots"][number]; now: number
           </>
         ) : (
         <>
-          {[8, 16, 24, 32].map((offset, index) => (
+          {[1, 20, 39].map((offset, index) => (
             <G key={offset}>
               {stage === 0 ? (
-                <Circle cx={offset} cy={25 - index % 2} r={2.5} fill={crop.color} />
+                <Circle cx={offset} cy={34 - index % 2 * 5} r={3.2} fill={crop.color} />
               ) : (
                 <>
-                  <Line x1={offset} y1={31} x2={offset} y2={31 - stage * 6} stroke="#47783C" strokeWidth={2.1} />
-                  <Ellipse cx={offset - 2.8} cy={27 - stage * 4} rx={3.6} ry={2} fill="#5F9B4A" transform={`rotate(-25 ${offset - 2.8} ${27 - stage * 4})`} />
-                  <Ellipse cx={offset + 2.8} cy={26 - stage * 4} rx={3.4} ry={2} fill="#78AA55" transform={`rotate(25 ${offset + 2.8} ${26 - stage * 4})`} />
+                  <Line x1={offset} y1={40} x2={offset} y2={40 - stage * 7} stroke="#47783C" strokeWidth={2.8} />
+                  <Ellipse cx={offset - 4} cy={35 - stage * 4} rx={4.4} ry={2.6} fill="#5F9B4A" transform={`rotate(-25 ${offset - 4} ${35 - stage * 4})`} />
+                  <Ellipse cx={offset + 4} cy={34 - stage * 4} rx={4.2} ry={2.5} fill="#78AA55" transform={`rotate(25 ${offset + 4} ${34 - stage * 4})`} />
                   {stage >= 2 ? (
-                    <Ellipse cx={offset} cy={18 - stage} rx={2.5} ry={4} fill={crop.color} />
+                    <Ellipse cx={offset} cy={25 - stage} rx={3} ry={5} fill={crop.color} />
                   ) : null}
                 </>
               )}
@@ -187,48 +238,58 @@ function LandParcel({
   row: number;
 }) {
   if (isFarmParcelOwned(farm, column, row)) return null;
-  const x = column * FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
-  const y = row * FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
-  const width = FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
-  const height = FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const topLeft = parcelCorner(column, row);
+  const topRight = parcelCorner(column + 1, row);
+  const bottomRight = parcelCorner(column + 1, row + 1);
+  const bottomLeft = parcelCorner(column, row + 1);
+  const centerX = (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4;
+  const centerY = (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4;
   const adjacent = isFarmParcelAdjacent(farm, column, row);
+  const price = getFarmParcelExpansionCost(farm, column, row);
+  const lockY = centerY - 32;
   return (
     <G>
-      <Rect
-        x={x + 5}
-        y={y + 5}
-        width={width - 10}
-        height={height - 10}
-        rx={14}
-        fill="#53634B"
-        fillOpacity={0.3}
-        stroke="#42563D"
-        strokeOpacity={0.75}
-        strokeWidth={2}
-        strokeDasharray="8 6"
+      <Path
+        d={parcelPath(column, row)}
+        fill="#E7E1B8"
+        fillOpacity={0.035}
+        stroke="#E8D8A1"
+        strokeOpacity={0.52}
+        strokeWidth={1.2}
+        strokeLinejoin="round"
       />
-      <SvgText x={x + width / 2} y={y + height / 2 - 10} fontSize={23} textAnchor="middle" fill="#F7F5DA">
-        🔒
-      </SvgText>
+      <Path
+        d={`M ${centerX - 10} ${lockY + 2} v-7 a10 10 0 0 1 20 0 v7`}
+        fill="none"
+        stroke="#302F26"
+        strokeWidth={7}
+        strokeLinecap="round"
+      />
+      <Path
+        d={`M ${centerX - 10} ${lockY + 2} v-7 a10 10 0 0 1 20 0 v7`}
+        fill="none"
+        stroke="#C8C7B8"
+        strokeWidth={4}
+        strokeLinecap="round"
+      />
+      <Rect x={centerX - 16} y={lockY - 1} width={32} height={27} rx={5} fill="#323329" opacity={0.94} />
+      <Rect x={centerX - 13} y={lockY + 2} width={26} height={21} rx={3} fill="#A6A698" stroke="#ECE8D5" strokeWidth={1.2} />
+      <Circle cx={centerX} cy={lockY + 10} r={2.4} fill="#55564D" />
+      <Path d={`M ${centerX} ${lockY + 11} l-2 5 h4 z`} fill="#55564D" />
+      <Rect x={centerX - 50} y={centerY + 9} width={100} height={26} rx={5} fill="#25291F" opacity={0.82} stroke="#E9D497" strokeOpacity={0.75} strokeWidth={1} />
       <SvgText
-        x={x + width / 2}
-        y={y + height / 2 + 17}
-        fontSize={11}
+        x={centerX}
+        y={centerY + 27}
+        fontSize={14}
         textAnchor="middle"
-        fill="#F7F5DA"
+        fill="#FFF5D3"
         fontWeight="800"
       >
-        {adjacent ? `${getNextLandExpansionCost(farm)} 🪙` : "مقفلة"}
+        {`${price.toLocaleString("en-US")} 🪙`}
       </SvgText>
       {adjacent ? (
-        <SvgText
-          x={x + width / 2}
-          y={y + height / 2 + 34}
-          fontSize={8}
-          textAnchor="middle"
-          fill="#F7F5DA"
-        >
-          اضغط للتوسعة
+        <SvgText x={centerX} y={centerY + 49} fontSize={8} textAnchor="middle" fill="#FFF9E4" fontWeight="700">
+          اضغط للشراء
         </SvgText>
       ) : null}
     </G>
@@ -245,82 +306,74 @@ function ParcelFence({
   row: number;
 }) {
   if (!isFarmParcelOwned(farm, column, row)) return null;
-  const x = column * FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
-  const y = row * FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
-  const width = FARM_PARCEL_WIDTH * FARM_TILE_SIZE;
-  const height = FARM_PARCEL_HEIGHT * FARM_TILE_SIZE;
+  const topLeft = parcelCorner(column, row);
+  const topRight = parcelCorner(column + 1, row);
+  const bottomRight = parcelCorner(column + 1, row + 1);
+  const bottomLeft = parcelCorner(column, row + 1);
   const edges = [
     {
       key: "top",
       exposed: !isFarmParcelOwned(farm, column, row - 1),
-      x1: x,
-      y1: y + 3,
-      x2: x + width,
-      y2: y + 3,
-      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + index * width / 6, y: y - 5, width: 3, height: 18 })),
+      start: topLeft,
+      end: topRight,
     },
     {
       key: "bottom",
       exposed: !isFarmParcelOwned(farm, column, row + 1),
-      x1: x,
-      y1: y + height - 3,
-      x2: x + width,
-      y2: y + height - 3,
-      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + index * width / 6, y: y + height - 13, width: 3, height: 18 })),
+      start: bottomLeft,
+      end: bottomRight,
     },
     {
       key: "left",
       exposed: !isFarmParcelOwned(farm, column - 1, row),
-      x1: x + 3,
-      y1: y,
-      x2: x + 3,
-      y2: y + height,
-      posts: Array.from({ length: 7 }, (_, index) => ({ x: x - 5, y: y + index * height / 6, width: 18, height: 3 })),
+      start: topLeft,
+      end: bottomLeft,
     },
     {
       key: "right",
       exposed: !isFarmParcelOwned(farm, column + 1, row),
-      x1: x + width - 3,
-      y1: y,
-      x2: x + width - 3,
-      y2: y + height,
-      posts: Array.from({ length: 7 }, (_, index) => ({ x: x + width - 13, y: y + index * height / 6, width: 18, height: 3 })),
+      start: topRight,
+      end: bottomRight,
     },
   ];
   return (
     <G>
       {edges.filter((edge) => edge.exposed).map((edge) => (
         <G key={edge.key}>
-          <Line
-            x1={edge.x1}
-            y1={edge.y1}
-            x2={edge.x2}
-            y2={edge.y2}
-            stroke="#754A2B"
+          <Path
+            d={`M ${edge.start.x} ${edge.start.y} L ${edge.end.x} ${edge.end.y}`}
+            stroke="#694329"
             strokeWidth={4}
             strokeLinecap="round"
           />
-          <Line
-            x1={edge.key === "top" || edge.key === "bottom" ? edge.x1 : edge.x1 + 7}
-            y1={edge.key === "top" || edge.key === "bottom" ? edge.y1 + (edge.key === "top" ? 8 : -8) : edge.y1}
-            x2={edge.key === "top" || edge.key === "bottom" ? edge.x2 : edge.x2 + (edge.key === "left" ? 8 : -8)}
-            y2={edge.key === "top" || edge.key === "bottom" ? edge.y2 + (edge.key === "top" ? 8 : -8) : edge.y2}
-            stroke="#A4774B"
-            strokeWidth={2.5}
+          <Path
+            d={`M ${edge.start.x} ${edge.start.y - 5} L ${edge.end.x} ${edge.end.y - 5}`}
+            stroke="#B18453"
+            strokeWidth={2.2}
+            strokeLinecap="round"
           />
-          {edge.posts.map((post, index) => (
+          {Array.from(
+            { length: Math.max(3, Math.ceil(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y) / 48)) },
+            (_, index) => {
+              const postCount = Math.max(3, Math.ceil(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y) / 48));
+              const progress = index / (postCount - 1);
+              const x = edge.start.x + (edge.end.x - edge.start.x) * progress;
+              const y = edge.start.y + (edge.end.y - edge.start.y) * progress;
+              return (
             <Rect
               key={`${edge.key}-${index}`}
-              x={post.x}
-              y={post.y}
-              width={post.width}
-              height={post.height}
-              rx={1.5}
-              fill="#855832"
-              stroke="#684426"
-              strokeWidth={0.6}
+              x={x - 2}
+              y={y - 7.5}
+              width={4}
+              height={15}
+              rx={2}
+              fill="#8C603A"
+              stroke="#5F3D27"
+              strokeWidth={0.8}
             />
-          ))}
+              );
+            },
+          )}
         </G>
       ))}
     </G>
@@ -334,28 +387,30 @@ function FruitTree({ tree, now }: { tree: FarmGameSave["trees"][number]; now: nu
   const y = tree.y * FARM_TILE_SIZE;
   return (
     <G>
-      <Ellipse cx={x + 20} cy={y + 35} rx={16} ry={4} fill="#456E42" opacity={0.24} />
-      <Rect x={x + 17} y={y + 19} width={7} height={17} rx={3} fill="#805233" />
-      <Circle cx={x + 20} cy={y + 15} r={15} fill={definition.color} />
-      <Circle cx={x + 10} cy={y + 18} r={9} fill="#70A958" />
-      <Circle cx={x + 30} cy={y + 18} r={9} fill="#4F8C4A" />
+      <Ellipse cx={x + 20} cy={y + 57} rx={25} ry={6} fill="#263E28" opacity={0.3} />
+      <Rect x={x + 16} y={y + 24} width={9} height={34} rx={4} fill="#805233" />
+      <Circle cx={x + 20} cy={y + 17} r={21} fill={definition.color} />
+      <Circle cx={x + 5} cy={y + 24} r={13} fill="#70A958" />
+      <Circle cx={x + 35} cy={y + 24} r={13} fill="#4F8C4A" />
+      <Circle cx={x + 12} cy={y + 8} r={12} fill="#76A95A" />
+      <Circle cx={x + 29} cy={y + 9} r={12} fill="#5C9148" />
       {state.ready ? (
         <>
-          <SvgText x={x + 13} y={y + 17} fontSize={12} textAnchor="middle">
+          <SvgText x={x + 7} y={y + 21} fontSize={13} textAnchor="middle">
             {definition.emoji}
           </SvgText>
-          <SvgText x={x + 27} y={y + 15} fontSize={12} textAnchor="middle">
+          <SvgText x={x + 31} y={y + 15} fontSize={13} textAnchor="middle">
             {definition.emoji}
           </SvgText>
-          <SvgText x={x + 20} y={y + 28} fontSize={12} textAnchor="middle">
+          <SvgText x={x + 20} y={y + 37} fontSize={13} textAnchor="middle">
             {definition.emoji}
           </SvgText>
-          <Circle cx={x + 34} cy={y + 5} r={6} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />
+          <Circle cx={x + 40} cy={y + 7} r={7} fill="#F3D56E" stroke="#FFF0B6" strokeWidth={1} />
         </>
       ) : (
-        <Circle cx={x + 34} cy={y + 5} r={5} fill="#F1E2A1" opacity={0.92} />
+        <Circle cx={x + 40} cy={y + 7} r={6} fill="#F1E2A1" opacity={0.92} />
       )}
-      <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
+      <SvgText x={x + 20} y={y + 70} fontSize={8} fill="#FFF8DF" stroke="#3B432D" strokeWidth={1.4} textAnchor="middle" fontWeight="800">
         {definition.fruitName}
       </SvgText>
     </G>
@@ -406,7 +461,7 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
   const position = getWorkerPosition(worker, now);
   const x = position.x * FARM_TILE_SIZE;
   const harvesting = worker.state === "harvesting";
-  const y = position.y * FARM_TILE_SIZE + (harvesting ? 4 : 0);
+  const y = position.y * FARM_TILE_SIZE + (harvesting ? 12 : 8);
   const harvestProgress = getWorkerHarvestProgress(worker, now);
   const dx = worker.to ? worker.to.x - worker.from.x : 0;
   const dy = worker.to ? worker.to.y - worker.from.y : 0;
@@ -420,40 +475,40 @@ function FarmWorkerSprite({ worker, now }: { worker: FarmWorker; now: number }) 
     <G>
       {harvesting ? (
         <>
-          <Rect x={x + 3} y={y - 2} width={34} height={6} rx={3} fill="#36583B" stroke="#FFFFFF" strokeWidth={1} />
-          <Rect x={x + 4} y={y - 1} width={32 * harvestProgress} height={4} rx={2} fill="#F4D35E" />
+          <Rect x={x - 2} y={y - 4} width={44} height={7} rx={3.5} fill="#36583B" stroke="#FFFFFF" strokeWidth={1} />
+          <Rect x={x} y={y - 2} width={40 * harvestProgress} height={3} rx={1.5} fill="#F4D35E" />
         </>
       ) : null}
-      <Ellipse cx={x + 20} cy={y + 35} rx={9} ry={3} fill="#35563B" opacity={0.3} />
+      <Ellipse cx={x + 20} cy={y + 45} rx={13} ry={4} fill="#263E28" opacity={0.32} />
       {direction === "up" ? (
         <G>
-          <Circle cx={x + 20} cy={y + 14} r={6} fill="#D9AF86" stroke="#80583C" strokeWidth={1} />
+          <Circle cx={x + 20} cy={y + 13} r={8} fill="#D9AF86" stroke="#80583C" strokeWidth={1} />
           <Path
-            d={`M ${x + 11} ${y + 31} Q ${x + 11} ${y + 21} ${x + 20} ${y + 20} Q ${x + 29} ${y + 21} ${x + 29} ${y + 31} Z`}
+            d={`M ${x + 8} ${y + 39} Q ${x + 8} ${y + 22} ${x + 20} ${y + 21} Q ${x + 32} ${y + 22} ${x + 32} ${y + 39} Z`}
             fill="#A85F39"
             stroke="#75442F"
-            strokeWidth={1}
+            strokeWidth={1.3}
           />
-          <Path d={`M ${x + 14} ${y + 24} Q ${x + 20} ${y + 27} ${x + 26} ${y + 24}`} fill="none" stroke="#D89162" strokeWidth={1.1} />
-          <Line x1={x + 15} y1={y + 30} x2={x + 13} y2={y + 35} stroke="#4C4239" strokeWidth={2.6} strokeLinecap="round" />
-          <Line x1={x + 25} y1={y + 30} x2={x + 27} y2={y + 35} stroke="#4C4239" strokeWidth={2.6} strokeLinecap="round" />
+          <Path d={`M ${x + 12} ${y + 26} Q ${x + 20} ${y + 30} ${x + 28} ${y + 26}`} fill="none" stroke="#D89162" strokeWidth={1.5} />
+          <Line x1={x + 15} y1={y + 38} x2={x + 12} y2={y + 46} stroke="#4C4239" strokeWidth={3.4} strokeLinecap="round" />
+          <Line x1={x + 25} y1={y + 38} x2={x + 28} y2={y + 46} stroke="#4C4239" strokeWidth={3.4} strokeLinecap="round" />
         </G>
       ) : direction === "down" ? (
-        <SvgText x={x + 20} y={y + 32} fontSize={27} textAnchor="middle">
+        <SvgText x={x + 20} y={y + 42} fontSize={40} textAnchor="middle">
           🧍
         </SvgText>
       ) : (
         <SvgText
           x={x + 20}
-          y={y + 32}
-          fontSize={27}
+          y={y + 42}
+          fontSize={40}
           textAnchor="middle"
           transform={mirrored ? `translate(${(x + 20) * 2} 0) scale(-1 1)` : undefined}
         >
           🚶
         </SvgText>
       )}
-      <SvgText x={x + 20} y={y + 47} fontSize={7} fill="#405C36" textAnchor="middle" fontWeight="700">
+      <SvgText x={x + 20} y={y + 59} fontSize={9} fill="#FFF8DF" stroke="#3B432D" strokeWidth={1.4} textAnchor="middle" fontWeight="800">
         {harvesting ? "يجمع" : "عامل"}
       </SvgText>
     </G>
@@ -471,6 +526,7 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
   const [dragPosition, setDragPosition] = useState<FarmPosition | null>(null);
   const shellRef = useRef<View>(null);
   const dragSessionRef = useRef<FarmObjectRef | null>(null);
+  const dragGrabOffsetRef = useRef({ x: 0, y: 0 });
   const farmRef = useRef(farm);
   const onTilePressRef = useRef(onTilePress);
   const onObjectDragEndRef = useRef(onObjectDragEnd);
@@ -519,20 +575,44 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     setCamera(nextCamera);
   }, [farm.housePosition, size.height, size.width]);
 
-  const findObject = useCallback((x: number, y: number): FarmObjectRef | null => {
+  const findObject = useCallback((worldX: number, worldY: number): FarmObjectRef | null => {
     const currentFarm = farmRef.current;
-    if (currentFarm.houseBuilt && currentFarm.housePosition?.x === x && currentFarm.housePosition.y === y) {
+    const inside = (left: number, top: number, right: number, bottom: number) => (
+      worldX >= left && worldX <= right && worldY >= top && worldY <= bottom
+    );
+    if (
+      currentFarm.houseBuilt
+      && currentFarm.housePosition
+      && inside(
+        currentFarm.housePosition.x * FARM_TILE_SIZE - 22,
+        currentFarm.housePosition.y * FARM_TILE_SIZE,
+        currentFarm.housePosition.x * FARM_TILE_SIZE + 62,
+        currentFarm.housePosition.y * FARM_TILE_SIZE + 84,
+      )
+    ) {
       return { type: "house", id: "house" };
     }
-    const tree = currentFarm.trees.find((item) => item.x === x && item.y === y);
+    const tree = currentFarm.trees.find((item) => inside(
+      item.x * FARM_TILE_SIZE - 10,
+      item.y * FARM_TILE_SIZE - 10,
+      item.x * FARM_TILE_SIZE + 50,
+      item.y * FARM_TILE_SIZE + 73,
+    ));
     if (tree) return { type: "tree", id: tree.id };
+    const plot = currentFarm.plots.find((item) => inside(
+      item.x * FARM_TILE_SIZE,
+      item.y * FARM_TILE_SIZE,
+      item.x * FARM_TILE_SIZE + 80,
+      item.y * FARM_TILE_SIZE + 58,
+    ));
+    if (plot) return { type: "plot", id: plot.id };
+    const x = Math.floor(worldX / FARM_TILE_SIZE);
+    const y = Math.floor(worldY / FARM_TILE_SIZE);
     const obstacle = currentFarm.obstacles.find((item) => item.x === x && item.y === y);
     if (obstacle) return { type: "obstacle", id: obstacle.id };
     const decoration = currentFarm.decorations.find((item) => item.x === x && item.y === y);
     if (decoration) return { type: "decoration", id: decoration.id };
-    const plot = currentFarm.plots.find((item) => item.x === x && item.y === y);
-    if (plot) return { type: "plot", id: plot.id };
-    const parcel = getFarmParcelAt(x, y);
+    const parcel = parcelAtWorldPoint(worldX, worldY);
     if (!isFarmParcelOwned(currentFarm, parcel.column, parcel.row)) {
       return { type: "landParcel", id: `${parcel.column}:${parcel.row}` };
     }
@@ -547,41 +627,69 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     const x = Math.floor(worldX / FARM_TILE_SIZE);
     const y = Math.floor(worldY / FARM_TILE_SIZE);
     if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) return;
-    onTilePressRef.current({ x, y }, findObject(x, y));
+    onTilePressRef.current({ x, y }, findObject(worldX, worldY));
   }, [findObject]);
 
-  const screenToWorld = useCallback((locationX: number, locationY: number) => {
+  const screenToWorldPoint = useCallback((locationX: number, locationY: number) => {
     const currentCamera = cameraRef.current;
     const currentZoom = zoomRef.current;
     return {
-      x: Math.floor((currentCamera.x + locationX / currentZoom) / FARM_TILE_SIZE),
-      y: Math.floor((currentCamera.y + locationY / currentZoom) / FARM_TILE_SIZE),
+      x: currentCamera.x + locationX / currentZoom,
+      y: currentCamera.y + locationY / currentZoom,
     };
   }, []);
 
+  const screenToWorld = useCallback((
+    locationX: number,
+    locationY: number,
+    offset = { x: 0, y: 0 },
+  ) => {
+    const point = screenToWorldPoint(locationX, locationY);
+    return {
+      x: Math.floor((point.x - offset.x) / FARM_TILE_SIZE),
+      y: Math.floor((point.y - offset.y) / FARM_TILE_SIZE),
+    };
+  }, [screenToWorldPoint]);
+
   const handleObjectDragStart = useCallback((locationX: number, locationY: number) => {
-    const position = screenToWorld(locationX, locationY);
-    const object = findObject(position.x, position.y);
+    const point = screenToWorldPoint(locationX, locationY);
+    const object = findObject(point.x, point.y);
     if (!object || !["house", "plot", "tree"].includes(object.type)) return;
+    const currentFarm = farmRef.current;
+    const objectPosition = object.type === "house"
+      ? currentFarm.housePosition
+      : object.type === "plot"
+        ? currentFarm.plots.find((item) => item.id === object.id)
+        : currentFarm.trees.find((item) => item.id === object.id);
+    if (!objectPosition) return;
+    dragGrabOffsetRef.current = {
+      x: point.x - objectPosition.x * FARM_TILE_SIZE,
+      y: point.y - objectPosition.y * FARM_TILE_SIZE,
+    };
     dragSessionRef.current = object;
     setDraggedObject(object);
-    setDragPosition(position);
-  }, [findObject, screenToWorld]);
+    setDragPosition({ x: objectPosition.x, y: objectPosition.y });
+  }, [findObject, screenToWorldPoint]);
 
   const handleObjectDragMove = useCallback((locationX: number, locationY: number) => {
     if (!dragSessionRef.current) return;
-    setDragPosition(screenToWorld(locationX, locationY));
+    setDragPosition(screenToWorld(locationX, locationY, dragGrabOffsetRef.current));
   }, [screenToWorld]);
 
   const handleObjectDragEnd = useCallback((locationX: number, locationY: number) => {
     const object = dragSessionRef.current;
     if (!object) return;
-    const position = screenToWorld(locationX, locationY);
+    const position = screenToWorld(locationX, locationY, dragGrabOffsetRef.current);
     const inBounds = position.x >= 0
       && position.x < FARM_MAP_COLUMNS
       && position.y >= 0
       && position.y < FARM_MAP_ROWS;
-    const targetObject = inBounds ? findObject(position.x, position.y) : null;
+    const targetObject = inBounds
+      ? findObject(
+        (position.x + 0.5) * FARM_TILE_SIZE,
+        (position.y + 0.5) * FARM_TILE_SIZE,
+      )
+      : null;
     dragSessionRef.current = null;
     setDraggedObject(null);
     setDragPosition(null);
@@ -679,13 +787,15 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
           }
           const currentZoom = zoomRef.current;
           const currentCamera = cameraRef.current;
-          const x = Math.floor((currentCamera.x + (screenX - left) / currentZoom) / FARM_TILE_SIZE);
-          const y = Math.floor((currentCamera.y + (screenY - top) / currentZoom) / FARM_TILE_SIZE);
+          const worldX = currentCamera.x + (screenX - left) / currentZoom;
+          const worldY = currentCamera.y + (screenY - top) / currentZoom;
+          const x = Math.floor(worldX / FARM_TILE_SIZE);
+          const y = Math.floor(worldY / FARM_TILE_SIZE);
           if (x < 0 || x >= FARM_MAP_COLUMNS || y < 0 || y >= FARM_MAP_ROWS) {
             resolve(null);
             return;
           }
-          resolve({ position: { x, y }, object: findObject(x, y) });
+          resolve({ position: { x, y }, object: findObject(worldX, worldY) });
         });
       }),
   }), [findObject]);

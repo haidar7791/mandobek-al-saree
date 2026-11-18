@@ -179,7 +179,8 @@ export const FARM_PARCEL_COLUMNS = 4;
 export const FARM_PARCEL_ROWS = 9;
 export const FARM_PARCEL_WIDTH = FARM_MAP_COLUMNS / FARM_PARCEL_COLUMNS;
 export const FARM_PARCEL_HEIGHT = FARM_MAP_ROWS / FARM_PARCEL_ROWS;
-export const FARM_START_PARCEL = { column: 1, row: 6 };
+export const FARM_START_PARCEL = { column: 1, row: 3 };
+const LEGACY_FARM_START_PARCEL = { column: 1, row: 6 };
 const FARM_START_X = FARM_START_PARCEL.column * FARM_PARCEL_WIDTH;
 const FARM_START_Y = FARM_START_PARCEL.row * FARM_PARCEL_HEIGHT;
 export interface FarmQuest {
@@ -285,13 +286,14 @@ export interface FarmWorker {
 }
 
 export interface FarmGameSave {
-  version: 9;
+  version: 10;
   coins: number;
   gems: number;
   questCycle: number;
   quests: FarmQuest[];
   inventory: Record<CropId, number>;
   fruitInventory: Record<FruitTreeId, number>;
+  startParcel: FarmLandParcel;
   landParcels: FarmLandParcel[];
   expansionsPurchased: number;
   plots: FarmPlot[];
@@ -406,8 +408,43 @@ export function isFarmPositionOwned(
   return isFarmParcelOwned(farm, parcel.column, parcel.row);
 }
 
-export function getNextLandExpansionCost(farm: Pick<FarmGameSave, "expansionsPurchased">): number {
-  return FARM_LAND_EXPANSION_COST * 2 ** farm.expansionsPurchased;
+export function getFarmParcelExpansionCost(
+  farm: Pick<FarmGameSave, "startParcel" | "expansionsPurchased">,
+  column: number,
+  row: number,
+): number {
+  const columnOffset = column - farm.startParcel.column;
+  const rowOffset = row - farm.startParcel.row;
+
+  if ((columnOffset === 0 && rowOffset === -1) || (columnOffset === 1 && rowOffset === 0)) {
+    return FARM_LAND_EXPANSION_COST;
+  }
+  if (columnOffset === 1 && rowOffset === 1) {
+    return FARM_LAND_EXPANSION_COST * 2;
+  }
+  return FARM_LAND_EXPANSION_COST * 2 ** Math.max(
+    2,
+    Math.floor((farm.expansionsPurchased - 3) / 3) + 2,
+  );
+}
+
+export function getNextLandExpansionCost(
+  farm: Pick<FarmGameSave, "expansionsPurchased" | "landParcels" | "startParcel">
+    | Pick<FarmGameSave, "expansionsPurchased">,
+): number {
+  if (!("landParcels" in farm) || !("startParcel" in farm)) {
+    return FARM_LAND_EXPANSION_COST * 2 ** farm.expansionsPurchased;
+  }
+
+  let lowestCost = Number.POSITIVE_INFINITY;
+  for (let row = 0; row < FARM_PARCEL_ROWS; row += 1) {
+    for (let column = 0; column < FARM_PARCEL_COLUMNS; column += 1) {
+      if (isFarmParcelAdjacent(farm, column, row)) {
+        lowestCost = Math.min(lowestCost, getFarmParcelExpansionCost(farm, column, row));
+      }
+    }
+  }
+  return Number.isFinite(lowestCost) ? lowestCost : FARM_LAND_EXPANSION_COST * 4;
 }
 
 export function getNextWorkerCost(farm: Pick<FarmGameSave, "workers">): number {
@@ -486,31 +523,32 @@ export function getWorkerHarvestProgress(worker: FarmWorker, now = Date.now()): 
 
 function createInitialFarm(now = Date.now()): FarmGameSave {
   return {
-    version: 9,
+    version: 10,
     coins: 140,
     gems: 0,
     questCycle: 0,
     quests: createFarmQuestSet(0),
     inventory: { wheat: 0, carrot: 0, corn: 0, tomato: 0, cucumber: 0, potato: 0 },
     fruitInventory: { apple: 0, orange: 0, peach: 0, lemon: 0 },
+    startParcel: { ...FARM_START_PARCEL },
     landParcels: [{ ...FARM_START_PARCEL }],
     expansionsPurchased: 0,
     plots: [
-      { id: 1, x: FARM_START_X + 2, y: FARM_START_Y + 3, cropId: "wheat", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
-      { id: 2, x: FARM_START_X + 3, y: FARM_START_Y + 3, cropId: "carrot", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
+      { id: 1, x: FARM_START_X, y: FARM_START_Y + 3, cropId: "wheat", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
+      { id: 2, x: FARM_START_X + 2, y: FARM_START_Y + 3, cropId: "carrot", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
       { id: 3, x: FARM_START_X + 4, y: FARM_START_Y + 3, cropId: "corn", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
     ],
     trees: [
-      { id: "starter-apple", kind: "apple", x: FARM_START_X, y: FARM_START_Y + 2, plantedAt: now, nextHarvestAt: now + FRUIT_TREES.apple.growMs },
-      { id: "starter-orange", kind: "orange", x: FARM_START_X + FARM_PARCEL_WIDTH - 1, y: FARM_START_Y + 2, plantedAt: now, nextHarvestAt: now + FRUIT_TREES.orange.growMs },
+      { id: "starter-apple", kind: "apple", x: FARM_START_X, y: FARM_START_Y + 1, plantedAt: now, nextHarvestAt: now + FRUIT_TREES.apple.growMs },
+      { id: "starter-orange", kind: "orange", x: FARM_START_X + FARM_PARCEL_WIDTH - 1, y: FARM_START_Y + 1, plantedAt: now, nextHarvestAt: now + FRUIT_TREES.orange.growMs },
     ],
     obstacles: [],
-    workers: [createIdleWorker("worker-1", { x: FARM_START_X + 1, y: FARM_START_Y + 2 }, now)],
+    workers: [createIdleWorker("worker-1", { x: FARM_START_X + 5, y: FARM_START_Y + 4 }, now)],
     decorations: [],
     houseBuilt: true,
     houseLevel: 1,
     housePosition: { x: FARM_START_X + 2, y: FARM_START_Y + 1 },
-    playerPosition: { x: FARM_START_X + 1, y: FARM_START_Y + 2 },
+    playerPosition: { x: FARM_START_X + 5, y: FARM_START_Y + 4 },
     nextPlotId: 4,
     totalHarvests: 0,
     createdAt: now,
@@ -532,8 +570,8 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
   farm.fruitInventory = { apple: 2, orange: 1, peach: 0, lemon: 0 };
   farm.totalHarvests = 4;
   farm.plots = [
-    { id: 1, x: FARM_START_X + 2, y: FARM_START_Y + 3, cropId: "wheat", plantedAt: now - 40_000, growthProgressMs: 30_000, lastGrowthAt: now, unlocked: true },
-    { id: 2, x: FARM_START_X + 3, y: FARM_START_Y + 3, cropId: "carrot", plantedAt: now - 25_000, growthProgressMs: 25_000, lastGrowthAt: now, unlocked: true },
+    { id: 1, x: FARM_START_X, y: FARM_START_Y + 3, cropId: "wheat", plantedAt: now - 40_000, growthProgressMs: 30_000, lastGrowthAt: now, unlocked: true },
+    { id: 2, x: FARM_START_X + 2, y: FARM_START_Y + 3, cropId: "carrot", plantedAt: now - 25_000, growthProgressMs: 25_000, lastGrowthAt: now, unlocked: true },
     { id: 3, x: FARM_START_X + 4, y: FARM_START_Y + 3, cropId: "corn", plantedAt: now - 50_000, growthProgressMs: 50_000, lastGrowthAt: now, unlocked: true },
   ];
   farm.trees = [
@@ -549,7 +587,7 @@ export function createDemoFarmGame(now = Date.now()): FarmGameSave {
     { id: "demo-flowers", kind: "flowerBed", x: FARM_START_X + 1, y: FARM_START_Y + 4 },
     { id: "demo-lamp", kind: "gardenLamp", x: FARM_START_X + 4, y: FARM_START_Y + 4 },
   ];
-  farm.playerPosition = { x: FARM_START_X + 1, y: FARM_START_Y + 2 };
+  farm.playerPosition = { x: FARM_START_X + 5, y: FARM_START_Y + 4 };
   farm.nextPlotId = 4;
   return assignIdleWorkers(farm, now);
 }
@@ -888,9 +926,13 @@ function assertFree(farm: FarmGameSave, x: number, y: number, except?: Occupancy
   }
 }
 
-function connectParcelToStart(owned: FarmLandParcel[], target: FarmLandParcel) {
-  let column = FARM_START_PARCEL.column;
-  let row = FARM_START_PARCEL.row;
+function connectParcelToStart(
+  owned: FarmLandParcel[],
+  target: FarmLandParcel,
+  startParcel: FarmLandParcel = FARM_START_PARCEL,
+) {
+  let column = startParcel.column;
+  let row = startParcel.row;
   const add = (nextColumn: number, nextRow: number) => {
     if (!owned.some((parcel) => parcel.column === nextColumn && parcel.row === nextRow)) {
       owned.push({ column: nextColumn, row: nextRow });
@@ -932,12 +974,58 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
     || (Array.isArray(data.decorations) && data.decorations.length > 0)
     || data.houseBuilt === true
     || nonNegativeInt(data.houseLevel) > 0;
-  const legacyMapRowShift = nonNegativeInt(data.version) < 9 && hasStoredLayout
-    ? (FARM_START_PARCEL.row - 1) * FARM_PARCEL_HEIGHT
+  const storedVersion = nonNegativeInt(data.version);
+  const legacyMapRowShift = storedVersion < 9 && hasStoredLayout
+    ? (LEGACY_FARM_START_PARCEL.row - 1) * FARM_PARCEL_HEIGHT
     : 0;
+  const storedParcelRows = Array.isArray(data.landParcels)
+    ? data.landParcels
+      .map((value) => value as Record<string, unknown>)
+      .map((parcel) => nonNegativeInt(parcel.row, -1) + legacyMapRowShift / FARM_PARCEL_HEIGHT)
+      .filter((row) => row >= 0)
+    : [
+      ...rawPlots.map((value) => value as Record<string, unknown>),
+      ...(Array.isArray(data.trees) ? data.trees as Record<string, unknown>[] : []),
+      ...(Array.isArray(data.decorations) ? data.decorations as Record<string, unknown>[] : []),
+      ...(Array.isArray(data.obstacles) ? data.obstacles as Record<string, unknown>[] : []),
+      ...(data.housePosition && typeof data.housePosition === "object"
+        ? [data.housePosition as Record<string, unknown>]
+        : []),
+    ]
+      .map((position) => typeof position.y === "number"
+        ? Math.floor((position.y + legacyMapRowShift) / FARM_PARCEL_HEIGHT)
+        : -1)
+      .filter((row) => row >= 0);
+  const canMoveLegacyFarmToNewStart = storedVersion < 10
+    && hasStoredLayout
+    && storedParcelRows.length > 0
+    && Math.min(...storedParcelRows) >= FARM_START_PARCEL.row;
+  const layoutStartRowShift = canMoveLegacyFarmToNewStart
+    ? (FARM_START_PARCEL.row - LEGACY_FARM_START_PARCEL.row) * FARM_PARCEL_HEIGHT
+    : 0;
+  const legacyLayoutRowShift = legacyMapRowShift + layoutStartRowShift;
+  const rawStartParcel = data.startParcel && typeof data.startParcel === "object"
+    ? data.startParcel as Record<string, unknown>
+    : null;
+  const startParcel = storedVersion >= 10
+    && rawStartParcel
+    && Number.isInteger(rawStartParcel.column)
+    && Number.isInteger(rawStartParcel.row)
+    && Number(rawStartParcel.column) >= 0
+    && Number(rawStartParcel.column) < FARM_PARCEL_COLUMNS
+    && Number(rawStartParcel.row) >= 0
+    && Number(rawStartParcel.row) < FARM_PARCEL_ROWS
+    ? { column: Number(rawStartParcel.column), row: Number(rawStartParcel.row) }
+    : canMoveLegacyFarmToNewStart
+      || !hasStoredLayout
+      || storedVersion >= 10
+      ? { ...FARM_START_PARCEL }
+      : { ...LEGACY_FARM_START_PARCEL };
+  const startX = startParcel.column * FARM_PARCEL_WIDTH;
+  const startY = startParcel.row * FARM_PARCEL_HEIGHT;
   const shiftLegacyPosition = (position: FarmPosition): FarmPosition => ({
     ...position,
-    y: Math.min(FARM_MAP_ROWS - 1, position.y + legacyMapRowShift),
+    y: Math.max(0, Math.min(FARM_MAP_ROWS - 1, position.y + legacyLayoutRowShift)),
   });
   const plots: FarmPlot[] = [];
   for (let index = 0; index < rawPlots.length; index += 1) {
@@ -1022,20 +1110,20 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
     && !houseBuilt;
   const normalizedHouseBuilt = houseBuilt || isBlankLegacySave;
   const legacyHousePosition = normalizedHouseBuilt
-    ? legacyMapRowShift > 0
+    ? storedVersion < 9 && legacyMapRowShift > 0
       ? shiftLegacyPosition(clampPosition(8, 7))
-      : clampPosition(FARM_START_X + 2, FARM_START_Y + 1)
+      : clampPosition(startX + 2, startY + 1)
     : null;
   const housePosition = houseBuilt
     ? housePositionRaw && typeof housePositionRaw.x === "number" && typeof housePositionRaw.y === "number"
       ? shiftLegacyPosition(clampPosition(housePositionRaw.x, housePositionRaw.y))
       : legacyHousePosition
-    : isBlankLegacySave ? clampPosition(8, 7) : null;
+    : isBlankLegacySave ? initial.housePosition : null;
   if (plots.length === 0) {
     plots.push(
-      { id: 1, x: 8, y: 9, cropId: "wheat", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
-      { id: 2, x: 9, y: 9, cropId: "carrot", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
-      { id: 3, x: 10, y: 9, cropId: "corn", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
+      { id: 1, x: startX, y: startY + 3, cropId: "wheat", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
+      { id: 2, x: startX + 2, y: startY + 3, cropId: "carrot", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
+      { id: 3, x: startX + 4, y: startY + 3, cropId: "corn", plantedAt: now, growthProgressMs: 0, lastGrowthAt: now, unlocked: true },
     );
   }
   const landParcels: FarmLandParcel[] = [];
@@ -1043,8 +1131,7 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
     for (const value of data.landParcels) {
       const raw = value as Record<string, unknown>;
       const column = nonNegativeInt(raw.column, -1);
-      const row = nonNegativeInt(raw.row, -1)
-        + (legacyMapRowShift > 0 ? legacyMapRowShift / FARM_PARCEL_HEIGHT : 0);
+      const row = nonNegativeInt(raw.row, -1) + legacyLayoutRowShift / FARM_PARCEL_HEIGHT;
       if (
         column < FARM_PARCEL_COLUMNS
         && row < FARM_PARCEL_ROWS
@@ -1053,11 +1140,11 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
         landParcels.push({ column, row });
       }
     }
-    if (!isFarmParcelOwned({ landParcels }, FARM_START_PARCEL.column, FARM_START_PARCEL.row)) {
-      landParcels.unshift({ ...FARM_START_PARCEL });
+    if (!isFarmParcelOwned({ landParcels }, startParcel.column, startParcel.row)) {
+      landParcels.unshift({ ...startParcel });
     }
   } else {
-    connectParcelToStart(landParcels, { ...FARM_START_PARCEL });
+    connectParcelToStart(landParcels, { ...startParcel }, startParcel);
     const legacyPositions: FarmPosition[] = [
       ...plots,
       ...trees,
@@ -1065,11 +1152,11 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       ...(housePosition ? [housePosition] : []),
       !isBlankLegacySave && playerPositionRaw
         ? shiftLegacyPosition(clampPosition(playerPositionRaw.x, playerPositionRaw.y))
-        : { x: FARM_START_X + 1, y: FARM_START_Y + 2 },
+        : { x: startX + 5, y: startY + 4 },
     ];
     for (const position of legacyPositions) {
       const parcel = getFarmParcelAt(position.x, position.y);
-      connectParcelToStart(landParcels, parcel);
+      connectParcelToStart(landParcels, parcel, startParcel);
     }
   }
   const normalizedPlayerPosition = !isBlankLegacySave && playerPositionRaw
@@ -1082,12 +1169,12 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       const normalized = normalizeWorker(
         worker,
         index,
-        legacyMapRowShift > 0
+        storedVersion < 9 && legacyMapRowShift > 0
           ? { x: 8, y: 8 }
-          : { x: FARM_START_X + 1, y: FARM_START_Y + 2 },
+          : { x: startX + 5, y: startY + 4 - layoutStartRowShift },
         now,
       );
-      if (legacyMapRowShift > 0) {
+      if (legacyLayoutRowShift !== 0) {
         normalized.from = shiftLegacyPosition(normalized.from);
         if (normalized.to) normalized.to = shiftLegacyPosition(normalized.to);
       }
@@ -1096,7 +1183,7 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
   if (workers.length === 0) {
     workers.push(createIdleWorker(
       "worker-1",
-      { x: FARM_START_X + 1, y: FARM_START_Y + 2 },
+      { x: startX + 5, y: startY + 4 },
       now,
     ));
   }
@@ -1107,7 +1194,7 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
   const fruitInventory = (data.fruitInventory ?? {}) as Record<string, unknown>;
   const questCycle = nonNegativeInt(data.questCycle);
   const farm: FarmGameSave = {
-    version: 9,
+    version: 10,
     coins: nonNegativeInt(data.coins, initial.coins),
     gems: nonNegativeInt(data.gems),
     questCycle,
@@ -1126,6 +1213,7 @@ export function normalizeFarm(data: Record<string, unknown>, now = Date.now()): 
       peach: nonNegativeInt(fruitInventory.peach),
       lemon: nonNegativeInt(fruitInventory.lemon),
     },
+    startParcel,
     landParcels,
     expansionsPurchased: nonNegativeInt(data.expansionsPurchased, legacyExpansionCount),
     plots,
@@ -1202,7 +1290,7 @@ export function applyFarmActionToState(
       if (!isFarmParcelAdjacent(next, column, row)) {
         throw new Error("يمكنك شراء قطعة ملاصقة لأرضك فقط.");
       }
-      const expansionCost = getNextLandExpansionCost(next);
+      const expansionCost = getFarmParcelExpansionCost(next, column, row);
       if (next.coins < expansionCost) {
         throw new Error(`تحتاج إلى ${expansionCost} عملة لشراء التوسعة.`);
       }
