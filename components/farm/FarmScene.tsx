@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Image,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -477,6 +478,7 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
   onTilePressRef.current = onTilePress;
   onObjectDragEndRef.current = onObjectDragEnd;
   const centeredRef = useRef(false);
+  const layoutMeasuredRef = useRef(false);
   const cameraRef = useRef(camera);
   const zoomRef = useRef(zoom);
   const sizeRef = useRef(size);
@@ -496,20 +498,26 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
     if (layout.width > 0 && layout.height > 0) {
       const nextSize = { width: layout.width, height: layout.height };
       sizeRef.current = nextSize;
+      layoutMeasuredRef.current = true;
       setSize(nextSize);
-      if (!centeredRef.current) {
-        centeredRef.current = true;
-        const nextZoom = zoomRef.current;
-        setCamera(
-          clampCamera(
-            (farm.housePosition?.x ?? 8) * FARM_TILE_SIZE - nextSize.width / nextZoom / 2,
-            (farm.housePosition?.y ?? 8) * FARM_TILE_SIZE - nextSize.height / nextZoom / 2,
-            nextZoom,
-          ),
-        );
-      }
     }
   };
+
+  React.useEffect(() => {
+    if (centeredRef.current || !layoutMeasuredRef.current || !farm.housePosition) return;
+    centeredRef.current = true;
+    const nextZoom = Math.min(2.6, Math.max(0.68, size.width / WORLD_WIDTH));
+    const landscapePreviewOffset = nextZoom < 0.75 ? WORLD_HEIGHT * 0.09 : 0;
+    const nextCamera = clampCamera(
+      farm.housePosition.x * FARM_TILE_SIZE - size.width / nextZoom / 2,
+      farm.housePosition.y * FARM_TILE_SIZE - size.height / nextZoom / 2 - landscapePreviewOffset,
+      nextZoom,
+    );
+    zoomRef.current = nextZoom;
+    cameraRef.current = nextCamera;
+    setZoom(nextZoom);
+    setCamera(nextCamera);
+  }, [farm.housePosition, size.height, size.width]);
 
   const findObject = useCallback((x: number, y: number): FarmObjectRef | null => {
     const currentFarm = farmRef.current;
@@ -682,19 +690,6 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
       }),
   }), [findObject]);
 
-  const grassPatches = useMemo(
-    () =>
-      Array.from({ length: 94 }, (_, index) => ({
-        x: (index * 197 + 41) % WORLD_WIDTH,
-        y: (index * 283 + 67) % WORLD_HEIGHT,
-        rx: 2 + (index % 4),
-        ry: 1 + (index % 3),
-        opacity: 0.05 + (index % 5) * 0.012,
-        fill: index % 2 === 0 ? "#E5F0B1" : "#5B934C",
-      })),
-    [],
-  );
-
   return (
     <GestureDetector gesture={worldGesture}>
       <View
@@ -705,27 +700,28 @@ const FarmScene = forwardRef<FarmSceneHandle, FarmSceneProps>(function FarmScene
         accessibilityRole="image"
         accessibilityLabel="أرض مزرعة مفتوحة. اسحب للتحرك، واستخدم إصبعين للتكبير والتصغير، واضغط للتفاعل."
       >
+        <Image
+          source={require("../../assets/forus-farm-landscape.jpg")}
+          resizeMode="stretch"
+          style={[
+            styles.worldBackground,
+            {
+              left: -camera.x * zoom,
+              top: -camera.y * zoom,
+              width: WORLD_WIDTH * zoom,
+              height: WORLD_HEIGHT * zoom,
+            },
+          ]}
+        />
         <Svg
+          style={styles.worldOverlay}
           width="100%"
           height="100%"
           viewBox={`${camera.x} ${camera.y} ${size.width / zoom} ${size.height / zoom}`}
           preserveAspectRatio="none"
           pointerEvents="none"
         >
-          <Rect x={-1200} y={-1000} width={WORLD_WIDTH + 2400} height={WORLD_HEIGHT + 2000} fill="#A9CE7E" />
-          {grassPatches.map((patch, index) => (
-            <Ellipse
-              key={`grass-${index}`}
-              cx={patch.x}
-              cy={patch.y}
-              rx={patch.rx}
-              ry={patch.ry}
-              fill={patch.fill}
-              opacity={patch.opacity}
-            />
-          ))}
-          <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#E7D09B" strokeWidth={12} opacity={0.65} />
-          <Path d="M 0 180 Q 120 145 270 190 T 560 190" fill="none" stroke="#F4E6BF" strokeWidth={4} opacity={0.9} />
+          <Rect x={0} y={0} width={WORLD_WIDTH} height={WORLD_HEIGHT} fill="#203B26" opacity={0.055} />
           {Array.from({ length: FARM_PARCEL_COLUMNS * FARM_PARCEL_ROWS }, (_, index) => (
             <LandParcel
               key={`land-${index}`}
@@ -815,5 +811,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: 19,
     backgroundColor: "#A9CE7E",
+  },
+  worldBackground: {
+    position: "absolute",
+    zIndex: 0,
+    pointerEvents: "none",
+  },
+  worldOverlay: {
+    zIndex: 1,
   },
 });
